@@ -1,9 +1,9 @@
-// LeetCode SRS Master - Content Script
+// LeetCode LeetCode EasyRepeat - Content Script
 // This script runs on the LeetCode page itself. It is responsible for:
 // 1. Detecting when a user submits a solution.
 // 2. Checking if that solution was "Accepted".
 // 3. Saving the result to the browser's storage so we can track it.
-console.log("[SRS Master] Extension content script loaded (v2 - Hybrid Detection).");
+console.log("[LeetCode EasyRepeat] Extension content script loaded (v2 - Hybrid Detection).");
 
 // --- Messaging with Popup ---
 // This section listens for messages from the extension popup (the little window that opens when you click the extension icon).
@@ -11,15 +11,16 @@ console.log("[SRS Master] Extension content script loaded (v2 - Hybrid Detection
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Check if the message action is "scanPage"
     if (request.action === "scanPage") {
-        console.log("[SRS Master] Manual scan requested.");
-        // Run our check function immediately
-        const found = checkForAcceptedState();
-        // Send the result (true/false) back to the popup so it knows if it worked
-        sendResponse({ success: found });
+        console.log("[LeetCode EasyRepeat] Manual scan requested.");
+        // Run our check function immediately (async)
+        checkForAcceptedStateAsync().then(result => {
+            sendResponse(result);
+        });
+        return true; // Required for async sendResponse
     }
 });
 
-// --- SRS Logic ---
+// --- LeetCode EasyRepeat Logic ---
 // Logic is now imported from srs_logic.js
 
 // This function actually saves the "Accepted" submission to the browser's local storage.
@@ -27,11 +28,11 @@ async function saveSubmission(problemTitle, problemSlug, difficulty) {
     // Safety Check: Sometimes if the extension updates in the background, the "connection" to the browser is lost.
     // We check if 'chrome.runtime.id' exists to make sure we are still connected.
     if (!chrome.runtime?.id) {
-        console.warn("[SRS Master] Extension context invalidated. Please refresh the page.");
+        console.warn("[LeetCode EasyRepeat] Extension context invalidated. Please refresh the page.");
         return;
     }
 
-    console.log(`[SRS Master] Handling submission for: ${problemTitle}`);
+    console.log(`[LeetCode EasyRepeat] Handling submission for: ${problemTitle}`);
 
     let result;
     try {
@@ -41,7 +42,7 @@ async function saveSubmission(problemTitle, problemSlug, difficulty) {
     } catch (err) {
         // Handle the specific error where the extension context is invalid (similar to the check above)
         if (err.message.includes("Extension context invalidated")) {
-            console.warn("[SRS Master] Context invalidated during storage access. Please refresh.");
+            console.warn("[LeetCode EasyRepeat] Context invalidated during storage access. Please refresh.");
             return;
         }
         // If it's some other error, we can't handle it, so we throw it to be seen in the console.
@@ -59,11 +60,9 @@ async function saveSubmission(problemTitle, problemSlug, difficulty) {
     // Debounce: Check if we ALREADY tracked this problem TODAY.
     // If we solve the same problem 5 times in a row today, we only want to update the SRS schedule ONCE.
     if (problems[problemKey] && problems[problemKey].lastSolved === today) {
-        console.log("[SRS Master] Already logged today. Skipping storage update to prevent dups.");
-        // FIX: Do NOT show toast here. It modifies the DOM, triggering MutationObserver,
-        // which calls this function again, creating an infinite loop.
-        // showCompletionToast(problemTitle, problems[problemKey].nextReviewDate);
-        return;
+        console.log("[LeetCode EasyRepeat] Already logged today. Skipping storage update to prevent dups.");
+        // Return duplicate status for manual scan response
+        return { duplicate: true, problemTitle: problemTitle };
     }
 
     // Prepare the data object for this problem.
@@ -95,10 +94,12 @@ async function saveSubmission(problemTitle, problemSlug, difficulty) {
 
     // Save the ENTIRE updated 'problems' object back to storage.
     await chrome.storage.local.set({ problems });
-    console.log(`[SRS Master] ✅ Saved to Chrome Storage!`);
+    console.log(`[LeetCode EasyRepeat] ✅ Saved to Chrome Storage!`);
 
     // Show the success notification on screen
     showCompletionToast(problemTitle, nextStep.nextReviewDate);
+
+    return { success: true };
 }
 
 // Function to show a little popup notification (Toast) on the webpage itself
@@ -149,7 +150,7 @@ function updateDifficultyCache() {
 
     if (difficultyNode && ['Easy', 'Medium', 'Hard'].includes(difficultyNode.innerText)) {
         cachedDifficulty = difficultyNode.innerText;
-        // console.log("[SRS Master] Cached difficulty: " + cachedDifficulty);
+        // console.log("[LeetCode EasyRepeat] Cached difficulty: " + cachedDifficulty);
     }
 }
 
@@ -201,8 +202,69 @@ function extractProblemDetails() {
     return { title, slug: problemSlug, difficulty };
 }
 
-// The Core Check Function: "Did the user pass?"
-// The Core Check Function: "Did the user pass?"
+// Async version for manual scan - returns detailed response for popup
+async function checkForAcceptedStateAsync() {
+    // Use the same detection logic as the sync version
+    const isGreen = (color) => {
+        if (!color) return false;
+        const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+        if (match) {
+            const [_, r, g, b] = match.map(Number);
+            return g > 100 && g > r * 1.5;
+        }
+        return false;
+    };
+
+    const specificSelectors = [
+        '[data-e2e-locator="submission-result-accepted"]',
+        '.text-green-s',
+        '.text-success',
+        '[class*="text-green"]'
+    ];
+
+    let foundNode = null;
+
+    for (const selector of specificSelectors) {
+        const elements = document.querySelectorAll(selector);
+        for (const el of elements) {
+            if (el.innerText.includes('Accepted')) {
+                foundNode = el;
+                break;
+            }
+        }
+        if (foundNode) break;
+    }
+
+    if (!foundNode) {
+        const allSpans = document.getElementsByTagName('span');
+        for (const span of allSpans) {
+            if (span.innerText === 'Accepted') {
+                const style = getComputedStyle(span);
+                if (isGreen(style.color)) {
+                    foundNode = span;
+                    break;
+                }
+                const parentStyle = getComputedStyle(span.parentElement);
+                if (isGreen(parentStyle.color)) {
+                    foundNode = span;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (foundNode) {
+        console.log("[LeetCode EasyRepeat] Found 'Accepted' state via async scan.");
+        const details = extractProblemDetails();
+        const result = await saveSubmission(details.title, details.slug, details.difficulty);
+        // result could be { success: true } or { duplicate: true, problemTitle: ... }
+        return result || { success: true };
+    }
+
+    return { success: false }; // Nothing found
+}
+
+// The Core Check Function: "Did the user pass?" (Sync version for MutationObserver)
 function checkForAcceptedState() {
     // 1. Look for the big "Accepted" text.
     // We try to find ANY element that contains "Accepted" and looks green.
@@ -271,7 +333,7 @@ function checkForAcceptedState() {
 
     // Validate result
     if (foundNode) {
-        console.log("[SRS Master] Found 'Accepted' state via selector/text scan.");
+        console.log("[LeetCode EasyRepeat] Found 'Accepted' state via selector/text scan.");
         // Get the details
         const details = extractProblemDetails();
         // Save it!
@@ -309,7 +371,7 @@ document.addEventListener('click', (e) => {
         target.closest('button[data-e2e-locator="console-submit-button"]');
 
     if (isSubmitBtn) {
-        console.log("[SRS Master] 'Submit' clicked. Starting aggressive polling...");
+        console.log("[LeetCode EasyRepeat] 'Submit' clicked. Starting aggressive polling...");
         // Start checking repeately
         startPolling();
     }
@@ -325,7 +387,7 @@ function startPolling() {
     let attempts = 0;
     pollInterval = setInterval(() => {
         attempts++;
-        console.log(`[SRS Master] Poll attempt ${attempts}...`);
+        console.log(`[LeetCode EasyRepeat] Poll attempt ${attempts}...`);
 
         // Run the check
         const success = checkForAcceptedState();
@@ -335,8 +397,8 @@ function startPolling() {
         // 2. OR we tried 40 times (20 seconds) and gave up.
         if (success || attempts >= 40) {
             clearInterval(pollInterval);
-            if (success) console.log("[SRS Master] Polling success!");
-            else console.log("[SRS Master] Polling timed out. No 'Accepted' found.");
+            if (success) console.log("[LeetCode EasyRepeat] Polling success!");
+            else console.log("[LeetCode EasyRepeat] Polling timed out. No 'Accepted' found.");
         }
     }, 500);
 }

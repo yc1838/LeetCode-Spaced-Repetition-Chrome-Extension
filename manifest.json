@@ -1,6 +1,6 @@
 {
     "manifest_version": 3,
-    "name": "LeetCode SRS Master",
+    "name": "LeetCode LeetCode EasyRepeat",
     "version": "1.0.1",
     "description": "Automatically capture LeetCode submissions and schedule spaced repetition reviews.",
     "permissions": [
@@ -11,7 +11,7 @@
     ],
     "action": {
         "default_popup": "popup.html",
-        "default_title": "LeetCode SRS Master"
+        "default_title": "LeetCode LeetCode EasyRepeat"
     },
     "content_scripts": [
         {

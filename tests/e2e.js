@@ -23,7 +23,7 @@ const path = require('path');
         // Since our extension injects a content script, we can check if it logged to console.
 
         // We can also check if we can find the difficulty element which our script looks for.
-        // Our script logs "[SRS Master] Extension content script loaded...".
+        // Our script logs "[LeetCode EasyRepeat] Extension content script loaded...".
 
         // Let's inject a specialized check
         const title = await page.title();

@@ -1,10 +1,14 @@
 :root {
-    --void: #050505;
-    --terminal: #00FF41;
-    --electric: #2DE2E6;
-    --glass: rgba(15, 18, 20, 0.75);
-    --border-glow: rgba(0, 255, 65, 0.4);
-    --border-dim: rgba(45, 226, 230, 0.2);
+    --void: #0A0A0A;
+    --terminal: #FF10F0;
+    /* Hot Magenta - primary */
+    --electric: #FF6B35;
+    /* Neon Orange - secondary */
+    --accent: #FF85A2;
+    /* Sunset Pink - accent */
+    --glass: rgba(20, 10, 15, 0.8);
+    --border-glow: rgba(255, 16, 240, 0.4);
+    --border-dim: rgba(255, 107, 53, 0.25);
     --font-main: 'JetBrains Mono', monospace;
     --font-data: 'Fira Code', monospace;
 }
@@ -38,7 +42,7 @@ body::before {
     left: 0;
     bottom: 0;
     right: 0;
-    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 16, 240, 0.04), rgba(255, 107, 53, 0.02), rgba(255, 133, 162, 0.04));
     z-index: 100;
     background-size: 100% 2px, 3px 100%;
     pointer-events: none;
@@ -49,7 +53,7 @@ body::before {
     height: 100%;
     background: var(--void);
     border: 2px solid var(--terminal);
-    box-shadow: 0 0 20px rgba(0, 255, 65, 0.15);
+    box-shadow: 0 0 20px rgba(255, 16, 240, 0.2);
     position: relative;
     display: grid;
     grid-template-columns: 50px 1fr;
@@ -172,21 +176,25 @@ body::before {
 }
 
 .cell.v-1 {
-    background: #00441b;
+    background: #661450;
+    /* Dark magenta */
 }
 
 .cell.v-2 {
-    background: #006d2c;
+    background: #AA1177;
+    /* Medium magenta */
 }
 
 .cell.v-3 {
-    background: #238b45;
+    background: #FF10F0;
+    /* Hot magenta */
     box-shadow: 0 0 5px var(--terminal);
 }
 
 .cell.v-4 {
-    background: var(--terminal);
-    box-shadow: 0 0 8px var(--terminal);
+    background: #FF6B35;
+    /* Neon orange */
+    box-shadow: 0 0 8px var(--electric);
 }
 
 /* PROBLEM VECTORS (CARDS) */
@@ -207,7 +215,7 @@ body::before {
 
 .vector-card:hover {
     border-color: var(--terminal);
-    background: rgba(0, 255, 65, 0.05);
+    background: rgba(255, 16, 240, 0.08);
 }
 
 .vector-card::before {

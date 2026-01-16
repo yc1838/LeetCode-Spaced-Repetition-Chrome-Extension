@@ -1,4 +1,4 @@
-// LeetCode SRS Master - Popup Script
+// LeetCode LeetCode EasyRepeat - Popup Script
 // This script runs when you click the extension icon in the Chrome toolbar.
 // It manages the little "Checkout" window (popup).
 
@@ -222,7 +222,7 @@ function renderGlobalHeatmap() {
 function setupManualTools() {
     // "Purge Memory" button
     document.getElementById('btn-purge').onclick = async () => {
-        if (confirm("WARNING: PURGING NEURAL LINK DATA. CONFIRM?")) {
+        if (confirm("This will erase all your SRS progress. Are you sure?")) {
             await chrome.storage.local.clear();
             location.reload();
         }
@@ -231,20 +231,102 @@ function setupManualTools() {
     // "Sync" button (Manual Scan)
     document.getElementById('btn-sync').onclick = async () => {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (tab && tab.url.includes('leetcode.com')) {
-            chrome.tabs.sendMessage(tab.id, { action: "scanPage" }, (response) => {
-                if (chrome.runtime.lastError) {
-                    alert("LINK_FAILURE: REFRESH TARGET NODE.");
-                } else if (response && response.success) {
-                    window.close();
-                } else {
-                    alert("SCAN_RESULT: NULL. (No 'Accepted' status found)");
-                }
-            });
-        } else {
-            alert("TARGET_INVALID: Navigate to LeetCode Problem Node.");
+
+        if (!tab || !tab.url.includes('leetcode.com')) {
+            showNotification('error', 'INVALID_TARGET', 'Please navigate to a LeetCode problem page first.');
+            return;
         }
+
+        chrome.tabs.sendMessage(tab.id, { action: "scanPage" }, (response) => {
+            if (chrome.runtime.lastError) {
+                showNotification('error', 'CONNECTION_LOST', 'Could not connect to page. Please refresh the LeetCode tab and try again.');
+            } else if (response && response.success) {
+                window.close(); // Close popup, user will see toast on page
+            } else if (response && response.duplicate) {
+                showNotification('warning', 'DUPLICATE_DETECTED', `"${response.problemTitle}" was already logged today. Wait for its next review date.`);
+            } else {
+                showNotification('error', 'SCAN_FAILED', 'No "Accepted" submission found on this page. Make sure you have solved the problem.');
+            }
+        });
     };
+}
+
+// --- Styled Notification Function ---
+function showNotification(type, code, message) {
+    // Remove any existing notification
+    const existing = document.querySelector('.srs-notification');
+    if (existing) existing.remove();
+
+    const colors = {
+        error: { border: '#ff2a6d', bg: 'rgba(255, 42, 109, 0.1)', icon: '✕' },
+        warning: { border: '#f1c40f', bg: 'rgba(241, 196, 15, 0.1)', icon: '⚠' },
+        info: { border: '#2DE2E6', bg: 'rgba(45, 226, 230, 0.1)', icon: 'ℹ' }
+    };
+    const style = colors[type] || colors.info;
+
+    const notification = document.createElement('div');
+    notification.className = 'srs-notification';
+    notification.innerHTML = `
+        <div class="notif-header">
+            <span class="notif-icon">${style.icon}</span>
+            <span class="notif-code">[${code}]</span>
+        </div>
+        <div class="notif-message">${message}</div>
+        <button class="notif-close">DISMISS</button>
+    `;
+
+    // Apply inline styles (since we can't easily add to popup.css dynamically)
+    notification.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        right: 20px;
+        background: ${style.bg};
+        border: 1px solid ${style.border};
+        padding: 12px;
+        font-family: 'JetBrains Mono', monospace;
+        z-index: 1000;
+        animation: slideUp 0.2s ease;
+    `;
+
+    notification.querySelector('.notif-header').style.cssText = `
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        font-size: 11px;
+        color: ${style.border};
+    `;
+
+    notification.querySelector('.notif-icon').style.cssText = `font-size: 14px;`;
+    notification.querySelector('.notif-code').style.cssText = `letter-spacing: 1px;`;
+
+    notification.querySelector('.notif-message').style.cssText = `
+        font-size: 12px;
+        color: #fff;
+        margin-bottom: 10px;
+        line-height: 1.4;
+    `;
+
+    notification.querySelector('.notif-close').style.cssText = `
+        background: transparent;
+        border: 1px solid ${style.border};
+        color: ${style.border};
+        font-family: inherit;
+        font-size: 10px;
+        padding: 6px 12px;
+        cursor: pointer;
+        width: 100%;
+    `;
+
+    notification.querySelector('.notif-close').onclick = () => notification.remove();
+
+    document.body.appendChild(notification);
+
+    // Auto-dismiss after 8 seconds
+    setTimeout(() => {
+        if (notification.parentElement) notification.remove();
+    }, 8000);
 }
 
 // --- Test Mode Logic ---

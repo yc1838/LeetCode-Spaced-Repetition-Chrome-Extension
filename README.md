@@ -1,4 +1,4 @@
-# LeetCode SRS Master
+# LeetCode LeetCode EasyRepeat
 
 A Chrome Extension that helps you master LeetCode problems using a **Spaced Repetition System (SRS)**. It automatically tracks your "Accepted" submissions and schedules reviews based on how well you know the problem.
 
