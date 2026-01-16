@@ -10,6 +10,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupTabs();
     // 3. Enable the buttons like "Manual Scan" and "Clear Data".
     setupManualTools();
+    // 4. Enable Test Mode logic
+    await setupTestMode();
 });
 
 // --- Tab Switching Logic ---
@@ -82,6 +84,62 @@ function setupManualTools() {
     };
 }
 
+// --- Test Mode Logic ---
+let isTestMode = false;
+let testDate = null;
+
+async function setupTestMode() {
+    const toggle = document.getElementById('test-mode-toggle');
+    const dateInput = document.getElementById('test-mode-date');
+
+    // Load saved state
+    const storage = await chrome.storage.local.get({ testMode: false, testDate: null });
+    isTestMode = storage.testMode;
+    testDate = storage.testDate;
+
+    // Set initial UI state
+    toggle.checked = isTestMode;
+    dateInput.value = testDate || new Date().toISOString().split('T')[0];
+    dateInput.disabled = !isTestMode;
+
+    // Toggle Change Listener
+    toggle.onchange = async () => {
+        isTestMode = toggle.checked;
+        dateInput.disabled = !isTestMode;
+
+        // If enabling and no date set, default to today
+        if (isTestMode && !dateInput.value) {
+            dateInput.value = new Date().toISOString().split('T')[0];
+            testDate = dateInput.value;
+        }
+
+        await chrome.storage.local.set({ testMode: isTestMode, testDate: dateInput.value });
+        await updateDashboard();
+    };
+
+    // Date Change Listener
+    dateInput.onchange = async () => {
+        testDate = dateInput.value;
+        await chrome.storage.local.set({ testDate: testDate });
+        // Only refresh if test mode is actually on
+        if (isTestMode) {
+            await updateDashboard();
+        }
+    };
+}
+
+function getCurrentDate() {
+    if (isTestMode && testDate) {
+        // Return the test date but set to End of Day (23:59:59)
+        // This ensures that problems due at any time on this date are considered "Due"
+        // testDate is "YYYY-MM-DD"
+        const [year, month, day] = testDate.split('-').map(Number);
+        // Note: Month is 0-indexed in Date constructor
+        return new Date(year, month - 1, day, 23, 59, 59);
+    }
+    return new Date();
+}
+
 // --- Dashboard Logic ---
 // Reads the data and builds the UI.
 async function updateDashboard() {
@@ -90,7 +148,9 @@ async function updateDashboard() {
     // Convert object { "two-sum": {...}, "valid-anagram": {...} } into an array [ {...}, {...} ]
     const problems = Object.values(result.problems);
 
-    const now = new Date();
+
+
+    const now = getCurrentDate();
     // Filter list: Which problems have a 'nextReviewDate' that is in the past (or now)?
     const dueProblems = problems.filter(p => new Date(p.nextReviewDate) <= now);
 
@@ -110,13 +170,13 @@ async function updateDashboard() {
 
     // Actually create the HTML for the lists
     // 'true' means "interactive" (with Hard/Med/Easy buttons)
-    renderList(dueProblems, 'list-due', true);
+    renderList(dueProblems, 'list-due', true, 'due');
     // 'false' means "readonly" (just show info)
-    renderList(problems, 'list-all', false);
+    renderList(problems, 'list-all', false, 'all');
 }
 
 // Helper to generate the HTML for a list of problems
-function renderList(problemList, containerId, isInteractive) {
+function renderList(problemList, containerId, isInteractive, contextSuffix) {
     const container = document.getElementById(containerId);
     container.innerHTML = ''; // Clear previous content
 
@@ -129,6 +189,7 @@ function renderList(problemList, containerId, isInteractive) {
     problemList.forEach(problem => {
         const nextReview = new Date(problem.nextReviewDate).toLocaleDateString();
         const interval = problem.interval;
+        const uniqueId = `${problem.slug}-${contextSuffix}`;
 
         // Create a card div
         const card = document.createElement('div');
@@ -138,19 +199,33 @@ function renderList(problemList, containerId, isInteractive) {
         // Build the bottom part of the card (Buttons vs Info)
         let actionsHtml = '';
         if (isInteractive) {
-            // If it's the Due list, show the rating buttons
+            // If it's the Due list, show the rating buttons AND Calendar toggle
             actionsHtml = `
       <div class="card-actions">
         <button class="btn btn-hard" data-id="${problem.slug}" data-ease="1.3">Hard</button>
         <button class="btn btn-medium" data-id="${problem.slug}" data-ease="2.5">Med</button>
         <button class="btn btn-easy" data-id="${problem.slug}" data-ease="3.5">Easy</button>
+        <button class="btn-calendar" data-id="${problem.slug}" title="Show 90-day projection">📅</button>
+      </div>
+      <div class="calendar-container" id="cal-${uniqueId}">
+        <div class="calendar-header">
+            <span>Projected Schedule (assuming Medium)</span>
+        </div>
+        <div class="calendar-grid" id="grid-${uniqueId}"></div>
       </div>`;
         } else {
-            // If it's the All list, just show stats
+            // If it's the All list, just show stats AND Calendar toggle
             actionsHtml = `
       <div class="problem-meta">
         <span>Interval: ${interval}d</span>
         <span>Review: ${nextReview}</span>
+        <button class="btn-icon btn-calendar" data-id="${problem.slug}" title="Show 90-day projection" style="margin-left: auto;">📅</button>
+      </div>
+      <div class="calendar-container" id="cal-${uniqueId}">
+        <div class="calendar-header">
+            <span>Projected Schedule (assuming Medium)</span>
+        </div>
+        <div class="calendar-grid" id="grid-${uniqueId}"></div>
       </div>`;
         }
 
@@ -170,7 +245,9 @@ function renderList(problemList, containerId, isInteractive) {
 
         // Click actions (Hard/Med/Easy) logic
         if (isInteractive) {
+            // Rating Buttons
             card.querySelectorAll('.btn').forEach(btn => {
+                if (btn.classList.contains('btn-calendar')) return; // Skip calendar btn
                 btn.onclick = async (e) => {
                     e.stopPropagation(); // Don't trigger the card click
                     const slug = btn.getAttribute('data-id');
@@ -181,8 +258,58 @@ function renderList(problemList, containerId, isInteractive) {
             });
         }
 
+        // Calendar Toggle (Global)
+        const calBtn = card.querySelector('.btn-calendar');
+        if (calBtn) {
+            calBtn.onclick = (e) => {
+                e.stopPropagation();
+                const calContainer = card.querySelector(`#cal-${uniqueId}`);
+                calContainer.classList.toggle('active');
+
+                if (calContainer.classList.contains('active')) {
+                    renderCalendar(problem, `grid-${uniqueId}`);
+                }
+            };
+        }
+
         container.appendChild(card);
     });
+}
+
+function renderCalendar(problem, gridId) {
+    const grid = document.getElementById(gridId);
+    if (!grid) return; // Safety check
+    grid.innerHTML = '';
+
+    // Get projected dates
+    const today = getCurrentDate(); // Use mock date if in test mode
+    const projectedDates = projectSchedule(problem.interval, problem.repetition, problem.easeFactor, today);
+    const dateSet = new Set(projectedDates); // For O(1) lookup
+
+    // Generate ~90 days grid (simple view: just list days or mini boxes)
+    const startDate = new Date(today);
+    // Nearest past Sunday for proper grid alignment
+    const calendarStart = new Date(startDate);
+    calendarStart.setDate(startDate.getDate() - startDate.getDay());
+
+    // Show 13 weeks (~91 days)
+    for (let i = 0; i < 13 * 7; i++) {
+        const dayDate = new Date(calendarStart);
+        dayDate.setDate(calendarStart.getDate() + i);
+
+        const dayStr = dayDate.toISOString().split('T')[0];
+        const isToday = dayStr === today.toISOString().split('T')[0];
+        const isDue = dateSet.has(dayStr);
+
+        const cell = document.createElement('div');
+        cell.className = `calendar-day ${isToday ? 'today' : ''} ${isDue ? 'due-future' : ''}`;
+        cell.title = dayStr + (isDue ? " (Projected Review)" : "");
+
+        // Show day number (hidden by CSS font-size:0, but usually helpful for debugging)
+        cell.innerText = dayDate.getDate();
+
+        grid.appendChild(cell);
+    }
 }
 
 // Re-using the same math logic as content script (ideally this should be shared, but simple enough to copy)
@@ -197,7 +324,8 @@ async function updateProblemSRS(slug, ease) {
     if (!p) return;
 
     // Calculate next review based on the button clicked (ease)
-    const nextStep = calculateNextReview(p.interval, p.repetition, ease);
+    // Pass getCurrentDate() to handle Test Mode
+    const nextStep = calculateNextReview(p.interval, p.repetition, ease, getCurrentDate());
 
     // Save update
     problems[slug] = {
@@ -206,8 +334,8 @@ async function updateProblemSRS(slug, ease) {
         repetition: nextStep.nextRepetition,
         easeFactor: nextStep.nextEaseFactor,
         nextReviewDate: nextStep.nextReviewDate,
-        // Log this review in history
-        history: [...p.history, { date: new Date().toISOString(), status: 'Reviewed' }]
+        // Log this review in history, using the (potentially mocked) current date
+        history: [...p.history, { date: getCurrentDate().toISOString(), status: 'Reviewed' }]
     };
 
     await chrome.storage.local.set({ problems });

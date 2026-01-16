@@ -25,10 +25,9 @@ global.MutationObserver = class {
     disconnect() { }
 };
 
-const contentScript = require('../content.js');
-const { extractProblemDetails } = contentScript;
-
 describe('DOM Extraction Logic', () => {
+    let extractProblemDetails;
+
     beforeEach(() => {
         // Reset DOM
         document.body.innerHTML = '';
@@ -38,6 +37,11 @@ describe('DOM Extraction Logic', () => {
             },
             writable: true
         });
+
+        // Reset Modules to clear cachedDifficulty in content.js
+        jest.resetModules();
+        const contentScript = require('../content.js');
+        extractProblemDetails = contentScript.extractProblemDetails;
     });
 
     test('should extract problem slug from URL', () => {
