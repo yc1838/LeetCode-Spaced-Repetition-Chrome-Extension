@@ -1,40 +1,52 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LeetCode SRS Master</title>
-  <link rel="stylesheet" href="popup.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LeetCode SRS Master</title>
+    <link rel="stylesheet" href="popup.css">
 </head>
+
 <body>
-  <div class="container">
-    <header>
-      <h1>SRS Master</h1>
-      <div class="stats">
-        <div class="stat-item">
-          <span id="due-count">0</span>
-          <label>Due Today</label>
-        </div>
-        <div class="stat-item">
-          <span id="total-count">0</span>
-          <label>Total Tracked</label>
-        </div>
-      </div>
-    </header>
+    <div class="container">
+        <header>
+            <h1>SRS Master</h1>
+            <div class="stats">
+                <div class="stat-item active" id="stat-due">
+                    <span id="due-count">0</span>
+                    <label>Due Today</label>
+                </div>
+                <div class="stat-item" id="stat-all">
+                    <span id="total-count">0</span>
+                    <label>All Tracked</label>
+                </div>
+            </div>
+        </header>
 
-    <main>
-      <section id="review-section">
-        <h2>Today's Queue</h2>
-        <div id="problem-list" class="problem-list">
-          <div class="empty-state">No problems due for review today! Great job.</div>
-        </div>
-      </section>
-    </main>
+        <main>
+            <section id="section-due" class="tab-content active">
+                <h2>Today's Queue</h2>
+                <div id="list-due" class="problem-list">
+                    <div class="empty-state">No problems due for review today! Great job.</div>
+                </div>
+            </section>
 
-    <footer>
-      <p>Keep coding, keep growing.</p>
-    </footer>
-  </div>
-  <script src="popup.js"></script>
+            <section id="section-all" class="tab-content">
+                <h2>All Tracked History</h2>
+                <div id="list-all" class="problem-list">
+                    <div class="empty-state">No problems tracked yet. Go solve some!</div>
+                </div>
+            </section>
+        </main>
+
+        <div class="footer-actions">
+            <button id="manual-scan" class="btn-secondary">Manual Scan</button>
+            <button id="debug-clear" class="btn-link">Clear Data</button>
+        </div>
+    </div>
+    <script src="srs_logic.js"></script>
+    <script src="popup.js"></script>
 </body>
+
 </html>

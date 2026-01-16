@@ -1,3 +1,4 @@
+/* ... (previous variables) ... */
 :root {
     --bg-color: #0d1117;
     --panel-bg: rgba(22, 27, 34, 0.7);
@@ -6,10 +7,12 @@
     --text-primary: #c9d1d9;
     --text-secondary: #8b949e;
     --glass-border: rgba(255, 255, 255, 0.1);
+    --active-border: #388bfd;
 }
 
 body {
-    width: 350px;
+    width: 360px;
+    /* Slightly wider */
     margin: 0;
     padding: 0;
     background-color: var(--bg-color);
@@ -52,6 +55,18 @@ h1 {
     display: flex;
     flex-direction: column;
     align-items: center;
+    cursor: pointer;
+    /* Clickable */
+    transition: all 0.2s;
+}
+
+.stat-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.stat-item.active {
+    border-color: var(--active-border);
+    box-shadow: 0 0 8px rgba(56, 139, 253, 0.2);
 }
 
 .stat-item span {
@@ -67,19 +82,59 @@ h1 {
     letter-spacing: 0.5px;
 }
 
+/* Tabs */
+.tab-content {
+    display: none;
+    animation: fadeIn 0.3s ease;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 main h2 {
     font-size: 14px;
     color: var(--text-secondary);
     margin-bottom: 12px;
     font-weight: 600;
+    border-bottom: 1px solid var(--glass-border);
+    padding-bottom: 6px;
 }
 
 .problem-list {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    max-height: 300px;
+    max-height: 320px;
     overflow-y: auto;
+    padding-right: 4px;
+    /* Space for scrollbar */
+}
+
+/* Scrollbar styling */
+.problem-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.problem-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.problem-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
 }
 
 .problem-card {
@@ -112,7 +167,7 @@ main h2 {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 200px;
+    max-width: 180px;
 }
 
 .difficulty-badge {
@@ -173,6 +228,24 @@ main h2 {
     opacity: 0.8;
 }
 
+/* Read-only card style for 'All' list */
+.problem-card.readonly {
+    cursor: pointer;
+}
+
+.problem-card.readonly .card-actions {
+    display: none;
+    /* Hide SRS buttons in history view if desired, or keep them */
+}
+
+.problem-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+}
+
 .empty-state {
     text-align: center;
     padding: 40px 20px;
@@ -181,14 +254,40 @@ main h2 {
     font-style: italic;
 }
 
-footer {
+/* Footer / Manual Tools */
+.footer-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-top: 24px;
-    text-align: center;
-    border-top: 1px solid var(--glass-border);
     padding-top: 12px;
+    border-top: 1px solid var(--glass-border);
 }
 
-footer p {
+.btn-secondary {
+    padding: 6px 12px;
+    background: #21262d;
+    color: var(--text-primary);
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
     font-size: 11px;
+    cursor: pointer;
+}
+
+.btn-secondary:hover {
+    background: #30363d;
+}
+
+.btn-link {
+    background: none;
+    border: none;
     color: var(--text-secondary);
+    font-size: 10px;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.btn-link:hover {
+    color: #da3633;
+    /* Red on hover for danger actions */
 }

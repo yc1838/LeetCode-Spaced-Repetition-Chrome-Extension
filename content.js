@@ -1,128 +1,358 @@
 // LeetCode SRS Master - Content Script
+// This script runs on the LeetCode page itself. It is responsible for:
+// 1. Detecting when a user submits a solution.
+// 2. Checking if that solution was "Accepted".
+// 3. Saving the result to the browser's storage so we can track it.
+console.log("[SRS Master] Extension content script loaded (v2 - Hybrid Detection).");
 
-console.log("LeetCode SRS Master loaded.");
+// --- Messaging with Popup ---
+// This section listens for messages from the extension popup (the little window that opens when you click the extension icon).
+// We need this because sometimes the automatic detection might fail, and the user wants to click "Scan Now" manually.
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    // Check if the message action is "scanPage"
+    if (request.action === "scanPage") {
+        console.log("[SRS Master] Manual scan requested.");
+        // Run our check function immediately
+        const found = checkForAcceptedState();
+        // Send the result (true/false) back to the popup so it knows if it worked
+        sendResponse({ success: found });
+    }
+});
 
-/**
- * SRS Logic: Simple SM-2 Implementation
- * This will be used to calculate the next interval.
- */
-function calculateNextReview(interval = 0, repetition = 0, easeFactor = 2.5) {
-  let nextInterval;
-  if (repetition === 0) {
-    nextInterval = 1;
-  } else if (repetition === 1) {
-    nextInterval = 6;
-  } else {
-    nextInterval = Math.round(interval * easeFactor);
-  }
+// --- SRS Logic ---
+// Logic is now imported from srs_logic.js
 
-  const nextDate = new Date();
-  nextDate.setDate(nextDate.getDate() + nextInterval);
-  
-  return {
-    nextInterval,
-    nextRepetition: repetition + 1,
-    nextEaseFactor: easeFactor,
-    nextReviewDate: nextDate.toISOString()
-  };
-}
-
+// This function actually saves the "Accepted" submission to the browser's local storage.
 async function saveSubmission(problemTitle, problemSlug, difficulty) {
-  const result = await chrome.storage.local.get({ problems: {} });
-  const problems = result.problems;
+    // Safety Check: Sometimes if the extension updates in the background, the "connection" to the browser is lost.
+    // We check if 'chrome.runtime.id' exists to make sure we are still connected.
+    if (!chrome.runtime?.id) {
+        console.warn("[SRS Master] Extension context invalidated. Please refresh the page.");
+        return;
+    }
 
-  // Check if already exists to avoid duplicate logs for same solving session
-  const today = new Date().toISOString().split('T')[0];
-  const problemKey = problemSlug;
+    console.log(`[SRS Master] Handling submission for: ${problemTitle}`);
 
-  if (problems[problemKey] && problems[problemKey].lastSolved === today) {
-    console.log("Already logged this problem today.");
-    return;
-  }
+    let result;
+    try {
+        // Fetch existing data from Chrome's storage.
+        // We ask for "problems". If it doesn't exist, we get an empty object {}.
+        result = await chrome.storage.local.get({ problems: {} });
+    } catch (err) {
+        // Handle the specific error where the extension context is invalid (similar to the check above)
+        if (err.message.includes("Extension context invalidated")) {
+            console.warn("[SRS Master] Context invalidated during storage access. Please refresh.");
+            return;
+        }
+        // If it's some other error, we can't handle it, so we throw it to be seen in the console.
+        throw err;
+    }
 
-  const currentProblem = problems[problemKey] || {
-    title: problemTitle,
-    slug: problemSlug,
-    difficulty: difficulty,
-    interval: 0,
-    repetition: 0,
-    easeFactor: 2.5,
-    history: []
-  };
+    const problems = result.problems;
 
-  const nextStep = calculateNextReview(currentProblem.interval, currentProblem.repetition, currentProblem.easeFactor);
+    // Get today's date in YYYY-MM-DD format (so we can compare dates easily)
+    const today = new Date().toISOString().split('T')[0];
 
-  problems[problemKey] = {
-    ...currentProblem,
-    lastSolved: today,
-    interval: nextStep.nextInterval,
-    repetition: nextStep.nextRepetition,
-    easeFactor: nextStep.nextEaseFactor,
-    nextReviewDate: nextStep.nextReviewDate,
-    history: [...currentProblem.history, { date: today, status: 'Accepted' }]
-  };
+    // The "slug" is the unique part of the URL for the problem (e.g., "two-sum")
+    const problemKey = problemSlug;
 
-  await chrome.storage.local.set({ problems });
-  console.log("✅ Problem scheduled for SRS:", problemTitle, "Next review:", nextStep.nextReviewDate);
-  
-  showCompletionToast(problemTitle, nextStep.nextReviewDate);
+    // Debounce: Check if we ALREADY tracked this problem TODAY.
+    // If we solve the same problem 5 times in a row today, we only want to update the SRS schedule ONCE.
+    if (problems[problemKey] && problems[problemKey].lastSolved === today) {
+        console.log("[SRS Master] Already logged today. Skipping storage update to prevent dups.");
+        // FIX: Do NOT show toast here. It modifies the DOM, triggering MutationObserver,
+        // which calls this function again, creating an infinite loop.
+        // showCompletionToast(problemTitle, problems[problemKey].nextReviewDate);
+        return;
+    }
+
+    // Prepare the data object for this problem.
+    // If it exists, use it. If not, create a new default object.
+    const currentProblem = problems[problemKey] || {
+        title: problemTitle,
+        slug: problemSlug, // unique ID
+        difficulty: difficulty,
+        interval: 0,
+        repetition: 0,
+        easeFactor: 2.5,
+        history: [] // We keep a list of past attempts
+    };
+
+    // Calculate the new schedule based on current stats
+    const nextStep = calculateNextReview(currentProblem.interval, currentProblem.repetition, currentProblem.easeFactor);
+
+    // Update the problem data with the new values
+    problems[problemKey] = {
+        ...currentProblem, // Keep existing fields (like title, slug)
+        lastSolved: today, // Mark today as the last solved date
+        interval: nextStep.nextInterval,
+        repetition: nextStep.nextRepetition,
+        easeFactor: nextStep.nextEaseFactor,
+        nextReviewDate: nextStep.nextReviewDate,
+        // Add specific history entry to the array
+        history: [...currentProblem.history, { date: today, status: 'Accepted' }]
+    };
+
+    // Save the ENTIRE updated 'problems' object back to storage.
+    await chrome.storage.local.set({ problems });
+    console.log(`[SRS Master] ✅ Saved to Chrome Storage!`);
+
+    // Show the success notification on screen
+    showCompletionToast(problemTitle, nextStep.nextReviewDate);
 }
 
+// Function to show a little popup notification (Toast) on the webpage itself
 function showCompletionToast(title, nextDate) {
-  const dateStr = new Date(nextDate).toLocaleDateString();
-  const toast = document.createElement('div');
-  toast.className = 'lc-srs-toast';
-  toast.innerHTML = `
+    // If a toast already exists (maybe from a previous click), remove it so they don't stack up.
+    const existing = document.querySelector('.lc-srs-toast');
+    if (existing) existing.remove();
+
+    const dateStr = new Date(nextDate).toLocaleDateString();
+
+    // Create a new HTML element for the toast
+    const toast = document.createElement('div');
+    toast.className = 'lc-srs-toast'; // Class usage explained in CSS file
+    toast.innerHTML = `
     <div class="lc-srs-toast-content">
-      <strong>✅ ${title} Logged!</strong>
+      <strong>✅ ${title} Captured!</strong>
       <span>Next review: ${dateStr}</span>
     </div>
   `;
-  document.body.appendChild(toast);
-  
-  setTimeout(() => {
-    toast.classList.add('show');
+
+    // Add it to the webpage body
+    document.body.appendChild(toast);
+
+    // Animation logic:
+    // 1. Wait 100ms, then add 'show' class to trigger CSS fade-in
     setTimeout(() => {
-      toast.classList.remove('show');
-      setTimeout(() => toast.remove(), 500);
-    }, 4000);
-  }, 100);
+        toast.classList.add('show');
+        // 2. Wait 4 seconds, then remove 'show' class to trigger CSS fade-out
+        setTimeout(() => {
+            toast.classList.remove('show');
+            // 3. Wait 500ms for fade-out to finish, then completely remove from the page (DOM)
+            setTimeout(() => toast.remove(), 500);
+        }, 4000);
+    }, 100);
 }
 
-// Observer to detect "Accepted" status
-const observer = new MutationObserver((mutations) => {
-  for (const mutation of mutations) {
-    if (mutation.type === 'childList') {
-      // Look for the "Accepted" text in the submission result panel
-      // LeetCode uses dynamic classes, but often has data-test attributes or specific text
-      const acceptedNode = Array.from(document.querySelectorAll('*')).find(el => 
-        el.textContent === 'Accepted' && 
-        (el.classList.contains('text-success') || el.classList.contains('text-green-s'))
-      );
+// --- Robust Detection Logic ---
 
-      if (acceptedNode) {
-        handleAcceptedSubmission();
-        break;
-      }
+// --- Caching Logic ---
+// We cache the difficulty because it might disappear from the DOM when the "Submission Result" view is active.
+let cachedDifficulty = null;
+
+// Periodically scan for the difficulty badge while the user is just browsing the problem.
+function updateDifficultyCache() {
+    const diffSelectors = [
+        '[data-difficulty]',
+        '.text-difficulty-easy',
+        '.text-difficulty-medium',
+        '.text-difficulty-hard',
+        '.text-xs.font-medium.text-olive', // New Easy
+        '.text-xs.font-medium.text-yellow', // New Medium
+        '.text-xs.font-medium.text-pink', // New Hard
+    ];
+
+    for (const selector of diffSelectors) {
+        const el = document.querySelector(selector);
+        if (el && ['Easy', 'Medium', 'Hard'].includes(el.innerText)) {
+            cachedDifficulty = el.innerText;
+            // console.log("[SRS Master] Cached difficulty: " + cachedDifficulty);
+            break;
+        }
     }
-  }
+}
+
+// Run this scan often (it's cheap)
+setInterval(updateDifficultyCache, 2000);
+
+
+// --- Robust Detection Logic ---
+
+// Helper function to read the webpage and find the problem details (Title, Difficulty, ID)
+function extractProblemDetails() {
+    // Split the URL to find the problem ID (slug)
+    const pathParts = window.location.pathname.split('/');
+    let problemSlug = "unknown-problem";
+
+    // Case 1: Standard problem page
+    if (pathParts[1] === 'problems') {
+        problemSlug = pathParts[2];
+    }
+    // Case 2: Submission details page (sometimes happen after submit)
+    else if (document.referrer.includes('/problems/')) {
+        // Look at where we came FROM (referrer)
+        const refParts = new URL(document.referrer).pathname.split('/');
+        problemSlug = refParts[2];
+    }
+
+    // Find the Title element on the page.
+    const titleEl = document.querySelector('[data-cy="question-title"]') ||
+        document.querySelector('span.text-lg.font-medium.text-label-1') ||
+        document.querySelector('.mr-2.text-lg.font-medium');
+
+    const title = titleEl ? titleEl.innerText : problemSlug.replace(/-/g, ' ');
+
+    let difficulty = 'Medium'; // Default fallback
+
+    // 1. Try Cache First (Best for post-submit)
+    if (cachedDifficulty) {
+        difficulty = cachedDifficulty;
+    }
+    // 2. Try Live DOM (Best for initial load)
+    else {
+        // We re-use the same check as the cache function just in case cache missed
+        updateDifficultyCache();
+        if (cachedDifficulty) difficulty = cachedDifficulty;
+    }
+
+    return { title, slug: problemSlug, difficulty };
+}
+
+// The Core Check Function: "Did the user pass?"
+// The Core Check Function: "Did the user pass?"
+function checkForAcceptedState() {
+    // 1. Look for the big "Accepted" text.
+    // We try to find ANY element that contains "Accepted" and looks green.
+    // This is more robust than relying on specific class names which change often.
+
+    // Helper to check if a color is "green-ish"
+    // rgb(44, 187, 93) or rgb(45, 181, 93) refer to standard LeetCode success greens.
+    const isGreen = (color) => {
+        if (!color) return false;
+        // Parse rgb(r, g, b)
+        const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+        if (match) {
+            const [_, r, g, b] = match.map(Number);
+            // Green is dominant and significantly larger than Red
+            return g > 100 && g > r * 1.5;
+        }
+        return false;
+    };
+
+    // Candidate elements: 
+    // 1. Specific data attributes (most reliable if present)
+    // 2. Classes with 'green' in them
+    // 3. Any element with text "Accepted" (expensive, so we scope it if possible)
+
+    // Strategy A: Specific Selectors
+    const specificSelectors = [
+        '[data-e2e-locator="submission-result-accepted"]',
+        '.text-green-s',
+        '.text-success',
+        '[class*="text-green"]' // Catch-all for Tailwind-style green classes
+    ];
+
+    let foundNode = null;
+
+    for (const selector of specificSelectors) {
+        const elements = document.querySelectorAll(selector);
+        for (const el of elements) {
+            if (el.innerText.includes('Accepted')) {
+                foundNode = el;
+                break;
+            }
+        }
+        if (foundNode) break;
+    }
+
+    // Strategy B: Deep Search for exact "Accepted" text node with green style
+    // This handles cases where the text is in a plain <span> inside a styled parent.
+    if (!foundNode) {
+        const allSpans = document.getElementsByTagName('span');
+        for (const span of allSpans) {
+            if (span.innerText === 'Accepted') {
+                const style = getComputedStyle(span);
+                if (isGreen(style.color)) {
+                    foundNode = span;
+                    break;
+                }
+                // Check parent's color if span is transparent/inherited
+                const parentStyle = getComputedStyle(span.parentElement);
+                if (isGreen(parentStyle.color)) {
+                    foundNode = span;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Validate result
+    if (foundNode) {
+        console.log("[SRS Master] Found 'Accepted' state via selector/text scan.");
+        // Get the details
+        const details = extractProblemDetails();
+        // Save it!
+        saveSubmission(details.title, details.slug, details.difficulty);
+        return true; // Return true to indicate success
+    }
+
+    return false; // Nothing found
+}
+
+// 1. MutationObserver (Legacy/Passive Detection)
+// This code watches for ANY changes to the webpage (DOM mutations).
+// If LeetCode updates the page content (e.g. showing results), this triggers.
+const observer = new MutationObserver((mutations) => {
+    // Debounce: We don't want to run the check 100 times per second if many things change at once.
+    // We wait until changes stop for 300ms before running the check.
+    if (window._srsObsTimeout) clearTimeout(window._srsObsTimeout);
+    window._srsObsTimeout = setTimeout(() => {
+        checkForAcceptedState();
+    }, 300);
 });
 
-function handleAcceptedSubmission() {
-  // Extract info from URL or page
-  const pathParts = window.location.pathname.split('/');
-  const problemSlug = pathParts[2]; // /problems/problem-slug/
-  
-  // Try to find title
-  const titleEl = document.querySelector('span.text-lg.font-medium, div.mr-2.text-lg.font-medium');
-  const title = titleEl ? titleEl.innerText : problemSlug.replace(/-/g, ' ');
+// Start observing the entire document body
+observer.observe(document.body, { childList: true, subtree: true });
 
-  // Try to find difficulty
-  const diffEl = document.querySelector('div[class*="text-difficulty-"], div[class*="text-yellow"], div[class*="text-green"], div[class*="text-red"]');
-  const difficulty = diffEl ? diffEl.innerText : 'Unknown';
 
-  saveSubmission(title, problemSlug, difficulty);
+// 2. Click Listener on "Submit" (Active Polling Detection)
+// Sometimes the Observer is too slow or misses the update.
+// We also listen for when the user physically clicks the "Submit" button.
+document.addEventListener('click', (e) => {
+    // Check if clicked element (or its parent) looks like a Submit button
+    const target = e.target;
+    const isSubmitBtn = target.innerText.includes('Submit') ||
+        target.getAttribute('data-cy') === 'submit-code-btn' ||
+        target.closest('button[data-e2e-locator="console-submit-button"]');
+
+    if (isSubmitBtn) {
+        console.log("[SRS Master] 'Submit' clicked. Starting aggressive polling...");
+        // Start checking repeately
+        startPolling();
+    }
+}, true); // 'true' means we capture this event early (Capture Phase)
+
+let pollInterval;
+
+// Function to check repeatedly every 500ms
+function startPolling() {
+    // Clear any existing poll to avoid duplicates
+    if (pollInterval) clearInterval(pollInterval);
+
+    let attempts = 0;
+    pollInterval = setInterval(() => {
+        attempts++;
+        console.log(`[SRS Master] Poll attempt ${attempts}...`);
+
+        // Run the check
+        const success = checkForAcceptedState();
+
+        // STOP condition:
+        // 1. We found the success state!
+        // 2. OR we tried 40 times (20 seconds) and gave up.
+        if (success || attempts >= 40) {
+            clearInterval(pollInterval);
+            if (success) console.log("[SRS Master] Polling success!");
+            else console.log("[SRS Master] Polling timed out. No 'Accepted' found.");
+        }
+    }, 500);
 }
 
-// Start observing the body for changes
-observer.observe(document.body, { childList: true, subtree: true });
+// Export for testing if in Node environment
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        extractProblemDetails,
+        checkForAcceptedState
+    };
+}
