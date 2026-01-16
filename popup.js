@@ -196,6 +196,8 @@ function renderList(problemList, containerId, isInteractive, contextSuffix) {
         // Add class 'readonly' if it's the history view (greyed out or simplified)
         card.className = `problem-card ${!isInteractive ? 'readonly' : ''}`;
 
+        const calendarIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>`;
+
         // Build the bottom part of the card (Buttons vs Info)
         let actionsHtml = '';
         if (isInteractive) {
@@ -205,11 +207,11 @@ function renderList(problemList, containerId, isInteractive, contextSuffix) {
         <button class="btn btn-hard" data-id="${problem.slug}" data-ease="1.3">Hard</button>
         <button class="btn btn-medium" data-id="${problem.slug}" data-ease="2.5">Med</button>
         <button class="btn btn-easy" data-id="${problem.slug}" data-ease="3.5">Easy</button>
-        <button class="btn-calendar" data-id="${problem.slug}" title="Show 90-day projection">📅</button>
+        <button class="btn-calendar" data-id="${problem.slug}" title="Show 90-day projection">${calendarIcon}</button>
       </div>
       <div class="calendar-container" id="cal-${uniqueId}">
         <div class="calendar-header">
-            <span>Projected Schedule (assuming Medium)</span>
+            <span>Projected Schedule</span>
         </div>
         <div class="calendar-grid" id="grid-${uniqueId}"></div>
       </div>`;
@@ -219,11 +221,11 @@ function renderList(problemList, containerId, isInteractive, contextSuffix) {
       <div class="problem-meta">
         <span>Interval: ${interval}d</span>
         <span>Review: ${nextReview}</span>
-        <button class="btn-icon btn-calendar" data-id="${problem.slug}" title="Show 90-day projection" style="margin-left: auto;">📅</button>
+        <button class="btn-icon btn-calendar" data-id="${problem.slug}" title="Show 90-day projection" style="margin-left: auto;">${calendarIcon}</button>
       </div>
       <div class="calendar-container" id="cal-${uniqueId}">
         <div class="calendar-header">
-            <span>Projected Schedule (assuming Medium)</span>
+            <span>Projected Schedule</span>
         </div>
         <div class="calendar-grid" id="grid-${uniqueId}"></div>
       </div>`;

@@ -11,7 +11,8 @@
 }
 
 body {
-    width: 380px; /* Slightly wider for the calendar */
+    width: 380px;
+    /* Slightly wider for the calendar */
     margin: 0;
     padding: 0;
     background-color: var(--bg-color);
@@ -318,29 +319,35 @@ main h2 {
 .calendar-grid {
     display: grid;
     /* 7 rows (days of week), auto columns (weeks) */
-    grid-template-rows: repeat(7, 10px); 
-    grid-auto-flow: column; /* Fill columns first like GitHub */
+    grid-template-rows: repeat(7, 10px);
+    grid-auto-flow: column;
+    /* Fill columns first like GitHub */
     gap: 3px;
     overflow-x: auto;
     padding-bottom: 4px;
-    justify-content: start; /* Align left */
+    justify-content: start;
+    /* Align left */
 }
 
 .calendar-day {
     width: 10px;
     height: 10px;
-    background-color: #161b22; /* Empty day color (dark grey) */
+    background-color: #161b22;
+    /* Empty day color (dark grey) */
     border-radius: 2px;
-    font-size: 0; /* Hide text numbers, make them visual blocks */
+    font-size: 0;
+    /* Hide text numbers, make them visual blocks */
 }
 
 .calendar-day.today {
-    border: 1px solid #f0f6fc; /* Current day highlight */
+    border: 1px solid #f0f6fc;
+    /* Current day highlight */
 }
 
 /* Heatmap Colors for Reviews (Github Style) */
 .calendar-day.due-future {
-    background-color: #39d353; /* Active green color */
+    background-color: #39d353;
+    /* Active green color */
     box-shadow: 0 0 2px rgba(57, 211, 83, 0.4);
 }
 
@@ -348,20 +355,40 @@ main h2 {
     background: none;
     border: none;
     cursor: pointer;
-    padding: 4px; /* Bigger touch target */
+    padding: 4px;
+    /* Bigger touch target */
     border-radius: 4px;
     font-size: 14px;
     color: var(--text-secondary);
 }
+
 .btn-icon:hover {
-    background: rgba(255,255,255,0.1);
+    background: rgba(255, 255, 255, 0.1);
     color: var(--text-primary);
 }
 
 .btn-calendar {
     /* Style specifically for the calendar button if appearing in action bar */
-    flex: 0 0 auto; /* Don't stretch */
+    flex: 0 0 auto;
+    /* Don't stretch */
     background: transparent;
-    font-size: 16px;
+    font-size: 0;
+    /* Hide text if any, though we used SVG */
     padding: 0 8px;
+    display: flex;
+    /* Center SVG */
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    /* Default color */
+}
+
+.btn-calendar:hover {
+    color: var(--text-primary);
+    /* brighter on hover */
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.btn-calendar svg {
+    display: block;
 }
