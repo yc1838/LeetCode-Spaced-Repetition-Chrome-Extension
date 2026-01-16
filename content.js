@@ -143,28 +143,18 @@ let cachedDifficulty = null;
 
 // Periodically scan for the difficulty badge while the user is just browsing the problem.
 function updateDifficultyCache() {
-    const diffSelectors = [
-        '[data-difficulty]',
-        '.text-difficulty-easy',
-        '.text-difficulty-medium',
-        '.text-difficulty-hard',
-        '.text-xs.font-medium.text-olive', // New Easy
-        '.text-xs.font-medium.text-yellow', // New Medium
-        '.text-xs.font-medium.text-pink', // New Hard
-    ];
+    // 2024 Stable Selector: div with class containing 'text-difficulty-'
+    // This was verified to be robust for Easy/Medium/Hard.
+    const difficultyNode = document.querySelector('div[class*="text-difficulty-"]');
 
-    for (const selector of diffSelectors) {
-        const el = document.querySelector(selector);
-        if (el && ['Easy', 'Medium', 'Hard'].includes(el.innerText)) {
-            cachedDifficulty = el.innerText;
-            // console.log("[SRS Master] Cached difficulty: " + cachedDifficulty);
-            break;
-        }
+    if (difficultyNode && ['Easy', 'Medium', 'Hard'].includes(difficultyNode.innerText)) {
+        cachedDifficulty = difficultyNode.innerText;
+        // console.log("[SRS Master] Cached difficulty: " + cachedDifficulty);
     }
 }
 
 // Run this scan often (it's cheap)
-setInterval(updateDifficultyCache, 2000);
+setInterval(updateDifficultyCache, 1000);
 
 
 // --- Robust Detection Logic ---
@@ -201,9 +191,11 @@ function extractProblemDetails() {
     }
     // 2. Try Live DOM (Best for initial load)
     else {
-        // We re-use the same check as the cache function just in case cache missed
-        updateDifficultyCache();
-        if (cachedDifficulty) difficulty = cachedDifficulty;
+        const difficultyNode = document.querySelector('div[class*="text-difficulty-"]');
+        if (difficultyNode && ['Easy', 'Medium', 'Hard'].includes(difficultyNode.innerText)) {
+            difficulty = difficultyNode.innerText;
+            cachedDifficulty = difficulty; // Cache it for future
+        }
     }
 
     return { title, slug: problemSlug, difficulty };

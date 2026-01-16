@@ -6,80 +6,243 @@
 document.addEventListener('DOMContentLoaded', async () => {
     // 1. Fetch data from storage and show the list of problems due for review.
     await updateDashboard();
-    // 2. Enable the tab switching logic (Due vs All).
-    setupTabs();
-    // 3. Enable the buttons like "Manual Scan" and "Clear Data".
-    setupManualTools();
-    // 4. Enable Test Mode logic
+    // 2. Enable Test Mode logic
     await setupTestMode();
+    // 3. Enable sidebar tools
+    setupManualTools();
 });
 
-// --- Tab Switching Logic ---
-// We have two views: "Due" (what I need to study today) and "All" (mostly for history).
-// This function makes the buttons toggle between these two views.
-function setupTabs() {
-    const btnDue = document.getElementById('stat-due');
-    const btnAll = document.getElementById('stat-all');
-    const sectionDue = document.getElementById('section-due');
-    const sectionAll = document.getElementById('section-all');
+// --- Dashboard Logic ---
+// Reads the data and builds the UI.
+async function updateDashboard() {
+    // Fetch 'problems' object from storage
+    const result = await chrome.storage.local.get({ problems: {} });
+    // Convert object { "two-sum": {...}, "valid-anagram": {...} } into an array [ {...}, {...} ]
+    const problems = Object.values(result.problems);
 
-    // When "Due" is clicked:
-    btnDue.onclick = () => {
-        // Highlight the "Due" button
-        btnDue.classList.add('active');
-        btnAll.classList.remove('active');
-        // Show the Due section, hide the All section
-        sectionDue.classList.add('active');
-        sectionAll.classList.remove('active');
+    const now = getCurrentDate();
+    // Filter list: Which problems have a 'nextReviewDate' that is in the past (or now)?
+    const dueProblems = problems.filter(p => new Date(p.nextReviewDate) <= now);
+
+    // Sort Due Problems: Oldest due date first (Critical stuff top)
+    dueProblems.sort((a, b) => new Date(a.nextReviewDate) - new Date(b.nextReviewDate));
+
+    // Sort All Problems: Most recently solved first (History order)
+    problems.sort((a, b) => {
+        const lastA = a.history[a.history.length - 1]; // Get last item in history array
+        const lastB = b.history[b.history.length - 1];
+        return new Date(lastB.date) - new Date(lastA.date);
+    });
+
+    // Update stats (Streak display requires history parsing, for now just show count or mock)
+    // document.getElementById('streak-display').innerText = `STREAK: ${calculateStreak(problems)}`
+
+    // Initial Render
+    // 'dashboard' view = Due Problems
+    renderVectors(dueProblems, 'vector-list', true);
+
+    // Setup Sidebar Tabs
+    setupSidebar(dueProblems, problems);
+
+    // Global Heatmap (Decorative + Real)
+    renderGlobalHeatmap();
+
+    // Updates
+    updateClock();
+    setInterval(updateClock, 1000);
+}
+
+function updateClock() {
+    const now = new Date();
+    const time = now.getHours().toString().padStart(2, '0') + ':' +
+        now.getMinutes().toString().padStart(2, '0') + ':' +
+        now.getSeconds().toString().padStart(2, '0');
+    const el = document.getElementById('clock');
+    if (el) el.innerText = time;
+}
+
+function setupSidebar(dueProblems, allProblems) {
+    const tabDash = document.getElementById('tab-dashboard');
+    const tabAll = document.getElementById('tab-all');
+    const title = document.getElementById('queue-title');
+
+    // Remove old active classes
+    tabDash.classList.remove('active');
+    tabAll.classList.remove('active');
+    tabDash.classList.add('active'); // Default
+
+    tabDash.onclick = () => {
+        tabDash.classList.add('active');
+        tabAll.classList.remove('active');
+        title.innerText = "ACTIVE_PROBLEM_VECTORS";
+        renderVectors(dueProblems, 'vector-list', true);
     };
 
-    // When "All" is clicked:
-    btnAll.onclick = () => {
-        // Highlight the "All" button
-        btnAll.classList.add('active');
-        btnDue.classList.remove('active');
-        // Show the All section, hide the Due section
-        sectionAll.classList.add('active');
-        sectionDue.classList.remove('active');
+    tabAll.onclick = () => {
+        tabAll.classList.add('active');
+        tabDash.classList.remove('active');
+        title.innerText = "ALL_ARCHIVED_VECTORS";
+        renderVectors(allProblems, 'vector-list', false);
     };
 }
 
+function renderVectors(problemList, containerId, isInteractive) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+
+    if (problemList.length === 0) {
+        container.innerHTML = `<div style="padding:20px; text-align:center; color:#555; font-size:0.7rem;">NO_DATA_DETECTED // BUFFER_EMPTY</div>`;
+        return;
+    }
+
+    problemList.forEach(problem => {
+        const uniqueId = problem.slug; // Assuming unique
+        const interval = problem.interval;
+        const nextReview = new Date(problem.nextReviewDate).toLocaleDateString();
+
+        const card = document.createElement('div');
+        card.className = 'vector-card';
+
+        // Buttons HTML (Hidden in details)
+        const ratingHtml = isInteractive ? `
+            <div class="rating-row">
+                <div class="rating-btn" style="border-color:#ff2a6d" data-id="${problem.slug}" data-ease="1.3">HARD</div>
+                <div class="rating-btn" style="border-color:#f1c40f" data-id="${problem.slug}" data-ease="2.5">MED</div>
+                <div class="rating-btn" style="border-color:#00FF41" data-id="${problem.slug}" data-ease="3.5">EASY</div>
+            </div>
+        ` : '';
+
+        // Determine badge style
+        const diffStyle = `difficulty-${problem.difficulty.toLowerCase()}`;
+
+        card.innerHTML = `
+            <div class="vector-meta">
+                <span>#${problem.slug}</span>
+                <span>RETENTION: ${Math.min(100, Math.round(problem.easeFactor * 40))}%</span>
+            </div>
+            <div class="vector-title">${problem.title.toUpperCase()}</div>
+            <div class="vector-stats">
+                <span class="stat-tag ${diffStyle}">${problem.difficulty.toUpperCase()}</span>
+                <span class="stat-tag">INT: ${interval}D</span>
+                <span class="stat-tag">DUE: ${nextReview}</span>
+            </div>
+            <button class="tactical-btn">INITIALIZE_SEQUENCE</button>
+            
+            <div class="vector-details">
+                ${ratingHtml}
+                <div style="font-size:0.6rem; color:var(--electric); margin-bottom:4px;">PROJECTED_TIMELINE:</div>
+                <div class="heatmap-grid" id="grid-${uniqueId}" style="grid-template-rows: repeat(3, 4px); gap:2px;"></div>
+            </div>
+        `;
+
+        // Expand Handler
+        card.onclick = (e) => {
+            // Prevent button click from toggling
+            if (e.target.classList.contains('rating-btn')) return;
+
+            // Toggle
+            card.classList.toggle('expanded');
+
+            // Render Mini Heatmap on expand
+            if (card.classList.contains('expanded')) {
+                renderMiniHeatmap(problem, `grid-${uniqueId}`);
+            }
+        };
+
+        // Rating Handlers
+        if (isInteractive) {
+            card.querySelectorAll('.rating-btn').forEach(btn => {
+                btn.onclick = async (e) => {
+                    e.stopPropagation(); // Stop bubble so we don't toggle card immediately after click? (Actually card click checks target)
+                    const slug = btn.getAttribute('data-id');
+                    const ease = parseFloat(btn.getAttribute('data-ease'));
+                    await updateProblemSRS(slug, ease);
+                };
+            });
+        }
+
+        container.appendChild(card);
+    });
+}
+
+// Renders the mini projection grid inside a card
+function renderMiniHeatmap(problem, gridId) {
+    const grid = document.getElementById(gridId);
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    const today = getCurrentDate();
+    const projectedDates = projectSchedule(problem.interval, problem.repetition, problem.easeFactor, today);
+    const dateSet = new Set(projectedDates);
+
+    // Generate ~60 days
+    const start = new Date(today);
+    // Align to something? Just standard 60 days
+
+    for (let i = 0; i < 60; i++) {
+        const d = new Date(start);
+        d.setDate(start.getDate() + i);
+        const dayStr = d.toISOString().split('T')[0];
+
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+
+        if (dateSet.has(dayStr)) cell.classList.add('v-4'); // High intensity for review
+        else if (i === 0) cell.classList.add('v-3'); // Today
+
+        // Random noise for "hacker" feel on empty days?
+        // else if (Math.random() > 0.9) cell.classList.add('v-1'); 
+
+        grid.appendChild(cell);
+    }
+}
+
+// Renders the top decorative heatmap
+function renderGlobalHeatmap() {
+    const grid = document.getElementById('global-heatmap');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    // random decorative data for "Vibes"
+    for (let i = 0; i < 140; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        const rand = Math.random();
+        // Weighted towards empty/low
+        if (rand > 0.95) cell.classList.add('v-4');
+        else if (rand > 0.85) cell.classList.add('v-3');
+        else if (rand > 0.70) cell.classList.add('v-2');
+        else if (rand > 0.50) cell.classList.add('v-1');
+        grid.appendChild(cell);
+    }
+}
+
+
 // --- Manual Tools Logic ---
-// These are the buttons at the bottom of the popup.
 function setupManualTools() {
-    // "Clear Data" button
-    document.getElementById('debug-clear').onclick = async () => {
-        if (confirm("Clear all SRS data? This cannot be undone.")) {
-            // Wipe everything from Chrome's local storage
+    // "Purge Memory" button
+    document.getElementById('btn-purge').onclick = async () => {
+        if (confirm("WARNING: PURGING NEURAL LINK DATA. CONFIRM?")) {
             await chrome.storage.local.clear();
-            // Refresh the popup to show empty state
             location.reload();
         }
     };
 
-    // "Manual Scan" button
-    // This talks to the content script we looked at earlier.
-    document.getElementById('manual-scan').onclick = async () => {
-        // Get the tab that is currently open and active
+    // "Sync" button (Manual Scan)
+    document.getElementById('btn-sync').onclick = async () => {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-        // Check if the user is actually on LeetCode
         if (tab && tab.url.includes('leetcode.com')) {
-            // Send a message to the content script asking it to "scanPage"
             chrome.tabs.sendMessage(tab.id, { action: "scanPage" }, (response) => {
-                // Check if there was an error communicating (e.g. extension reloaded)
                 if (chrome.runtime.lastError) {
-                    alert("Could not connect to page. Refresh the LeetCode tab and try again.");
+                    alert("LINK_FAILURE: REFRESH TARGET NODE.");
                 } else if (response && response.success) {
-                    // If scan found something, close this popup so user can see the Toast notification on page
                     window.close();
                 } else {
-                    // Scan finished but found nothing
-                    alert("No 'Accepted' status found on the page currently.");
+                    alert("SCAN_RESULT: NULL. (No 'Accepted' status found)");
                 }
             });
         } else {
-            alert("Please open a LeetCode problem page first.");
+            alert("TARGET_INVALID: Navigate to LeetCode Problem Node.");
         }
     };
 }
@@ -91,6 +254,7 @@ let testDate = null;
 async function setupTestMode() {
     const toggle = document.getElementById('test-mode-toggle');
     const dateInput = document.getElementById('test-mode-date');
+    const controls = document.getElementById('sim-controls');
 
     // Load saved state
     const storage = await chrome.storage.local.get({ testMode: false, testDate: null });
@@ -100,12 +264,14 @@ async function setupTestMode() {
     // Set initial UI state
     toggle.checked = isTestMode;
     dateInput.value = testDate || new Date().toISOString().split('T')[0];
-    dateInput.disabled = !isTestMode;
+
+    // Show/Hide controls based on mode
+    controls.style.display = isTestMode ? 'block' : 'none';
 
     // Toggle Change Listener
     toggle.onchange = async () => {
         isTestMode = toggle.checked;
-        dateInput.disabled = !isTestMode;
+        controls.style.display = isTestMode ? 'block' : 'none'; // UI Update
 
         // If enabling and no date set, default to today
         if (isTestMode && !dateInput.value) {
@@ -130,192 +296,11 @@ async function setupTestMode() {
 
 function getCurrentDate() {
     if (isTestMode && testDate) {
-        // Return the test date but set to End of Day (23:59:59)
-        // This ensures that problems due at any time on this date are considered "Due"
-        // testDate is "YYYY-MM-DD"
         const [year, month, day] = testDate.split('-').map(Number);
-        // Note: Month is 0-indexed in Date constructor
         return new Date(year, month - 1, day, 23, 59, 59);
     }
     return new Date();
 }
-
-// --- Dashboard Logic ---
-// Reads the data and builds the UI.
-async function updateDashboard() {
-    // Fetch 'problems' object from storage
-    const result = await chrome.storage.local.get({ problems: {} });
-    // Convert object { "two-sum": {...}, "valid-anagram": {...} } into an array [ {...}, {...} ]
-    const problems = Object.values(result.problems);
-
-
-
-    const now = getCurrentDate();
-    // Filter list: Which problems have a 'nextReviewDate' that is in the past (or now)?
-    const dueProblems = problems.filter(p => new Date(p.nextReviewDate) <= now);
-
-    // Sort Due Problems: Oldest due date first (Critical stuff top)
-    dueProblems.sort((a, b) => new Date(a.nextReviewDate) - new Date(b.nextReviewDate));
-
-    // Sort All Problems: Most recently solved first (History order)
-    problems.sort((a, b) => {
-        const lastA = a.history[a.history.length - 1]; // Get last item in history array
-        const lastB = b.history[b.history.length - 1];
-        return new Date(lastB.date) - new Date(lastA.date);
-    });
-
-    // Update the numbered badges (Current count)
-    document.getElementById('due-count').innerText = dueProblems.length;
-    document.getElementById('total-count').innerText = problems.length;
-
-    // Actually create the HTML for the lists
-    // 'true' means "interactive" (with Hard/Med/Easy buttons)
-    renderList(dueProblems, 'list-due', true, 'due');
-    // 'false' means "readonly" (just show info)
-    renderList(problems, 'list-all', false, 'all');
-}
-
-// Helper to generate the HTML for a list of problems
-function renderList(problemList, containerId, isInteractive, contextSuffix) {
-    const container = document.getElementById(containerId);
-    container.innerHTML = ''; // Clear previous content
-
-    // Empty state check
-    if (problemList.length === 0) {
-        container.innerHTML = `<div class="empty-state">${isInteractive ? "No reviews due!" : "No problems tracked yet."}</div>`;
-        return;
-    }
-
-    problemList.forEach(problem => {
-        const nextReview = new Date(problem.nextReviewDate).toLocaleDateString();
-        const interval = problem.interval;
-        const uniqueId = `${problem.slug}-${contextSuffix}`;
-
-        // Create a card div
-        const card = document.createElement('div');
-        // Add class 'readonly' if it's the history view (greyed out or simplified)
-        card.className = `problem-card ${!isInteractive ? 'readonly' : ''}`;
-
-        const calendarIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>`;
-
-        // Build the bottom part of the card (Buttons vs Info)
-        let actionsHtml = '';
-        if (isInteractive) {
-            // If it's the Due list, show the rating buttons AND Calendar toggle
-            actionsHtml = `
-      <div class="card-actions">
-        <button class="btn btn-hard" data-id="${problem.slug}" data-ease="1.3">Hard</button>
-        <button class="btn btn-medium" data-id="${problem.slug}" data-ease="2.5">Med</button>
-        <button class="btn btn-easy" data-id="${problem.slug}" data-ease="3.5">Easy</button>
-        <button class="btn-calendar" data-id="${problem.slug}" title="Show 90-day projection">${calendarIcon}</button>
-      </div>
-      <div class="calendar-container" id="cal-${uniqueId}">
-        <div class="calendar-header">
-            <span>Projected Schedule</span>
-        </div>
-        <div class="calendar-grid" id="grid-${uniqueId}"></div>
-      </div>`;
-        } else {
-            // If it's the All list, just show stats AND Calendar toggle
-            actionsHtml = `
-      <div class="problem-meta">
-        <span>Interval: ${interval}d</span>
-        <span>Review: ${nextReview}</span>
-        <button class="btn-icon btn-calendar" data-id="${problem.slug}" title="Show 90-day projection" style="margin-left: auto;">${calendarIcon}</button>
-      </div>
-      <div class="calendar-container" id="cal-${uniqueId}">
-        <div class="calendar-header">
-            <span>Projected Schedule</span>
-        </div>
-        <div class="calendar-grid" id="grid-${uniqueId}"></div>
-      </div>`;
-        }
-
-        // Fill the card's HTML
-        card.innerHTML = `
-      <div class="problem-info">
-        <span class="problem-title" title="${problem.title}">${problem.title}</span>
-        <span class="difficulty-badge ${problem.difficulty}">${problem.difficulty}</span>
-      </div>
-      ${actionsHtml}
-    `;
-
-        // Click title to open the problem in a new tab
-        card.querySelector('.problem-title').onclick = () => {
-            chrome.tabs.create({ url: `https://leetcode.com/problems/${problem.slug}/` });
-        };
-
-        // Click actions (Hard/Med/Easy) logic
-        if (isInteractive) {
-            // Rating Buttons
-            card.querySelectorAll('.btn').forEach(btn => {
-                if (btn.classList.contains('btn-calendar')) return; // Skip calendar btn
-                btn.onclick = async (e) => {
-                    e.stopPropagation(); // Don't trigger the card click
-                    const slug = btn.getAttribute('data-id');
-                    const ease = parseFloat(btn.getAttribute('data-ease'));
-                    // Update the algorithm with new multiplier
-                    await updateProblemSRS(slug, ease);
-                };
-            });
-        }
-
-        // Calendar Toggle (Global)
-        const calBtn = card.querySelector('.btn-calendar');
-        if (calBtn) {
-            calBtn.onclick = (e) => {
-                e.stopPropagation();
-                const calContainer = card.querySelector(`#cal-${uniqueId}`);
-                calContainer.classList.toggle('active');
-
-                if (calContainer.classList.contains('active')) {
-                    renderCalendar(problem, `grid-${uniqueId}`);
-                }
-            };
-        }
-
-        container.appendChild(card);
-    });
-}
-
-function renderCalendar(problem, gridId) {
-    const grid = document.getElementById(gridId);
-    if (!grid) return; // Safety check
-    grid.innerHTML = '';
-
-    // Get projected dates
-    const today = getCurrentDate(); // Use mock date if in test mode
-    const projectedDates = projectSchedule(problem.interval, problem.repetition, problem.easeFactor, today);
-    const dateSet = new Set(projectedDates); // For O(1) lookup
-
-    // Generate ~90 days grid (simple view: just list days or mini boxes)
-    const startDate = new Date(today);
-    // Nearest past Sunday for proper grid alignment
-    const calendarStart = new Date(startDate);
-    calendarStart.setDate(startDate.getDate() - startDate.getDay());
-
-    // Show 13 weeks (~91 days)
-    for (let i = 0; i < 13 * 7; i++) {
-        const dayDate = new Date(calendarStart);
-        dayDate.setDate(calendarStart.getDate() + i);
-
-        const dayStr = dayDate.toISOString().split('T')[0];
-        const isToday = dayStr === today.toISOString().split('T')[0];
-        const isDue = dateSet.has(dayStr);
-
-        const cell = document.createElement('div');
-        cell.className = `calendar-day ${isToday ? 'today' : ''} ${isDue ? 'due-future' : ''}`;
-        cell.title = dayStr + (isDue ? " (Projected Review)" : "");
-
-        // Show day number (hidden by CSS font-size:0, but usually helpful for debugging)
-        cell.innerText = dayDate.getDate();
-
-        grid.appendChild(cell);
-    }
-}
-
-// Re-using the same math logic as content script (ideally this should be shared, but simple enough to copy)
-
 
 // Function called when you click Hard/Med/Easy
 async function updateProblemSRS(slug, ease) {

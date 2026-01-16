@@ -66,7 +66,7 @@ describe('DOM Extraction Logic', () => {
 
     test('should extract difficulty', () => {
         const diffEl = document.createElement('div');
-        diffEl.setAttribute('data-difficulty', 'Easy');
+        diffEl.className = 'text-difficulty-easy';
         diffEl.innerText = 'Easy';
         document.body.appendChild(diffEl);
 

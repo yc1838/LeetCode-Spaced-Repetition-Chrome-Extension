@@ -4,55 +4,99 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LeetCode SRS Master</title>
+    <title>LeetCode SRS OS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;600&family=JetBrains+Mono:wght@100;400;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="popup.css">
 </head>
 
 <body>
-    <div class="container">
-        <header>
-            <h1>SRS Master</h1>
-            <div class="stats">
-                <div class="stat-item active" id="stat-due">
-                    <span id="due-count">0</span>
-                    <label>Due Today</label>
-                </div>
-                <div class="stat-item" id="stat-all">
-                    <span id="total-count">0</span>
-                    <label>All Tracked</label>
-                </div>
-            </div>
+
+    <div class="extension-container">
+        <!-- STATUS BAR -->
+        <header class="status-bar">
+            <div>LC_SRS_OS [VER_3.0.0]</div>
+            <div class="status-ready">[SYS_READY] <span id="clock">00:00:00</span></div>
         </header>
 
-        <main>
-            <section id="section-due" class="tab-content active">
-                <h2>Today's Queue</h2>
-                <div id="list-due" class="problem-list">
-                    <div class="empty-state">No problems due for review today! Great job.</div>
-                </div>
-            </section>
-
-            <section id="section-all" class="tab-content">
-                <h2>All Tracked History</h2>
-                <div id="list-all" class="problem-list">
-                    <div class="empty-state">No problems tracked yet. Go solve some!</div>
-                </div>
-            </section>
-        </main>
-
-        <div class="test-mode-section">
-            <div class="test-controls">
-                <input type="checkbox" id="test-mode-toggle">
-                <label for="test-mode-toggle">Test Mode</label>
-                <input type="date" id="test-mode-date" disabled>
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <div class="nav-icon active" id="tab-dashboard" title="Dashboard">
+                <svg viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                </svg>
             </div>
-        </div>
+            <div class="nav-icon" id="tab-all" title="All Vectors">
+                <svg viewBox="0 0 24 24">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                </svg>
+            </div>
+            <!-- Manual Scan / Sync -->
+            <div class="nav-icon" id="btn-sync" title="Sync (Manual Scan)">
+                <svg viewBox="0 0 24 24">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                </svg>
+            </div>
+            <!-- Settings / Purge -->
+            <div class="nav-icon" id="btn-purge" title="Purge Memory">
+                <svg viewBox="0 0 24 24">
+                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                </svg>
+            </div>
+        </aside>
 
-        <div class="footer-actions">
-            <button id="manual-scan" class="btn-secondary">Manual Scan</button>
-            <button id="debug-clear" class="btn-link">Clear Data</button>
-        </div>
+        <!-- VIEWPORT -->
+        <main class="viewport">
+
+            <!-- COGNITIVE MAP (Global Stats) -->
+            <section class="heatmap-container">
+                <div class="heatmap-header">
+                    <span>COGNITIVE_RETENTION_MAP</span>
+                    <span id="streak-display">STREAK: --</span>
+                </div>
+                <div class="heatmap-grid" id="global-heatmap">
+                    <!-- JS Generated Cells -->
+                </div>
+            </section>
+
+            <!-- Test Mode (Hidden unless toggled) -->
+            <div class="sim-controls" id="sim-controls"
+                style="display:none; border:1px solid var(--electric); padding:10px; margin-bottom:15px; background: rgba(45, 226, 230, 0.05);">
+                <div class="heatmap-header">SIMULATION_MODE_ACTIVE</div>
+                <input type="date" id="test-mode-date"
+                    style="background:transparent; border:none; color:var(--electric); font-family:inherit; width:100%;">
+            </div>
+
+            <!-- ACTIVE VECTORS (Queue) -->
+            <section>
+                <div class="heatmap-header" style="margin-bottom: 15px; display:flex; justify-content:space-between;">
+                    <span id="queue-title">ACTIVE_PROBLEM_VECTORS</span>
+
+                    <!-- Custom Switch for Test Mode -->
+                    <label style="cursor:pointer; display:flex; align-items:center; gap:5px; font-size:0.6rem;">
+                        <input type="checkbox" id="test-mode-toggle" style="display:none;">
+                        <span style="color:var(--terminal);">[SIM_MODE]</span>
+                    </label>
+                </div>
+
+                <div class="vector-list" id="vector-list">
+                    <!-- Cards will be injected here via popup.js -->
+                </div>
+            </section>
+
+            <div class="decor-line"></div>
+            <div style="font-size: 0.5rem; color: #444; font-family: var(--font-data);">
+                LOG: SYSTEM_HYBRID_DETECT... UPLINK_ESTABLISHED.
+            </div>
+        </main>
     </div>
+
     <script src="srs_logic.js"></script>
     <script src="popup.js"></script>
 </body>

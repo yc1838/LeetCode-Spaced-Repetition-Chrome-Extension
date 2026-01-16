@@ -1,101 +1,345 @@
-/* ... (previous variables) ... */
 :root {
-    --bg-color: #0d1117;
-    --panel-bg: rgba(22, 27, 34, 0.7);
-    --accent-green: #238636;
-    --accent-blue: #388bfd;
-    --text-primary: #c9d1d9;
-    --text-secondary: #8b949e;
-    --glass-border: rgba(255, 255, 255, 0.1);
-    --active-border: #388bfd;
+    --void: #050505;
+    --terminal: #00FF41;
+    --electric: #2DE2E6;
+    --glass: rgba(15, 18, 20, 0.75);
+    --border-glow: rgba(0, 255, 65, 0.4);
+    --border-dim: rgba(45, 226, 230, 0.2);
+    --font-main: 'JetBrains Mono', monospace;
+    --font-data: 'Fira Code', monospace;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    cursor: crosshair;
 }
 
 body {
-    width: 380px;
-    /* Slightly wider for the calendar */
-    margin: 0;
-    padding: 0;
-    background-color: var(--bg-color);
-    color: var(--text-primary);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-}
-
-.container {
-    padding: 20px;
-}
-
-header {
+    background-color: var(--void);
+    color: var(--terminal);
+    font-family: var(--font-main);
+    width: 600px;
+    /* Adjusted to fit extension window better than 800 */
+    height: 600px;
+    overflow: hidden;
     display: flex;
-    flex-direction: column;
-    gap: 16px;
-    margin-bottom: 24px;
+    justify-content: center;
+    align-items: center;
 }
 
-h1 {
-    font-size: 20px;
-    margin: 0;
-    background: linear-gradient(90deg, #2ecc71, #3498db);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    font-weight: 800;
+/* SCANLINE OVERLAY */
+body::before {
+    content: " ";
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    z-index: 100;
+    background-size: 100% 2px, 3px 100%;
+    pointer-events: none;
 }
 
-.stats {
+.extension-container {
+    width: 100%;
+    height: 100%;
+    background: var(--void);
+    border: 2px solid var(--terminal);
+    box-shadow: 0 0 20px rgba(0, 255, 65, 0.15);
+    position: relative;
+    display: grid;
+    grid-template-columns: 50px 1fr;
+    grid-template-rows: 30px 1fr;
+    overflow: hidden;
+}
+
+/* TOP NAVIGATION / STATUS */
+.status-bar {
+    grid-column: 1 / span 2;
+    border-bottom: 1px solid var(--terminal);
     display: flex;
-    gap: 12px;
+    align-items: center;
+    padding: 0 15px;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    letter-spacing: 2px;
+    background: rgba(0, 255, 65, 0.05);
 }
 
-.stat-item {
-    flex: 1;
-    background: var(--panel-bg);
-    backdrop-filter: blur(8px);
-    border: 1px solid var(--glass-border);
-    padding: 12px;
-    border-radius: 10px;
+.status-ready {
+    color: var(--electric);
+    animation: blink 1.5s infinite step-end;
+}
+
+@keyframes blink {
+    50% {
+        opacity: 0;
+    }
+}
+
+/* SIDEBAR TACTICAL SWITCHES */
+.sidebar {
+    border-right: 1px solid var(--terminal);
     display: flex;
     flex-direction: column;
     align-items: center;
+    padding-top: 20px;
+    gap: 15px;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 101;
+    /* Above scanline if overlapping */
+}
+
+.nav-icon {
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--border-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
     cursor: pointer;
-    /* Clickable */
-    transition: all 0.2s;
 }
 
-.stat-item:hover {
-    background: rgba(255, 255, 255, 0.05);
+.nav-icon svg {
+    width: 16px;
+    height: 16px;
+    stroke: #fff;
+    stroke-width: 1.5;
+    fill: none;
 }
 
-.stat-item.active {
-    border-color: var(--active-border);
-    box-shadow: 0 0 8px rgba(56, 139, 253, 0.2);
+.nav-icon:hover {
+    border-color: var(--terminal);
+    box-shadow: 0 0 10px var(--border-glow);
+    transform: scale(1.05);
 }
 
-.stat-item span {
-    font-size: 24px;
-    font-weight: bold;
+.nav-icon.active {
+    background: var(--terminal);
+    border-color: var(--terminal);
+}
+
+.nav-icon.active svg {
+    stroke: var(--void);
+}
+
+/* MAIN CONTENT AREA */
+.viewport {
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    overflow-y: auto;
+}
+
+/* COGNITIVE HEATMAP (SRS DATA) */
+.heatmap-container {
+    border: 1px solid var(--border-dim);
+    padding: 10px;
+    background: var(--glass);
+    backdrop-filter: blur(5px);
+    flex-shrink: 0;
+}
+
+.heatmap-header {
+    font-size: 0.65rem;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    color: var(--electric);
+}
+
+.heatmap-grid {
+    display: grid;
+    /* 5 rows, auto columns */
+    grid-template-rows: repeat(5, 6px);
+    grid-auto-flow: column;
+    gap: 3px;
+    overflow-x: hidden;
+    /* Or auto if we want scrolling */
+}
+
+.cell {
+    width: 6px;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 0.5px solid rgba(255, 255, 255, 0.05);
+}
+
+.cell.v-1 {
+    background: #00441b;
+}
+
+.cell.v-2 {
+    background: #006d2c;
+}
+
+.cell.v-3 {
+    background: #238b45;
+    box-shadow: 0 0 5px var(--terminal);
+}
+
+.cell.v-4 {
+    background: var(--terminal);
+    box-shadow: 0 0 8px var(--terminal);
+}
+
+/* PROBLEM VECTORS (CARDS) */
+.vector-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.vector-card {
+    background: var(--glass);
+    border: 1px solid var(--border-dim);
+    padding: 12px;
+    position: relative;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.vector-card:hover {
+    border-color: var(--terminal);
+    background: rgba(0, 255, 65, 0.05);
+}
+
+.vector-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 4px;
+    background: var(--terminal);
+}
+
+.vector-meta {
+    font-size: 0.6rem;
+    color: var(--electric);
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.vector-title {
+    font-weight: 700;
+    font-size: 0.85rem;
+    margin-bottom: 10px;
     color: #fff;
-}
-
-.stat-item label {
-    font-size: 11px;
-    color: var(--text-secondary);
-    text-transform: uppercase;
     letter-spacing: 0.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-/* Tabs */
-.tab-content {
+.vector-stats {
+    display: flex;
+    gap: 10px;
+    font-family: var(--font-data);
+    font-size: 0.65rem;
+    margin-bottom: 8px;
+}
+
+.stat-tag {
+    padding: 2px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    text-transform: uppercase;
+}
+
+.difficulty-hard {
+    color: #ff2a6d;
+    border-color: #ff2a6d;
+}
+
+.difficulty-medium {
+    color: #f1c40f;
+    border-color: #f1c40f;
+}
+
+.difficulty-easy {
+    color: var(--terminal);
+    border-color: var(--terminal);
+}
+
+/* TACTICAL SWITCHES (BUTTONS) */
+.tactical-btn {
+    background: none;
+    border: 1px solid var(--terminal);
+    color: var(--terminal);
+    padding: 6px 12px;
+    font-family: var(--font-main);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    position: relative;
+    transition: all 0.2s;
+    width: 100%;
+    text-align: left;
+    margin-top: 5px;
+    cursor: pointer;
+}
+
+.tactical-btn:hover {
+    background: var(--terminal);
+    color: var(--void);
+    box-shadow: 0 0 10px var(--terminal);
+}
+
+.tactical-btn::after {
+    content: ">>";
+    position: absolute;
+    right: 10px;
+}
+
+/* Expanded Card Details */
+.vector-details {
     display: none;
-    animation: fadeIn 0.3s ease;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border-dim);
+    animation: slideDown 0.2s ease;
 }
 
-.tab-content.active {
+.vector-card.expanded .vector-details {
     display: block;
 }
 
-@keyframes fadeIn {
+.rating-row {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 10px;
+}
+
+.rating-btn {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-dim);
+    color: #fff;
+    padding: 6px;
+    font-family: var(--font-data);
+    font-size: 0.6rem;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s;
+}
+
+.rating-btn:hover {
+    border-color: var(--terminal);
+    background: var(--terminal);
+    color: var(--void);
+}
+
+@keyframes slideDown {
     from {
         opacity: 0;
-        transform: translateY(5px);
+        transform: translateY(-5px);
     }
 
     to {
@@ -104,291 +348,24 @@ h1 {
     }
 }
 
-main h2 {
-    font-size: 14px;
-    color: var(--text-secondary);
-    margin-bottom: 12px;
-    font-weight: 600;
-    border-bottom: 1px solid var(--glass-border);
-    padding-bottom: 6px;
+/* DATA DENSITY DECOR */
+.decor-line {
+    height: 1px;
+    background: linear-gradient(90deg, var(--terminal) 0%, transparent 100%);
+    margin: 10px 0;
+    opacity: 0.3;
 }
 
-.problem-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    max-height: 320px;
-    overflow-y: auto;
-    padding-right: 4px;
-    /* Space for scrollbar */
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 4px;
 }
 
-/* Scrollbar styling */
-.problem-list::-webkit-scrollbar {
-    width: 6px;
+::-webkit-scrollbar-track {
+    background: var(--void);
 }
 
-.problem-list::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.problem-list::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
-}
-
-.problem-card {
-    background: var(--panel-bg);
-    border: 1px solid var(--glass-border);
-    border-radius: 8px;
-    padding: 12px;
-    transition: transform 0.2s, border-color 0.2s;
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.problem-card:hover {
-    border-color: var(--accent-blue);
-    transform: translateY(-2px);
-}
-
-.problem-info {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-}
-
-.problem-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: #fff;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 180px;
-}
-
-.difficulty-badge {
-    font-size: 10px;
-    padding: 2px 6px;
-    border-radius: 4px;
-    text-transform: uppercase;
-    font-weight: 700;
-}
-
-.Easy {
-    color: #2ecc71;
-    background: rgba(46, 204, 113, 0.1);
-}
-
-.Medium {
-    color: #f1c40f;
-    background: rgba(241, 196, 15, 0.1);
-}
-
-.Hard {
-    color: #e74c3c;
-    background: rgba(231, 76, 60, 0.1);
-}
-
-.card-actions {
-    display: flex;
-    gap: 6px;
-}
-
-.btn {
-    flex: 1;
-    padding: 6px;
-    border: none;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: opacity 0.2s;
-}
-
-.btn-easy {
-    background: #238636;
-    color: white;
-}
-
-.btn-medium {
-    background: #d29922;
-    color: white;
-}
-
-.btn-hard {
-    background: #da3633;
-    color: white;
-}
-
-.btn:hover {
-    opacity: 0.8;
-}
-
-/* Read-only card style for 'All' list */
-.problem-card.readonly {
-    cursor: pointer;
-}
-
-.problem-card.readonly .card-actions {
-    display: none;
-    /* Hide SRS buttons in history view if desired, or keep them */
-}
-
-.problem-meta {
-    font-size: 11px;
-    color: var(--text-secondary);
-    display: flex;
-    justify-content: space-between;
-    margin-top: 4px;
-    align-items: center;
-}
-
-.empty-state {
-    text-align: center;
-    padding: 40px 20px;
-    color: var(--text-secondary);
-    font-size: 13px;
-    font-style: italic;
-}
-
-/* Footer / Manual Tools */
-.footer-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 24px;
-    padding-top: 12px;
-    border-top: 1px solid var(--glass-border);
-}
-
-.btn-secondary {
-    padding: 6px 12px;
-    background: #21262d;
-    color: var(--text-primary);
-    border: 1px solid var(--glass-border);
-    border-radius: 6px;
-    font-size: 11px;
-    cursor: pointer;
-}
-
-.btn-secondary:hover {
-    background: #30363d;
-}
-
-.btn-link {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    font-size: 10px;
-    cursor: pointer;
-    text-decoration: underline;
-}
-
-.btn-link:hover {
-    color: #da3633;
-    /* Red on hover for danger actions */
-}
-
-/* --- Calendar Styles --- */
-.calendar-container {
-    display: none;
-    background: #0d1117;
-    border: 1px solid var(--glass-border);
-    border-radius: 6px;
-    padding: 10px;
-    margin-top: 10px;
-    animation: fadeIn 0.2s;
-}
-
-.calendar-container.active {
-    display: block;
-}
-
-.calendar-header {
-    font-size: 11px;
-    color: var(--text-secondary);
-    margin-bottom: 8px;
-    display: flex;
-    justify-content: space-between;
-}
-
-.calendar-grid {
-    display: grid;
-    /* 7 rows (days of week), auto columns (weeks) */
-    grid-template-rows: repeat(7, 10px);
-    grid-auto-flow: column;
-    /* Fill columns first like GitHub */
-    gap: 3px;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    justify-content: start;
-    /* Align left */
-}
-
-.calendar-day {
-    width: 10px;
-    height: 10px;
-    background-color: #161b22;
-    /* Empty day color (dark grey) */
+::-webkit-scrollbar-thumb {
+    background: var(--terminal);
     border-radius: 2px;
-    font-size: 0;
-    /* Hide text numbers, make them visual blocks */
-}
-
-.calendar-day.today {
-    border: 1px solid #f0f6fc;
-    /* Current day highlight */
-}
-
-/* Heatmap Colors for Reviews (Github Style) */
-.calendar-day.due-future {
-    background-color: #39d353;
-    /* Active green color */
-    box-shadow: 0 0 2px rgba(57, 211, 83, 0.4);
-}
-
-.btn-icon {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 4px;
-    /* Bigger touch target */
-    border-radius: 4px;
-    font-size: 14px;
-    color: var(--text-secondary);
-}
-
-.btn-icon:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--text-primary);
-}
-
-.btn-calendar {
-    /* Style specifically for the calendar button if appearing in action bar */
-    flex: 0 0 auto;
-    /* Don't stretch */
-    background: transparent;
-    font-size: 0;
-    /* Hide text if any, though we used SVG */
-    padding: 0 8px;
-    display: flex;
-    /* Center SVG */
-    align-items: center;
-    justify-content: center;
-    color: var(--text-secondary);
-    /* Default color */
-}
-
-.btn-calendar:hover {
-    color: var(--text-primary);
-    /* brighter on hover */
-    background: rgba(255, 255, 255, 0.05);
-}
-
-.btn-calendar svg {
-    display: block;
 }
