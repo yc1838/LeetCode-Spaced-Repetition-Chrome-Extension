@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "LeetCode SRS Master",
+  "version": "1.0",
+  "description": "Automatically capture LeetCode submissions and schedule spaced repetition reviews.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://leetcode.com/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "LeetCode SRS Master"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://leetcode.com/problems/*/submissions/*", "https://leetcode.com/problems/*"],
+      "js": ["content.js"],
+      "css": ["content.css"]
+    }
+  ]
+}
