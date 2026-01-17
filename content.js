@@ -1,22 +1,63 @@
-// LeetCode LeetCode EasyRepeat - Content Script
-// This script runs on the LeetCode page itself. It is responsible for:
-// 1. Detecting when a user submits a solution.
-// 2. Checking if that solution was "Accepted".
-// 3. Saving the result to the browser's storage so we can track it.
+/**
+ * LeetCode EasyRepeat - Content Script
+ * 
+ * WHAT IS A CONTENT SCRIPT?
+ * In Chrome Extensions, a "content script" is JavaScript that runs IN THE CONTEXT
+ * of a web page. Unlike the popup (which runs in its own window), this code can:
+ * - Read and modify the page's DOM (document)
+ * - React to page events (clicks, mutations)
+ * - Communicate with the popup via Chrome's messaging API
+ * 
+ * WHEN DOES IT RUN?
+ * This script runs automatically on every LeetCode problem page, as defined in
+ * manifest.json under "content_scripts" -> "matches": ["https://leetcode.com/problems/*"]
+ * 
+ * RESPONSIBILITIES:
+ * 1. Detecting when a user submits a solution
+ * 2. Checking if that solution was "Accepted"
+ * 3. Saving the result to browser storage for SRS tracking
+ */
 console.log("[LeetCode EasyRepeat] Extension content script loaded (v2 - Hybrid Detection).");
 
-// --- Messaging with Popup ---
-// This section listens for messages from the extension popup (the little window that opens when you click the extension icon).
-// We need this because sometimes the automatic detection might fail, and the user wants to click "Scan Now" manually.
+/**
+ * ============================================================================
+ * CHROME EXTENSION MESSAGE PASSING
+ * ============================================================================
+ * 
+ * Chrome Extensions have separate "worlds" that can't directly call each other:
+ * - Popup script (popup.js) - runs when you click the extension icon
+ * - Content script (this file) - runs inside the web page
+ * - Background script (not used here) - runs in the background
+ * 
+ * To communicate between them, we use Chrome's MESSAGE PASSING API.
+ * 
+ * HOW IT WORKS:
+ * 1. Sender calls: chrome.tabs.sendMessage(tabId, {action: "scanPage"}, callback)
+ * 2. Receiver (this script) handles it with: chrome.runtime.onMessage.addListener(...)
+ * 3. Receiver can send back a response with: sendResponse({...})
+ * 
+ * THE LISTENER PATTERN:
+ * chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {...})
+ *   - request: The message object sent (e.g., {action: "scanPage"})
+ *   - sender: Information about who sent the message
+ *   - sendResponse: A function to send a reply back to the sender
+ *   - Return true: Required if sendResponse will be called asynchronously
+ */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Check if the message action is "scanPage"
     if (request.action === "scanPage") {
         console.log("[LeetCode EasyRepeat] Manual scan requested.");
-        // Run our check function immediately (async)
+
+        /**
+         * ASYNC MESSAGE HANDLING:
+         * Since checkForAcceptedStateAsync() is async (returns a Promise),
+         * we need to return `true` from this listener to tell Chrome:
+         * "Don't close the message channel yet, I'll send a response later!"
+         */
         checkForAcceptedStateAsync().then(result => {
             sendResponse(result);
         });
-        return true; // Required for async sendResponse
+        return true; // CRITICAL: Required for async sendResponse
     }
 
     // Handle getDifficulty request from popup (for syncing stored data)
@@ -26,17 +67,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const difficulty = cachedDifficulty || 'Medium';
         console.log(`[LeetCode EasyRepeat] getDifficulty requested, returning: ${difficulty}`);
         sendResponse({ difficulty: difficulty });
-        return false; // Sync response
+        return false; // Sync response - no need to keep channel open
     }
 });
 
 // --- SRS Logic ---
 // Logic is now imported from srs_logic.js
 
-// This function actually saves the "Accepted" submission to the browser's local storage.
+/**
+ * Save a successful submission to Chrome's local storage.
+ * 
+ * ASYNC FUNCTION:
+ * The 'async' keyword means this function returns a Promise and can use 'await'.
+ * Callers can use: await saveSubmission(...) or saveSubmission(...).then(...)
+ * 
+ * @param {string} problemTitle - Display name like "1. Two Sum"
+ * @param {string} problemSlug - URL identifier like "two-sum"
+ * @param {string} difficulty - "Easy", "Medium", or "Hard"
+ */
 async function saveSubmission(problemTitle, problemSlug, difficulty) {
-    // Safety Check: Sometimes if the extension updates in the background, the "connection" to the browser is lost.
-    // We check if 'chrome.runtime.id' exists to make sure we are still connected.
+    /**
+     * OPTIONAL CHAINING (?.) - ES2020 FEATURE
+     * 
+     * The ?. operator is a safe way to access nested properties.
+     * 
+     * !chrome.runtime?.id is equivalent to:
+     *   !(chrome.runtime && chrome.runtime.id)
+     * 
+     * If chrome.runtime is undefined, instead of throwing an error,
+     * it returns undefined (which is falsy).
+     * 
+     * WHY DO WE CHECK THIS?
+     * When a Chrome extension is updated or disabled while a page is open,
+     * the content script becomes "orphaned" - it's still running but can't
+     * talk to the extension anymore. chrome.runtime.id becomes undefined.
+     */
     if (!chrome.runtime?.id) {
         console.warn("[LeetCode EasyRepeat] Extension context invalidated. Please refresh the page.");
         return;
@@ -69,10 +134,14 @@ async function saveSubmission(problemTitle, problemSlug, difficulty) {
 
     // Debounce: Check if we ALREADY tracked this problem TODAY.
     // If we solve the same problem 5 times in a row today, we only want to update the SRS schedule ONCE.
+    // BUT: If the difficulty stored is wrong (mismatch), we should update it!
     if (problems[problemKey] && problems[problemKey].lastSolved === today) {
-        console.log("[LeetCode EasyRepeat] Already logged today. Skipping storage update to prevent dups.");
-        // Return duplicate status for manual scan response
-        return { duplicate: true, problemTitle: problemTitle };
+        if (problems[problemKey].difficulty === difficulty) {
+            console.log("[LeetCode EasyRepeat] Already logged today. Skipping storage update to prevent dups.");
+            // Return duplicate status for manual scan response
+            return { duplicate: true, problemTitle: problemTitle };
+        }
+        console.log(`[LeetCode EasyRepeat] Already logged today, but difficulty mismatch detected. Updating: ${problems[problemKey].difficulty} -> ${difficulty}`);
     }
 
     // Prepare the data object for this problem.
@@ -338,22 +407,61 @@ async function showCompletionToast(title, nextDate) {
     }, 100);
 }
 
-// --- Robust Detection Logic ---
+/**
+ * ============================================================================
+ * CACHING LOGIC FOR SPA (Single Page Application) NAVIGATION
+ * ============================================================================
+ * 
+ * WHAT IS SPA NAVIGATION?
+ * LeetCode is a Single Page Application - when you click from one problem to
+ * another, the browser doesn't fully reload. Instead, JavaScript updates the
+ * page content dynamically. This is faster for users but tricky for extensions.
+ * 
+ * THE PROBLEM:
+ * When the user submits a solution, LeetCode shows the "Submission Result" view.
+ * During this time, the difficulty badge might be REMOVED from the DOM!
+ * If we don't cache it, we'd lose the difficulty info.
+ * 
+ * THE SOLUTION:
+ * We periodically cache the difficulty while the user browses, BEFORE they submit.
+ * Then when we need it during submission handling, we use the cached value.
+ */
 
-// --- Caching Logic ---
-// We cache the difficulty because it might disappear from the DOM when the "Submission Result" view is active.
-let cachedDifficulty = null;
-let lastProblemSlug = null; // Track current problem to detect SPA navigation
+// MODULE-LEVEL VARIABLES (state that persists across function calls)
+let cachedDifficulty = null;    // Cached difficulty: "Easy", "Medium", or "Hard"
+let lastProblemSlug = null;     // Track current problem to detect navigation
 
-// Get current problem slug from URL
+/**
+ * Extract the problem "slug" from the current URL.
+ * 
+ * REGULAR EXPRESSION EXPLAINED:
+ * /\/problems\/([^\/]+)/
+ *   \/problems\/  - Matches the literal string "/problems/"
+ *   (           - Start of a "capture group" (what we want to extract)
+ *   [^\/]+      - One or more characters that are NOT a forward slash
+ *   )           - End of capture group
+ * 
+ * For URL "/problems/two-sum/description":
+ *   match[0] = "/problems/two-sum" (full match)
+ *   match[1] = "two-sum" (first capture group) <- This is what we want!
+ * 
+ * @returns {string|null} The problem slug or null if not on a problem page
+ */
 function getCurrentProblemSlug() {
     const match = window.location.pathname.match(/\/problems\/([^\/]+)/);
-    return match ? match[1] : null;
+    return match ? match[1] : null;  // Ternary: if match exists, return match[1], else null
 }
 
-// Periodically scan for the difficulty badge while the user is just browsing the problem.
+/**
+ * Periodically scan the page for the difficulty badge and cache it.
+ * 
+ * This runs every second (via setInterval) so we always have an up-to-date value.
+ * It's a "cheap" operation because querySelector is fast.
+ */
 function updateDifficultyCache() {
-    // CRITICAL: Check if we navigated to a different problem (SPA navigation)
+    // DETECT SPA NAVIGATION:
+    // If the slug changed, the user navigated to a different problem.
+    // We must clear the cache so we don't use the OLD problem's difficulty!
     const currentSlug = getCurrentProblemSlug();
     if (currentSlug !== lastProblemSlug) {
         console.log(`[LeetCode EasyRepeat] Problem changed: ${lastProblemSlug} → ${currentSlug}`);
@@ -361,12 +469,30 @@ function updateDifficultyCache() {
         lastProblemSlug = currentSlug;
     }
 
-    // 2024 Stable Selector: div with class containing 'text-difficulty-'
-    // This was verified to be robust for Easy/Medium/Hard.
+    /**
+     * CSS ATTRIBUTE SELECTOR:
+     * div[class*="text-difficulty-"]
+     *   div              - Select <div> elements
+     *   [class*="..."]   - Where the class attribute CONTAINS this substring
+     * 
+     * This matches: <div class="text-difficulty-easy">
+     * Also matches: <div class="foo text-difficulty-medium bar">
+     * 
+     * WHY NOT USE EXACT CLASS?
+     * LeetCode might add/remove other classes, but "text-difficulty-" is stable.
+     */
     const difficultyNode = document.querySelector('div[class*="text-difficulty-"]');
 
     if (difficultyNode) {
+        // .trim() removes whitespace from both ends of the string
         const text = difficultyNode.innerText.trim();
+
+        /**
+         * ARRAY.INCLUDES() - Check if value is in array
+         * ['Easy', 'Medium', 'Hard'].includes(text)
+         * Equivalent to: text === 'Easy' || text === 'Medium' || text === 'Hard'
+         * But cleaner and easier to extend!
+         */
         if (['Easy', 'Medium', 'Hard'].includes(text)) {
             if (cachedDifficulty !== text) {
                 console.log(`[LeetCode EasyRepeat] Difficulty detected: ${text}`);
@@ -432,14 +558,57 @@ function extractProblemDetails() {
     return { title, slug: problemSlug, difficulty };
 }
 
-// Async version for manual scan - returns detailed response for popup
+/**
+ * Async version of the "Accepted" detection - returns detailed response for popup.
+ * 
+ * This is used when the user clicks "Scan Now" in the popup.
+ * We return an object describing what we found (for user feedback).
+ */
 async function checkForAcceptedStateAsync() {
-    // Use the same detection logic as the sync version
+    /**
+     * COLOR DETECTION HELPER:
+     * LeetCode shows "Accepted" in green. We need to check if a computed
+     * CSS color is "greenish" to confirm we found the right element.
+     * 
+     * REGEX FOR RGB COLOR:
+     * /rgb\((\d+),\s*(\d+),\s*(\d+)\)/
+     *   rgb\(     - Matches "rgb(" (parenthesis is escaped with \)
+     *   (\d+)     - Capture group: one or more digits (the red value)
+     *   ,\s*      - Comma followed by optional whitespace
+     *   (\d+)     - Capture group: digits (green value)
+     *   ,\s*      - Comma + optional whitespace
+     *   (\d+)     - Capture group: digits (blue value)
+     *   \)        - Closing parenthesis
+     * 
+     * For "rgb(44, 187, 93)":
+     *   match[0] = "rgb(44, 187, 93)" (full match)
+     *   match[1] = "44" (R)
+     *   match[2] = "187" (G)
+     *   match[3] = "93" (B)
+     * 
+     * @param {string} color - A CSS color string like "rgb(44, 187, 93)"
+     * @returns {boolean} True if the color looks "green"
+     */
     const isGreen = (color) => {
         if (!color) return false;
         const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
         if (match) {
+            /**
+             * ARRAY DESTRUCTURING:
+             * const [_, r, g, b] = match.map(Number);
+             * 
+             * match.map(Number) converts string matches to numbers:
+             *   ["rgb(44, 187, 93)", "44", "187", "93"] → [NaN, 44, 187, 93]
+             *   (The first element can't be parsed as a number)
+             * 
+             * Destructuring [_, r, g, b] assigns:
+             *   _ = NaN (we ignore this with underscore convention)
+             *   r = 44 (red)
+             *   g = 187 (green)
+             *   b = 93 (blue)
+             */
             const [_, r, g, b] = match.map(Number);
+            // Color is "green" if: green channel > 100 AND significantly larger than red
             return g > 100 && g > r * 1.5;
         }
         return false;
@@ -574,27 +743,91 @@ function checkForAcceptedState() {
     return false; // Nothing found
 }
 
-// 1. MutationObserver (Legacy/Passive Detection)
-// This code watches for ANY changes to the webpage (DOM mutations).
-// If LeetCode updates the page content (e.g. showing results), this triggers.
+/**
+ * ============================================================================
+ * DETECTION STRATEGY 1: MutationObserver (Passive Detection)
+ * ============================================================================
+ * 
+ * WHAT IS MutationObserver?
+ * MutationObserver is a browser API that lets you watch for changes to the DOM.
+ * When elements are added, removed, or modified, your callback function runs.
+ * 
+ * WHY USE IT?
+ * LeetCode dynamically updates the page when submission results come in.
+ * We want to detect these updates and check if "Accepted" appeared.
+ * 
+ * ALTERNATIVE APPROACHES (less reliable):
+ * - Polling (setInterval) - wastes CPU, might miss quick changes
+ * - Event listeners - only work for specific events, not DOM changes
+ * 
+ * The callback receives an array of MutationRecord objects, but we don't
+ * analyze them here - we just use it as a trigger to run our check.
+ */
 const observer = new MutationObserver((mutations) => {
-    // Debounce: We don't want to run the check 100 times per second if many things change at once.
-    // We wait until changes stop for 300ms before running the check.
+    /**
+     * DEBOUNCING:
+     * When LeetCode updates the page, many mutations happen rapidly.
+     * Without debouncing, checkForAcceptedState() might run 50+ times.
+     * 
+     * HOW IT WORKS:
+     * 1. Mutation happens → set a 300ms timer to run the check
+     * 2. Another mutation happens within 300ms → cancel old timer, set new one
+     * 3. Repeat until mutations stop for 300ms
+     * 4. Finally run the check once
+     * 
+     * USING WINDOW FOR STATE:
+     * We store the timeout ID on `window._srsObsTimeout` so it persists
+     * between calls and can be cleared on the next mutation.
+     */
     if (window._srsObsTimeout) clearTimeout(window._srsObsTimeout);
     window._srsObsTimeout = setTimeout(() => {
         checkForAcceptedState();
     }, 300);
 });
 
-// Start observing the entire document body
+/**
+ * STARTING THE OBSERVER:
+ * 
+ * observer.observe(target, options)
+ *   - target: Which DOM node to watch (document.body = entire page)
+ *   - options: What types of changes to observe:
+ *     - childList: true - Watch for added/removed child elements
+ *     - subtree: true - Also watch all descendants (not just direct children)
+ *     - attributes: true (not used) - Watch for attribute changes
+ *     - characterData: true (not used) - Watch for text content changes
+ */
 observer.observe(document.body, { childList: true, subtree: true });
 
 
-// 2. Click Listener on "Submit" (Active Polling Detection)
-// Sometimes the Observer is too slow or misses the update.
-// We also listen for when the user physically clicks the "Submit" button.
+/**
+ * ============================================================================
+ * DETECTION STRATEGY 2: Click Listener (Active Polling Detection)
+ * ============================================================================
+ * 
+ * WHY HAVE TWO STRATEGIES?
+ * MutationObserver is passive - it waits for DOM changes. But sometimes:
+ * - Changes happen before our observer is fully set up
+ * - LeetCode's update pattern doesn't trigger our observer reliably
+ * 
+ * This strategy ACTIVELY watches for the user clicking "Submit", then
+ * starts polling to detect the result.
+ */
 document.addEventListener('click', (e) => {
-    // Check if clicked element (or its parent) looks like a Submit button
+    /**
+     * DETECTING THE SUBMIT BUTTON:
+     * LeetCode's button structure might vary, so we check multiple ways:
+     * 
+     * 1. innerText.includes('Submit') - Button text contains "Submit"
+     * 2. data-cy="submit-code-btn" - Cypress test attribute (stable for testing)
+     * 3. target.closest(...) - Check if click was inside a matching button
+     * 
+     * ELEMENT.CLOSEST(selector):
+     * Walks up the DOM tree to find the first ancestor matching the selector.
+     * Returns null if no match is found.
+     * 
+     * Useful because the click might be on a child element (like an icon or text)
+     * inside the button, not the button itself.
+     */
     const target = e.target;
     const isSubmitBtn = target.innerText.includes('Submit') ||
         target.getAttribute('data-cy') === 'submit-code-btn' ||
@@ -602,10 +835,25 @@ document.addEventListener('click', (e) => {
 
     if (isSubmitBtn) {
         console.log("[LeetCode EasyRepeat] 'Submit' clicked. Starting aggressive polling...");
-        // Start checking repeately
         startPolling();
     }
-}, true); // 'true' means we capture this event early (Capture Phase)
+}, true);
+/**
+ * THE 'true' ARGUMENT - CAPTURE PHASE:
+ * 
+ * DOM events have 3 phases:
+ * 1. CAPTURE: Event travels DOWN from document to target
+ * 2. TARGET: Event reaches the clicked element
+ * 3. BUBBLE: Event travels back UP to document
+ * 
+ * By default, addEventListener listens during BUBBLE phase.
+ * Passing 'true' makes it listen during CAPTURE phase.
+ * 
+ * WHY USE CAPTURE?
+ * If LeetCode calls event.stopPropagation() on their submit button,
+ * the event would never bubble up to our listener. By capturing,
+ * we see the event BEFORE LeetCode's handlers can stop it.
+ */
 
 let pollInterval;
 
@@ -633,10 +881,24 @@ function startPolling() {
     }, 500);
 }
 
-// Export for testing if in Node environment
+/**
+ * CONDITIONAL EXPORT FOR TESTING
+ * 
+ * This code only runs in Node.js (during Jest tests), not in the browser.
+ * 
+ * HOW IT WORKS:
+ * - In Node.js: `module` is a global object → condition is true → we export
+ * - In Browser: `module` is undefined → condition is false → nothing happens
+ * 
+ * WHY DO THIS?
+ * Our tests need to import these functions using require().
+ * But in the browser, we don't use module.exports (functions are just global).
+ * This pattern makes the file work in BOTH environments.
+ */
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         extractProblemDetails,
-        checkForAcceptedState
+        checkForAcceptedState,
+        saveSubmission
     };
 }

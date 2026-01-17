@@ -17,6 +17,16 @@
     transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
+/* Sakura theme toast - lesbian flag colors */
+.lc-srs-toast.theme-sakura {
+    border-left: 4px solid #FF9A56;
+    /* Neon peach */
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.4),
+        0 0 20px rgba(255, 154, 86, 0.2),
+        0 0 40px rgba(209, 98, 164, 0.1);
+}
+
 .lc-srs-toast.show {
     transform: translateX(0);
 }
@@ -30,6 +40,13 @@
 .lc-srs-toast-content strong {
     font-size: 15px;
     background: linear-gradient(90deg, #22c55e, #10b981);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* Sakura theme text - lesbian flag gradient */
+.lc-srs-toast.theme-sakura .lc-srs-toast-content strong {
+    background: linear-gradient(90deg, #FF9A56, #D162A4, #EF7627);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }

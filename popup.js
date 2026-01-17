@@ -1,26 +1,50 @@
-// LeetCode LeetCode EasyRepeat - Popup Script
-// This script runs when you click the extension icon in the Chrome toolbar.
-// It manages the little "Checkout" window (popup).
+/**
+ * LeetCode EasyRepeat - Popup Script
+ * 
+ * WHAT IS THE POPUP?
+ * This script runs when you click the extension icon in the Chrome toolbar.
+ * It creates and manages the small UI window that appears below the icon.
+ * 
+ * POPUP LIFECYCLE:
+ * - Each time you click the icon, the popup is CREATED fresh
+ * - When you click away, the popup is DESTROYED
+ * - Unlike content scripts, the popup doesn't persist in the background
+ * 
+ * FILE DEPENDENCIES:
+ * - popup.html: The HTML structure the popup displays
+ * - popup.css: Styling for the popup
+ * - srs_logic.js: Shared SRS algorithm functions
+ */
 
-// Theme definitions
+/**
+ * THEME CONFIGURATION OBJECT:
+ * 
+ * This object defines two visual themes: "sakura" (pink) and "matrix" (green).
+ * Each theme contains color values that will be applied as CSS custom properties.
+ * 
+ * WHY OBJECTS FOR CONFIGURATION?
+ * - Easy to add new themes (just add another key)
+ * - All theme values in one place (maintainability)
+ * - Can be loaded from storage or server in the future
+ */
 const THEMES = {
     sakura: {
         name: 'Sakura',
-        terminal: '#FF10F0',
-        electric: '#FF6B35',
-        accent: '#FF85A2',
+        terminal: '#FF10F0',           // Primary color (hot pink)
+        electric: '#FF6B35',           // Secondary color (orange)
+        accent: '#FF85A2',             // Accent color (light pink)
         borderGlow: 'rgba(255, 16, 240, 0.4)',
         borderDim: 'rgba(255, 107, 53, 0.25)',
         statusBg: 'rgba(255, 16, 240, 0.05)',
         hoverBg: 'rgba(255, 16, 240, 0.08)',
         containerShadow: 'rgba(255, 16, 240, 0.2)',
-        cellColors: ['#661450', '#AA1177', '#FF10F0', '#FF6B35']
+        cellColors: ['#661450', '#AA1177', '#FF10F0', '#FF6B35']  // Heatmap gradient
     },
     matrix: {
         name: 'Matrix',
-        terminal: '#00FF41',
-        electric: '#2DE2E6',
-        accent: '#00FF41',
+        terminal: '#00FF41',           // Primary (neon green)
+        electric: '#2DE2E6',           // Secondary (cyan)
+        accent: '#00FF41',             // Accent (same as primary)
         borderGlow: 'rgba(0, 255, 65, 0.4)',
         borderDim: 'rgba(45, 226, 230, 0.2)',
         statusBg: 'rgba(0, 255, 65, 0.05)',
@@ -30,82 +54,189 @@ const THEMES = {
     }
 };
 
-let currentTheme = 'sakura';
+// MODULE-LEVEL STATE:
+// Variables at the top level of a script persist for the popup's lifetime
+let currentTheme = 'sakura';  // Default theme
 
-// Wait for the HTML of the popup to fully load before running code.
+/**
+ * DOMContentLoaded EVENT:
+ * 
+ * This event fires when the HTML document has been completely parsed.
+ * It does NOT wait for images, stylesheets, or subframes to finish loading.
+ * 
+ * WHY USE IT?
+ * If you try to access DOM elements before the HTML parses, they won't exist yet!
+ * DOMContentLoaded ensures the DOM is ready for our JavaScript to manipulate.
+ * 
+ * TIMING (from fastest to slowest):
+ * 1. script executes (HTML might not be ready)
+ * 2. DOMContentLoaded (HTML parsed, DOM ready)
+ * 3. load (everything including images loaded)
+ * 
+ * ASYNC/AWAIT IN EVENT HANDLER:
+ * The async keyword allows us to use await inside the handler.
+ * This makes the code cleaner than chains of .then() callbacks.
+ */
 document.addEventListener('DOMContentLoaded', async () => {
-    // 0. Load and apply theme
+    // 0. Load and apply theme from storage
     await setupTheme();
-    // 1. Fetch data from storage and show the list of problems due for review.
+
+    // 1. Fetch data from storage and show the list of problems due for review
     await updateDashboard();
-    // 2. Enable Test Mode logic
+
+    // 2. Enable Test Mode logic (simulation date picker)
     await setupTestMode();
-    // 3. Enable sidebar tools
+
+    // 3. Enable sidebar tools (Purge, Sync buttons)
     setupManualTools();
 });
 
-// --- Theme Logic ---
+/**
+ * ============================================================================
+ * THEME SYSTEM
+ * ============================================================================
+ */
+
+/**
+ * Load theme preference from storage and set up the toggle button.
+ */
 async function setupTheme() {
+    /**
+     * CHROME.STORAGE.LOCAL.GET WITH DEFAULT:
+     * { theme: 'sakura' } is the default value if 'theme' doesn't exist in storage.
+     * This is cleaner than checking: if (storage.theme === undefined) {...}
+     */
     const storage = await chrome.storage.local.get({ theme: 'sakura' });
     currentTheme = storage.theme;
     applyTheme(currentTheme);
 
-    // Theme toggle button
+    /**
+     * ONCLICK HANDLER ASSIGNMENT:
+     * element.onclick = function is an alternative to addEventListener.
+     * Only ONE onclick handler can be set this way (it gets overwritten).
+     * addEventListener allows multiple handlers for the same event.
+     */
     document.getElementById('btn-theme').onclick = async () => {
+        // TERNARY for toggle: if sakura -> matrix, else -> sakura
         currentTheme = currentTheme === 'sakura' ? 'matrix' : 'sakura';
         applyTheme(currentTheme);
         await chrome.storage.local.set({ theme: currentTheme });
     };
 }
 
+/**
+ * Apply a theme by updating CSS custom properties.
+ * 
+ * CSS CUSTOM PROPERTIES (CSS Variables):
+ * CSS variables are defined in CSS like: --variable-name: value;
+ * They can be used anywhere with: var(--variable-name)
+ * 
+ * Changing them with JavaScript updates ALL elements using that variable!
+ * This is how we implement instant theme switching without reloading CSS.
+ * 
+ * @param {string} themeName - 'sakura' or 'matrix'
+ */
 function applyTheme(themeName) {
     const theme = THEMES[themeName];
+
+    /**
+     * document.documentElement:
+     * This is the <html> element - the root of the document.
+     * CSS variables defined here cascade down to all elements.
+     */
     const root = document.documentElement;
 
+    /**
+     * element.style.setProperty(name, value):
+     * Sets a CSS custom property (variable) programmatically.
+     * 
+     * These update the :root CSS variables defined in popup.css.
+     * All elements using var(--terminal), var(--electric), etc. will update!
+     */
     root.style.setProperty('--terminal', theme.terminal);
     root.style.setProperty('--electric', theme.electric);
     root.style.setProperty('--accent', theme.accent);
     root.style.setProperty('--border-glow', theme.borderGlow);
     root.style.setProperty('--border-dim', theme.borderDim);
 
-    // Update cell color variables for heatmap
+    // Update heatmap cell colors (v-1, v-2, v-3, v-4 intensity levels)
     root.style.setProperty('--cell-1', theme.cellColors[0]);
     root.style.setProperty('--cell-2', theme.cellColors[1]);
     root.style.setProperty('--cell-3', theme.cellColors[2]);
     root.style.setProperty('--cell-4', theme.cellColors[3]);
 
-    // Update dynamic elements
+    // Some elements need direct style updates (can't use CSS variables everywhere)
     const statusBar = document.querySelector('.status-bar');
     if (statusBar) statusBar.style.background = theme.statusBg;
 
     const container = document.querySelector('.extension-container');
     if (container) container.style.boxShadow = `0 0 20px ${theme.containerShadow}`;
 
-    // Re-render heatmap with new colors
+    // Re-render heatmap with new colors (cells already use CSS variables)
     renderGlobalHeatmap();
 }
 
-// --- Dashboard Logic ---
-// Reads the data and builds the UI.
+/**
+ * ============================================================================
+ * DASHBOARD LOGIC - Main UI Rendering
+ * ============================================================================
+ */
+
+/**
+ * Fetch data from Chrome storage and render the dashboard.
+ * This is called on popup open and after any data changes.
+ */
 async function updateDashboard() {
     // Fetch 'problems' object from storage
     const result = await chrome.storage.local.get({ problems: {} });
-    // Convert object { "two-sum": {...}, "valid-anagram": {...} } into an array [ {...}, {...} ]
+
+    /**
+     * OBJECT.VALUES():
+     * Converts an object's values into an array.
+     * 
+     * Input:  { "two-sum": {title: "Two Sum", ...}, "valid-anagram": {title: "Valid Anagram", ...} }
+     * Output: [ {title: "Two Sum", ...}, {title: "Valid Anagram", ...} ]
+     * 
+     * Related methods:
+     * - Object.keys(obj)    → ["two-sum", "valid-anagram"]  (keys as array)
+     * - Object.entries(obj) → [["two-sum", {...}], [...]]   (key-value pairs)
+     */
     const problems = Object.values(result.problems);
 
-    const now = getCurrentDate();
-    // Filter list: Which problems have a 'nextReviewDate' that is in the past (or now)?
+    const now = getCurrentDate();  // May be mocked for testing
+
+    /**
+     * ARRAY.FILTER():
+     * Creates a NEW array containing only elements that pass the test.
+     * 
+     * problems.filter(p => ...)
+     *   - p: each element (problem object)
+     *   - Arrow function returns true/false
+     *   - Only elements where function returns true are included
+     * 
+     * This finds problems whose review date has passed (they're "due").
+     */
     const dueProblems = problems.filter(p => new Date(p.nextReviewDate) <= now);
 
-    // Sort Due Problems: Oldest due date first (Critical stuff top)
+    /**
+     * ARRAY.SORT() - In-Place Sorting:
+     * 
+     * sort() modifies the original array (unlike filter which creates new).
+     * It takes a "comparator" function that determines order.
+     * 
+     * HOW THE COMPARATOR WORKS:
+     * compare(a, b) should return:
+     *   - Negative number: a should come BEFORE b
+     *   - Positive number:  a should come AFTER b
+     *   - Zero:            order doesn't matter
+     * 
+     * For dates, subtracting them gives:
+     *   earlierDate - laterDate = negative (earlier comes first)
+     */
     dueProblems.sort((a, b) => new Date(a.nextReviewDate) - new Date(b.nextReviewDate));
 
-    // Sort All Problems: Most recently solved first (History order)
-    problems.sort((a, b) => {
-        const lastA = a.history[a.history.length - 1]; // Get last item in history array
-        const lastB = b.history[b.history.length - 1];
-        return new Date(lastB.date) - new Date(lastA.date);
-    });
+    // Sort All Problems: Sort exactly like dueProblems (Ascending Review Date)
+    problems.sort((a, b) => new Date(a.nextReviewDate) - new Date(b.nextReviewDate));
 
     // Update stats (Streak display requires history parsing, for now just show count or mock)
     // document.getElementById('streak-display').innerText = `STREAK: ${calculateStreak(problems)}`
@@ -237,8 +368,8 @@ function renderVectors(problemList, containerId, isInteractive) {
             
             <div class="vector-details">
                 ${ratingHtml}
-                <div style="font-size:0.6rem; color:var(--electric); margin-bottom:4px;">PROJECTED_TIMELINE:</div>
-                <div class="heatmap-grid" id="grid-${uniqueId}" style="grid-template-rows: repeat(3, 4px); gap:2px;"></div>
+                <div class="mini-heatmap-label">PROJECTED_TIMELINE:</div>
+                <div class="heatmap-grid mini-heatmap" id="grid-${uniqueId}"></div>
             </div>
         `;
 

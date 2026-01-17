@@ -1,14 +1,47 @@
 :root {
     --void: #0A0A0A;
-    --terminal: #FF10F0;
-    /* Hot Magenta - primary */
-    --electric: #FF6B35;
-    /* Neon Orange - secondary */
-    --accent: #FF85A2;
-    /* Sunset Pink - accent */
-    --glass: rgba(20, 10, 15, 0.8);
-    --border-glow: rgba(255, 16, 240, 0.4);
-    --border-dim: rgba(255, 107, 53, 0.25);
+
+    /* 🏳️‍🌈 Lesbian Flag Color Palette */
+    --flag-red: #D52D00;
+    /* Deep red - top stripe */
+    --flag-orange: #EF7627;
+    /* Orange */
+    --flag-peach: #FF9A56;
+    /* Light orange/peach */
+    --flag-white: #FFFFFF;
+    /* White - middle */
+    --flag-pink: #D162A4;
+    /* Light pink */
+    --flag-dusty: #B55690;
+    /* Dusty pink/mauve */
+    --flag-magenta: #A30262;
+    /* Deep magenta - bottom */
+
+    /* Primary UI Colors - using lighter, glowing tones */
+    --terminal: #FF9A56;
+    /* Neon Peach - primary (lighter, more vibrant!) */
+    --electric: #D162A4;
+    /* Light Pink - secondary */
+    --accent: #EF7627;
+    /* Bright Orange - accent */
+
+    /* Glass & Glow Effects */
+    --glass: rgba(20, 10, 15, 0.85);
+    --border-glow: rgba(255, 154, 86, 0.5);
+    --border-glow-pink: rgba(209, 98, 164, 0.5);
+    --border-glow-orange: rgba(239, 118, 39, 0.5);
+    --border-dim: rgba(255, 154, 86, 0.25);
+
+    /* Heatmap cells using flag gradient */
+    --cell-1: #A30262;
+    /* Deep magenta */
+    --cell-2: #D162A4;
+    /* Light pink */
+    --cell-3: #FF9A56;
+    /* Peach */
+    --cell-4: #EF7627;
+    /* Bright orange */
+
     --font-main: 'JetBrains Mono', monospace;
     --font-data: 'Fira Code', monospace;
 }
@@ -26,14 +59,15 @@ body {
     font-family: var(--font-main);
     width: 600px;
     /* Adjusted to fit extension window better than 800 */
-    height: 600px;
+    height: auto;
+    max-height: 600px;
     overflow: hidden;
     display: flex;
     justify-content: center;
     align-items: center;
 }
 
-/* SCANLINE OVERLAY */
+/* SCANLINE OVERLAY - with lesbian flag gradient */
 body::before {
     content: " ";
     display: block;
@@ -42,7 +76,20 @@ body::before {
     left: 0;
     bottom: 0;
     right: 0;
-    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 16, 240, 0.04), rgba(255, 107, 53, 0.02), rgba(255, 133, 162, 0.04));
+    background:
+        linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+        linear-gradient(90deg,
+            rgba(213, 45, 0, 0.03),
+            /* flag-red */
+            rgba(239, 118, 39, 0.04),
+            /* flag-orange */
+            rgba(255, 154, 86, 0.05),
+            /* flag-peach */
+            rgba(209, 98, 164, 0.04),
+            /* flag-pink */
+            rgba(163, 2, 98, 0.03)
+            /* flag-magenta */
+        );
     z-index: 100;
     background-size: 100% 2px, 3px 100%;
     pointer-events: none;
@@ -50,14 +97,20 @@ body::before {
 
 .extension-container {
     width: 100%;
-    height: 100%;
+    height: auto;
     background: var(--void);
     border: 2px solid var(--terminal);
-    box-shadow: 0 0 20px rgba(255, 16, 240, 0.2);
+    box-shadow:
+        0 0 20px rgba(255, 154, 86, 0.3),
+        /* peach glow */
+        0 0 40px rgba(209, 98, 164, 0.15),
+        /* pink outer glow */
+        inset 0 0 30px rgba(239, 118, 39, 0.05);
+    /* orange inner glow */
     position: relative;
     display: grid;
     grid-template-columns: 50px 1fr;
-    grid-template-rows: 30px 1fr;
+    grid-template-rows: 30px auto;
     overflow: hidden;
 }
 
@@ -132,6 +185,7 @@ body::before {
     display: flex;
     flex-direction: column;
     gap: 15px;
+    max-height: 570px;
     overflow-y: auto;
 }
 
@@ -155,36 +209,68 @@ body::before {
 .heatmap-grid {
     display: grid;
     /* 5 rows, auto columns */
-    grid-template-rows: repeat(5, 6px);
+    grid-template-rows: repeat(5, 10px);
     grid-auto-flow: column;
-    gap: 3px;
+    gap: 4px;
     overflow-x: hidden;
     /* Or auto if we want scrolling */
 }
 
+/* Mini heatmap for projected timeline in cards */
+.mini-heatmap {
+    grid-template-rows: repeat(4, 14px);
+    gap: 4px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border-dim);
+    border-radius: 4px;
+    margin-top: 8px;
+}
+
+.mini-heatmap-label {
+    font-size: 0.7rem;
+    color: var(--electric);
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
 .cell {
-    width: 6px;
-    height: 6px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 0.5px solid rgba(255, 255, 255, 0.05);
+    width: 10px;
+    height: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    transition: all 0.2s ease;
+}
+
+.cell:hover {
+    transform: scale(1.2);
+    z-index: 10;
 }
 
 .cell.v-1 {
-    background: var(--cell-1, #661450);
+    background: var(--cell-1);
+    border-color: var(--cell-1);
+    box-shadow: 0 0 4px var(--flag-magenta);
 }
 
 .cell.v-2 {
-    background: var(--cell-2, #AA1177);
+    background: var(--cell-2);
+    border-color: var(--cell-2);
+    box-shadow: 0 0 6px var(--flag-pink);
 }
 
 .cell.v-3 {
-    background: var(--cell-3, #FF10F0);
-    box-shadow: 0 0 5px var(--terminal);
+    background: var(--cell-3);
+    border-color: var(--cell-3);
+    box-shadow: 0 0 8px var(--terminal);
 }
 
 .cell.v-4 {
-    background: var(--cell-4, #FF6B35);
-    box-shadow: 0 0 8px var(--electric);
+    background: var(--cell-4);
+    border-color: var(--cell-4);
+    box-shadow: 0 0 12px var(--flag-orange), 0 0 24px rgba(239, 118, 39, 0.6);
 }
 
 /* PROBLEM VECTORS (CARDS) */
@@ -205,7 +291,10 @@ body::before {
 
 .vector-card:hover {
     border-color: var(--terminal);
-    background: rgba(255, 16, 240, 0.08);
+    background: rgba(255, 154, 86, 0.1);
+    box-shadow:
+        0 0 15px rgba(255, 154, 86, 0.2),
+        0 0 30px rgba(209, 98, 164, 0.1);
 }
 
 .vector-card::before {
