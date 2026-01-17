@@ -64,7 +64,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "getDifficulty") {
         // Force refresh the cache first
         updateDifficultyCache();
-        const difficulty = cachedDifficulty || 'Medium';
+        const difficulty = difficultyCache[getCurrentProblemSlug()] || cachedDifficulty || 'Medium'; // fallback to old val if needed? Nah.
         console.log(`[LeetCode EasyRepeat] getDifficulty requested, returning: ${difficulty}`);
         sendResponse({ difficulty: difficulty });
         return false; // Sync response - no need to keep channel open
@@ -138,10 +138,17 @@ async function saveSubmission(problemTitle, problemSlug, difficulty) {
     if (problems[problemKey] && problems[problemKey].lastSolved === today) {
         if (problems[problemKey].difficulty === difficulty) {
             console.log("[LeetCode EasyRepeat] Already logged today. Skipping storage update to prevent dups.");
-            // Return duplicate status for manual scan response
             return { duplicate: true, problemTitle: problemTitle };
         }
-        console.log(`[LeetCode EasyRepeat] Already logged today, but difficulty mismatch detected. Updating: ${problems[problemKey].difficulty} -> ${difficulty}`);
+
+        // If we have a stored difficulty, and the new one is just a "fallback" default,
+        // TRUST THE STORED DATA! Don't overwrite "Hard" with "Medium" just because we missed the badge.
+        if (difficultySource === 'fallback' && problems[problemKey].difficulty) {
+            console.log(`[LeetCode EasyRepeat] Difficulty mismatch (${problems[problemKey].difficulty} vs ${difficulty}), but new value is a fallback. Keeping stored value.`);
+            difficulty = problems[problemKey].difficulty;
+        } else {
+            console.log(`[LeetCode EasyRepeat] Already logged today, but difficulty mismatch detected. Updating: ${problems[problemKey].difficulty} -> ${difficulty} (Source: ${difficultySource})`);
+        }
     }
 
     // Prepare the data object for this problem.
@@ -156,9 +163,14 @@ async function saveSubmission(problemTitle, problemSlug, difficulty) {
         history: [] // We keep a list of past attempts
     };
 
-    // CRITICAL: Always update difficulty from fresh detection (fix for wrong difficulty bug)
+    // CRITICAL: Always update difficulty from fresh detection (unless it's a weak fallback)
     if (currentProblem.difficulty !== difficulty) {
-        console.log(`[LeetCode EasyRepeat] Correcting difficulty: ${currentProblem.difficulty} → ${difficulty}`);
+        if (difficultySource === 'fallback' && currentProblem.difficulty) {
+            console.log(`[LeetCode EasyRepeat] Keeping existing difficulty ${currentProblem.difficulty} instead of fallback ${difficulty}`);
+            difficulty = currentProblem.difficulty;
+        } else {
+            console.log(`[LeetCode EasyRepeat] Correcting difficulty: ${currentProblem.difficulty} → ${difficulty} (Source: ${difficultySource})`);
+        }
     }
 
     // Calculate the new schedule based on current stats
@@ -428,7 +440,7 @@ async function showCompletionToast(title, nextDate) {
  */
 
 // MODULE-LEVEL VARIABLES (state that persists across function calls)
-let cachedDifficulty = null;    // Cached difficulty: "Easy", "Medium", or "Hard"
+let difficultyCache = {};       // Cache map: slug -> "Easy" | "Medium" | "Hard"
 let lastProblemSlug = null;     // Track current problem to detect navigation
 
 /**
@@ -459,45 +471,29 @@ function getCurrentProblemSlug() {
  * It's a "cheap" operation because querySelector is fast.
  */
 function updateDifficultyCache() {
-    // DETECT SPA NAVIGATION:
-    // If the slug changed, the user navigated to a different problem.
-    // We must clear the cache so we don't use the OLD problem's difficulty!
+    // We track the current slug just for logging changes, 
+    // but with a Map cache, we don't need to wipe data on navigation!
     const currentSlug = getCurrentProblemSlug();
+    if (!currentSlug) return;
+
     if (currentSlug !== lastProblemSlug) {
-        console.log(`[LeetCode EasyRepeat] Problem changed: ${lastProblemSlug} → ${currentSlug}`);
-        cachedDifficulty = null; // Reset cache when problem changes!
+        console.log(`[LeetCode EasyRepeat] Problem changed: ${lastProblemSlug || 'null'} → ${currentSlug}`);
         lastProblemSlug = currentSlug;
     }
 
     /**
      * CSS ATTRIBUTE SELECTOR:
      * div[class*="text-difficulty-"]
-     *   div              - Select <div> elements
-     *   [class*="..."]   - Where the class attribute CONTAINS this substring
-     * 
-     * This matches: <div class="text-difficulty-easy">
-     * Also matches: <div class="foo text-difficulty-medium bar">
-     * 
-     * WHY NOT USE EXACT CLASS?
-     * LeetCode might add/remove other classes, but "text-difficulty-" is stable.
      */
     const difficultyNode = document.querySelector('div[class*="text-difficulty-"]');
 
     if (difficultyNode) {
-        // .trim() removes whitespace from both ends of the string
         const text = difficultyNode.innerText.trim();
-
-        /**
-         * ARRAY.INCLUDES() - Check if value is in array
-         * ['Easy', 'Medium', 'Hard'].includes(text)
-         * Equivalent to: text === 'Easy' || text === 'Medium' || text === 'Hard'
-         * But cleaner and easier to extend!
-         */
         if (['Easy', 'Medium', 'Hard'].includes(text)) {
-            if (cachedDifficulty !== text) {
-                console.log(`[LeetCode EasyRepeat] Difficulty detected: ${text}`);
+            if (difficultyCache[currentSlug] !== text) {
+                console.log(`[LeetCode EasyRepeat] Difficulty detected for ${currentSlug}: ${text}`);
             }
-            cachedDifficulty = text;
+            difficultyCache[currentSlug] = text;
         }
     }
 }
@@ -536,26 +532,29 @@ function extractProblemDetails() {
     const title = titleEl ? titleEl.innerText : problemSlug.replace(/-/g, ' ');
 
     let difficulty = 'Medium'; // Default fallback
+    let difficultySource = 'fallback';
 
-    // 1. Try Cache First (Best for post-submit)
-    if (cachedDifficulty) {
-        difficulty = cachedDifficulty;
-        console.log(`[LeetCode EasyRepeat] Using cached difficulty: ${difficulty}`);
+    // 1. Try Cache First (Most reliable if we visited the page)
+    if (difficultyCache[problemSlug]) {
+        difficulty = difficultyCache[problemSlug];
+        difficultySource = 'cache';
+        console.log(`[LeetCode EasyRepeat] Using cached difficulty for ${problemSlug}: ${difficulty}`);
     }
-    // 2. Try Live DOM (Best for initial load)
+    // 2. Try Live DOM (If cache missed)
     else {
         const difficultyNode = document.querySelector('div[class*="text-difficulty-"]');
         if (difficultyNode) {
             const text = difficultyNode.innerText.trim();
             if (['Easy', 'Medium', 'Hard'].includes(text)) {
                 difficulty = text;
-                cachedDifficulty = difficulty; // Cache it for future
+                difficultySource = 'dom';
+                difficultyCache[problemSlug] = difficulty; // Update cache
                 console.log(`[LeetCode EasyRepeat] Detected difficulty from DOM: ${difficulty}`);
             }
         }
     }
 
-    return { title, slug: problemSlug, difficulty };
+    return { title, slug: problemSlug, difficulty, difficultySource };
 }
 
 /**
@@ -655,7 +654,7 @@ async function checkForAcceptedStateAsync() {
     if (foundNode) {
         console.log("[LeetCode EasyRepeat] Found 'Accepted' state via async scan.");
         const details = extractProblemDetails();
-        const result = await saveSubmission(details.title, details.slug, details.difficulty);
+        const result = await saveSubmission(details.title, details.slug, details.difficulty, details.difficultySource);
         // result could be { success: true } or { duplicate: true, problemTitle: ... }
         return result || { success: true };
     }
@@ -736,7 +735,7 @@ function checkForAcceptedState() {
         // Get the details
         const details = extractProblemDetails();
         // Save it!
-        saveSubmission(details.title, details.slug, details.difficulty);
+        saveSubmission(details.title, details.slug, details.difficulty, details.difficultySource);
         return true; // Return true to indicate success
     }
 

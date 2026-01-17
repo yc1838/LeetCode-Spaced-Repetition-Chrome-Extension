@@ -496,14 +496,18 @@ function setupManualTools() {
     document.getElementById('btn-sync').onclick = async () => {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-        if (!tab || !tab.url.includes('leetcode.com')) {
-            showNotification('error', 'INVALID_TARGET', 'Please navigate to a LeetCode problem page first.');
+        // CRITICAL: Strict check to ensure we are on a PROBLEM page.
+        // Content script is ONLY injected on https://leetcode.com/problems/submissions/*
+        if (!tab || !tab.url.includes('leetcode.com/problems/')) {
+            showNotification('error', 'INVALID_TARGET', 'Please navigate to a specific LeetCode problem page (e.g. /problems/two-sum) first.');
             return;
         }
 
         chrome.tabs.sendMessage(tab.id, { action: "scanPage" }, (response) => {
             if (chrome.runtime.lastError) {
-                showNotification('error', 'CONNECTION_LOST', 'Could not connect to page. Please refresh the LeetCode tab and try again.');
+                // If we get here, the URL was correct but the content script isn't responding.
+                // likely the user just navigated or the extension was reloaded.
+                showNotification('error', 'CONNECTION_LOST', 'Extension context lost. Please refresh the LeetCode page and try again.');
             } else if (response && response.success) {
                 window.close(); // Close popup, user will see toast on page
             } else if (response && response.duplicate) {
