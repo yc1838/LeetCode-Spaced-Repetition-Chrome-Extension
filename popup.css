@@ -242,6 +242,35 @@ body::before {
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 2px;
     transition: all 0.2s ease;
+    position: relative;
+    /* For tooltip positioning */
+}
+
+/* Global Tooltip (JS Controlled) */
+.srs-tooltip {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 10000;
+    pointer-events: none;
+    background: var(--void);
+    color: var(--terminal);
+    border: 1px solid var(--terminal);
+    padding: 6px 10px;
+    font-size: 0.65rem;
+    white-space: nowrap;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.8);
+    border-radius: 4px;
+    font-family: var(--font-data);
+    opacity: 0;
+    transition: opacity 0.1s ease;
+    transform: translate(-50%, -100%);
+    margin-top: -8px;
+    /* Offset to float above cursor/target */
+}
+
+.srs-tooltip.visible {
+    opacity: 1;
 }
 
 .cell:hover {

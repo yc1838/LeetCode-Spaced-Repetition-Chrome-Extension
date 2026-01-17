@@ -415,7 +415,9 @@ function renderMiniHeatmap(problem, gridId) {
 
     // Generate ~60 days
     const start = new Date(today);
-    // Align to something? Just standard 60 days
+
+    // Date formatter for tooltips: "Mon, Jan 15"
+    const formatter = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
     for (let i = 0; i < 60; i++) {
         const d = new Date(start);
@@ -424,12 +426,32 @@ function renderMiniHeatmap(problem, gridId) {
 
         const cell = document.createElement('div');
         cell.className = 'cell';
+        // Remove data-attribute since we use JS now, but keep it if useful for debugging
+        // cell.setAttribute('data-date', formatter.format(d));
+
+        // JS Tooltip Logic
+        const dateText = formatter.format(d);
+        cell.onmouseenter = (e) => {
+            const tooltip = document.getElementById('global-tooltip');
+            if (!tooltip) return;
+
+            tooltip.textContent = dateText;
+            tooltip.classList.add('visible');
+
+            // Position calculation
+            const rect = cell.getBoundingClientRect();
+            // Center horizontally, position above
+            tooltip.style.left = `${rect.left + rect.width / 2}px`;
+            tooltip.style.top = `${rect.top}px`;
+        };
+
+        cell.onmouseleave = () => {
+            const tooltip = document.getElementById('global-tooltip');
+            if (tooltip) tooltip.classList.remove('visible');
+        };
 
         if (dateSet.has(dayStr)) cell.classList.add('v-4'); // High intensity for review
         else if (i === 0) cell.classList.add('v-3'); // Today
-
-        // Random noise for "hacker" feel on empty days?
-        // else if (Math.random() > 0.9) cell.classList.add('v-1'); 
 
         grid.appendChild(cell);
     }
@@ -520,15 +542,19 @@ function showNotification(type, code, message) {
     // Apply inline styles (since we can't easily add to popup.css dynamically)
     notification.style.cssText = `
         position: fixed;
-        bottom: 20px;
-        left: 20px;
-        right: 20px;
-        background: ${style.bg};
-        border: 1px solid ${style.border};
-        padding: 12px;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #111;
+        border: 2px solid ${style.border};
+        padding: 16px 24px;
         font-family: 'JetBrains Mono', monospace;
         z-index: 1000;
         animation: slideUp 0.2s ease;
+        box-shadow: 0 0 20px ${style.bg}, 0 0 0 1000px rgba(0,0,0,0.5);
+        min-width: 300px;
+        max-width: 80%;
+        text-align: center;
     `;
 
     notification.querySelector('.notif-header').style.cssText = `
