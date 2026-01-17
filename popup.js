@@ -2,8 +2,40 @@
 // This script runs when you click the extension icon in the Chrome toolbar.
 // It manages the little "Checkout" window (popup).
 
+// Theme definitions
+const THEMES = {
+    sakura: {
+        name: 'Sakura',
+        terminal: '#FF10F0',
+        electric: '#FF6B35',
+        accent: '#FF85A2',
+        borderGlow: 'rgba(255, 16, 240, 0.4)',
+        borderDim: 'rgba(255, 107, 53, 0.25)',
+        statusBg: 'rgba(255, 16, 240, 0.05)',
+        hoverBg: 'rgba(255, 16, 240, 0.08)',
+        containerShadow: 'rgba(255, 16, 240, 0.2)',
+        cellColors: ['#661450', '#AA1177', '#FF10F0', '#FF6B35']
+    },
+    matrix: {
+        name: 'Matrix',
+        terminal: '#00FF41',
+        electric: '#2DE2E6',
+        accent: '#00FF41',
+        borderGlow: 'rgba(0, 255, 65, 0.4)',
+        borderDim: 'rgba(45, 226, 230, 0.2)',
+        statusBg: 'rgba(0, 255, 65, 0.05)',
+        hoverBg: 'rgba(0, 255, 65, 0.05)',
+        containerShadow: 'rgba(0, 255, 65, 0.15)',
+        cellColors: ['#00441b', '#006d2c', '#238b45', '#00FF41']
+    }
+};
+
+let currentTheme = 'sakura';
+
 // Wait for the HTML of the popup to fully load before running code.
 document.addEventListener('DOMContentLoaded', async () => {
+    // 0. Load and apply theme
+    await setupTheme();
     // 1. Fetch data from storage and show the list of problems due for review.
     await updateDashboard();
     // 2. Enable Test Mode logic
@@ -11,6 +43,47 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 3. Enable sidebar tools
     setupManualTools();
 });
+
+// --- Theme Logic ---
+async function setupTheme() {
+    const storage = await chrome.storage.local.get({ theme: 'sakura' });
+    currentTheme = storage.theme;
+    applyTheme(currentTheme);
+
+    // Theme toggle button
+    document.getElementById('btn-theme').onclick = async () => {
+        currentTheme = currentTheme === 'sakura' ? 'matrix' : 'sakura';
+        applyTheme(currentTheme);
+        await chrome.storage.local.set({ theme: currentTheme });
+    };
+}
+
+function applyTheme(themeName) {
+    const theme = THEMES[themeName];
+    const root = document.documentElement;
+
+    root.style.setProperty('--terminal', theme.terminal);
+    root.style.setProperty('--electric', theme.electric);
+    root.style.setProperty('--accent', theme.accent);
+    root.style.setProperty('--border-glow', theme.borderGlow);
+    root.style.setProperty('--border-dim', theme.borderDim);
+
+    // Update cell color variables for heatmap
+    root.style.setProperty('--cell-1', theme.cellColors[0]);
+    root.style.setProperty('--cell-2', theme.cellColors[1]);
+    root.style.setProperty('--cell-3', theme.cellColors[2]);
+    root.style.setProperty('--cell-4', theme.cellColors[3]);
+
+    // Update dynamic elements
+    const statusBar = document.querySelector('.status-bar');
+    if (statusBar) statusBar.style.background = theme.statusBg;
+
+    const container = document.querySelector('.extension-container');
+    if (container) container.style.boxShadow = `0 0 20px ${theme.containerShadow}`;
+
+    // Re-render heatmap with new colors
+    renderGlobalHeatmap();
+}
 
 // --- Dashboard Logic ---
 // Reads the data and builds the UI.
@@ -223,7 +296,11 @@ function setupManualTools() {
     // "Purge Memory" button
     document.getElementById('btn-purge').onclick = async () => {
         if (confirm("This will erase all your SRS progress. Are you sure?")) {
+            // Preserve theme preference before clearing
+            const savedTheme = currentTheme;
             await chrome.storage.local.clear();
+            // Restore theme preference
+            await chrome.storage.local.set({ theme: savedTheme });
             location.reload();
         }
     };

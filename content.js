@@ -20,7 +20,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 });
 
-// --- LeetCode EasyRepeat Logic ---
+// --- SRS Logic ---
 // Logic is now imported from srs_logic.js
 
 // This function actually saves the "Accepted" submission to the browser's local storage.
@@ -77,12 +77,18 @@ async function saveSubmission(problemTitle, problemSlug, difficulty) {
         history: [] // We keep a list of past attempts
     };
 
+    // CRITICAL: Always update difficulty from fresh detection (fix for wrong difficulty bug)
+    if (currentProblem.difficulty !== difficulty) {
+        console.log(`[LeetCode EasyRepeat] Correcting difficulty: ${currentProblem.difficulty} → ${difficulty}`);
+    }
+
     // Calculate the new schedule based on current stats
     const nextStep = calculateNextReview(currentProblem.interval, currentProblem.repetition, currentProblem.easeFactor);
 
     // Update the problem data with the new values
     problems[problemKey] = {
         ...currentProblem, // Keep existing fields (like title, slug)
+        difficulty: difficulty, // ⬅️ ALWAYS use freshly detected difficulty
         lastSolved: today, // Mark today as the last solved date
         interval: nextStep.nextInterval,
         repetition: nextStep.nextRepetition,
@@ -141,18 +147,41 @@ function showCompletionToast(title, nextDate) {
 // --- Caching Logic ---
 // We cache the difficulty because it might disappear from the DOM when the "Submission Result" view is active.
 let cachedDifficulty = null;
+let lastProblemSlug = null; // Track current problem to detect SPA navigation
+
+// Get current problem slug from URL
+function getCurrentProblemSlug() {
+    const match = window.location.pathname.match(/\/problems\/([^\/]+)/);
+    return match ? match[1] : null;
+}
 
 // Periodically scan for the difficulty badge while the user is just browsing the problem.
 function updateDifficultyCache() {
+    // CRITICAL: Check if we navigated to a different problem (SPA navigation)
+    const currentSlug = getCurrentProblemSlug();
+    if (currentSlug !== lastProblemSlug) {
+        console.log(`[LeetCode EasyRepeat] Problem changed: ${lastProblemSlug} → ${currentSlug}`);
+        cachedDifficulty = null; // Reset cache when problem changes!
+        lastProblemSlug = currentSlug;
+    }
+
     // 2024 Stable Selector: div with class containing 'text-difficulty-'
     // This was verified to be robust for Easy/Medium/Hard.
     const difficultyNode = document.querySelector('div[class*="text-difficulty-"]');
 
-    if (difficultyNode && ['Easy', 'Medium', 'Hard'].includes(difficultyNode.innerText)) {
-        cachedDifficulty = difficultyNode.innerText;
-        // console.log("[LeetCode EasyRepeat] Cached difficulty: " + cachedDifficulty);
+    if (difficultyNode) {
+        const text = difficultyNode.innerText.trim();
+        if (['Easy', 'Medium', 'Hard'].includes(text)) {
+            if (cachedDifficulty !== text) {
+                console.log(`[LeetCode EasyRepeat] Difficulty detected: ${text}`);
+            }
+            cachedDifficulty = text;
+        }
     }
 }
+
+// Run immediately on page load
+updateDifficultyCache();
 
 // Run this scan often (it's cheap)
 setInterval(updateDifficultyCache, 1000);
@@ -189,13 +218,18 @@ function extractProblemDetails() {
     // 1. Try Cache First (Best for post-submit)
     if (cachedDifficulty) {
         difficulty = cachedDifficulty;
+        console.log(`[LeetCode EasyRepeat] Using cached difficulty: ${difficulty}`);
     }
     // 2. Try Live DOM (Best for initial load)
     else {
         const difficultyNode = document.querySelector('div[class*="text-difficulty-"]');
-        if (difficultyNode && ['Easy', 'Medium', 'Hard'].includes(difficultyNode.innerText)) {
-            difficulty = difficultyNode.innerText;
-            cachedDifficulty = difficulty; // Cache it for future
+        if (difficultyNode) {
+            const text = difficultyNode.innerText.trim();
+            if (['Easy', 'Medium', 'Hard'].includes(text)) {
+                difficulty = text;
+                cachedDifficulty = difficulty; // Cache it for future
+                console.log(`[LeetCode EasyRepeat] Detected difficulty from DOM: ${difficulty}`);
+            }
         }
     }
 

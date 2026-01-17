@@ -71,18 +71,12 @@ body::before {
     justify-content: space-between;
     font-size: 0.7rem;
     letter-spacing: 2px;
-    background: rgba(0, 255, 65, 0.05);
+    background: rgba(255, 16, 240, 0.05);
 }
 
 .status-ready {
     color: var(--electric);
-    animation: blink 1.5s infinite step-end;
-}
-
-@keyframes blink {
-    50% {
-        opacity: 0;
-    }
+    /* No more blinking - it was annoying */
 }
 
 /* SIDEBAR TACTICAL SWITCHES */
@@ -176,24 +170,20 @@ body::before {
 }
 
 .cell.v-1 {
-    background: #661450;
-    /* Dark magenta */
+    background: var(--cell-1, #661450);
 }
 
 .cell.v-2 {
-    background: #AA1177;
-    /* Medium magenta */
+    background: var(--cell-2, #AA1177);
 }
 
 .cell.v-3 {
-    background: #FF10F0;
-    /* Hot magenta */
+    background: var(--cell-3, #FF10F0);
     box-shadow: 0 0 5px var(--terminal);
 }
 
 .cell.v-4 {
-    background: #FF6B35;
-    /* Neon orange */
+    background: var(--cell-4, #FF6B35);
     box-shadow: 0 0 8px var(--electric);
 }
 

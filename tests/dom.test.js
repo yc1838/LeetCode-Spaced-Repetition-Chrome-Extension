@@ -74,7 +74,47 @@ describe('DOM Extraction Logic', () => {
         expect(details.difficulty).toBe('Easy');
     });
 
+    test('should extract difficulty with leading/trailing whitespace', () => {
+        const diffEl = document.createElement('div');
+        diffEl.className = 'text-difficulty-easy';
+        diffEl.innerText = '  Easy  '; // Whitespace edge case
+        document.body.appendChild(diffEl);
+
+        const details = extractProblemDetails();
+        expect(details.difficulty).toBe('Easy');
+    });
+
+    test('should extract difficulty with newlines', () => {
+        const diffEl = document.createElement('div');
+        diffEl.className = 'text-difficulty-medium';
+        diffEl.innerText = '\nMedium\n'; // Newline edge case
+        document.body.appendChild(diffEl);
+
+        const details = extractProblemDetails();
+        expect(details.difficulty).toBe('Medium');
+    });
+
+    test('should extract Hard difficulty', () => {
+        const diffEl = document.createElement('div');
+        diffEl.className = 'text-difficulty-hard';
+        diffEl.innerText = 'Hard';
+        document.body.appendChild(diffEl);
+
+        const details = extractProblemDetails();
+        expect(details.difficulty).toBe('Hard');
+    });
+
     test('should default difficulty to Medium if not found', () => {
+        const details = extractProblemDetails();
+        expect(details.difficulty).toBe('Medium');
+    });
+
+    test('should default difficulty to Medium if element has unexpected text', () => {
+        const diffEl = document.createElement('div');
+        diffEl.className = 'text-difficulty-unknown';
+        diffEl.innerText = 'Unknown'; // Not Easy/Medium/Hard
+        document.body.appendChild(diffEl);
+
         const details = extractProblemDetails();
         expect(details.difficulty).toBe('Medium');
     });
