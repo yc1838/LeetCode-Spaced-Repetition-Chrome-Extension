@@ -123,6 +123,40 @@ async function updateDashboard() {
     // Updates
     updateClock();
     setInterval(updateClock, 1000);
+
+    // Sync difficulty for current problem (fixes stale data)
+    await syncCurrentProblemDifficulty();
+}
+
+// Query the content script for the correct difficulty and update storage if needed
+async function syncCurrentProblemDifficulty() {
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab || !tab.url.includes('leetcode.com/problems/')) return;
+
+        // Extract slug from URL
+        const match = tab.url.match(/\/problems\/([^\/]+)/);
+        if (!match) return;
+        const currentSlug = match[1];
+
+        // Ask content script for current difficulty
+        chrome.tabs.sendMessage(tab.id, { action: "getDifficulty" }, async (response) => {
+            if (chrome.runtime.lastError || !response || !response.difficulty) return;
+
+            const result = await chrome.storage.local.get({ problems: {} });
+            const problems = result.problems;
+
+            if (problems[currentSlug] && problems[currentSlug].difficulty !== response.difficulty) {
+                console.log(`[Popup] Syncing difficulty for ${currentSlug}: ${problems[currentSlug].difficulty} → ${response.difficulty}`);
+                problems[currentSlug].difficulty = response.difficulty;
+                await chrome.storage.local.set({ problems });
+                // Re-render with updated data
+                await updateDashboard();
+            }
+        });
+    } catch (e) {
+        console.warn('[Popup] Could not sync difficulty:', e);
+    }
 }
 
 function updateClock() {

@@ -18,6 +18,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
         return true; // Required for async sendResponse
     }
+
+    // Handle getDifficulty request from popup (for syncing stored data)
+    if (request.action === "getDifficulty") {
+        // Force refresh the cache first
+        updateDifficultyCache();
+        const difficulty = cachedDifficulty || 'Medium';
+        console.log(`[LeetCode EasyRepeat] getDifficulty requested, returning: ${difficulty}`);
+        sendResponse({ difficulty: difficulty });
+        return false; // Sync response
+    }
 });
 
 // --- SRS Logic ---
