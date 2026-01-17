@@ -44,30 +44,41 @@ console.log("[LeetCode EasyRepeat] Extension content script loaded (v2 - Hybrid 
  *   - Return true: Required if sendResponse will be called asynchronously
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    // Check if the message action is "scanPage"
-    if (request.action === "scanPage") {
-        console.log("[LeetCode EasyRepeat] Manual scan requested.");
+    try {
+        // Check if the message action is "scanPage"
+        if (request.action === "scanPage") {
+            console.log("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Manual scan requested.");
 
-        /**
-         * ASYNC MESSAGE HANDLING:
-         * Since checkForAcceptedStateAsync() is async (returns a Promise),
-         * we need to return `true` from this listener to tell Chrome:
-         * "Don't close the message channel yet, I'll send a response later!"
-         */
-        checkForAcceptedStateAsync().then(result => {
-            sendResponse(result);
-        });
-        return true; // CRITICAL: Required for async sendResponse
-    }
+            /**
+             * ASYNC MESSAGE HANDLING:
+             * Since checkForAcceptedStateAsync() is async (returns a Promise),
+             * we need to return `true` from this listener to tell Chrome:
+             * "Don't close the message channel yet, I'll send a response later!"
+             */
+            checkForAcceptedStateAsync()
+                .then(result => {
+                    console.log("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Scan result:", result);
+                    sendResponse(result);
+                })
+                .catch(err => {
+                    console.error("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Scan failed:", err);
+                    sendResponse({ success: false, error: err.message });
+                });
+            return true; // CRITICAL: Required for async sendResponse
+        }
 
-    // Handle getDifficulty request from popup (for syncing stored data)
-    if (request.action === "getDifficulty") {
-        // Force refresh the cache first
-        updateDifficultyCache();
-        const difficulty = difficultyCache[getCurrentProblemSlug()] || cachedDifficulty || 'Medium'; // fallback to old val if needed? Nah.
-        console.log(`[LeetCode EasyRepeat] getDifficulty requested, returning: ${difficulty}`);
-        sendResponse({ difficulty: difficulty });
-        return false; // Sync response - no need to keep channel open
+        // Handle getDifficulty request from popup (for syncing stored data)
+        if (request.action === "getDifficulty") {
+            // Force refresh the cache first
+            updateDifficultyCache();
+            const difficulty = difficultyCache[getCurrentProblemSlug()] || 'Medium'; // fallback
+            console.log(`[LeetCode EasyRepeat] [LEETCODE-DEBUG] getDifficulty requested, returning: ${difficulty}`);
+            sendResponse({ difficulty: difficulty });
+            return false; // Sync response - no need to keep channel open
+        }
+    } catch (e) {
+        console.error("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Error in message listener:", e);
+        sendResponse({ success: false, error: e.message });
     }
 });
 
@@ -85,7 +96,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  * @param {string} problemSlug - URL identifier like "two-sum"
  * @param {string} difficulty - "Easy", "Medium", or "Hard"
  */
-async function saveSubmission(problemTitle, problemSlug, difficulty) {
+async function saveSubmission(problemTitle, problemSlug, difficulty, difficultySource = 'unknown') {
     /**
      * OPTIONAL CHAINING (?.) - ES2020 FEATURE
      * 
@@ -652,15 +663,196 @@ async function checkForAcceptedStateAsync() {
     }
 
     if (foundNode) {
-        console.log("[LeetCode EasyRepeat] Found 'Accepted' state via async scan.");
+        // [MODIFIED] Legacy freshness check removed.
+        // For manual scan, if we find "Accepted", we assume the user verified it is the correct submission.
+        console.log("[LeetCode EasyRepeat] Found 'Accepted' via async scan. Proceeding to save.");
         const details = extractProblemDetails();
         const result = await saveSubmission(details.title, details.slug, details.difficulty, details.difficultySource);
-        // result could be { success: true } or { duplicate: true, problemTitle: ... }
         return result || { success: true };
     }
 
     return { success: false }; // Nothing found
 }
+
+/**
+ * Verify if the latest submission in the table is "Accepted" AND "fresh" (e.g. "just now").
+ * @returns {boolean} True if fresh accepted submission found
+ */
+/**
+ * Monitor for clicks on the Submit button to trigger API polling.
+ * 
+ * THIS IS THE STARTING POINT OF THE AUTOMATION.
+ * We listen for the user clicking the specific "Submit" button used by LeetCode.
+ * When clicked, we record the CURRENT TIME so we know which submission to look for.
+ */
+function monitorSubmissionClicks() {
+    // LeetCode's submit button usually has data-e2e-locator="console-submit-button"
+    document.addEventListener('click', (e) => {
+        try {
+            const btn = e.target.closest('[data-e2e-locator="console-submit-button"]');
+            if (btn) {
+                console.log('[LeetCode EasyRepeat] [LEETCODE-DEBUG] Submit button clicked. Starting API poll...');
+                const clickTime = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
+                const slug = getCurrentProblemSlug();
+                if (slug) {
+                    // Determine difficulty before polling (from cache or DOM)
+                    // We use our existing helpers for this
+                    const details = extractProblemDetails();
+                    pollSubmissionResult(slug, clickTime, details.title, details.difficulty)
+                        .catch(err => console.error("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Polling failed:", err));
+                } else {
+                    console.warn("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Could not determine slug on click.");
+                }
+            }
+        } catch (err) {
+            console.error("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Error in click listener:", err);
+        }
+    });
+}
+
+// Start monitoring immediately
+try {
+    monitorSubmissionClicks();
+} catch (e) {
+    console.error("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Failed to start click monitoring:", e);
+}
+
+/**
+ * ============================================================================
+ * LOGIC: API POLLING FOR SUBMISSION RESULT
+ * ============================================================================
+ * 
+ * WHY WE DO THIS:
+ * LeetCode's UI is dynamic and sometimes "truncates" the timestamp (e.g. showing "submitted at Jan..." instead of the full date).
+ * This breaks our ability to read the screen and check if a submission is "fresh".
+ * 
+ * THE SOLUTION:
+ * Instead of reading the screen (DOM scraping), we ask LeetCode's server directly!
+ * 
+ * HOW IT WORKS:
+ * 1. User clicks "Submit".
+ * 2. We wait a moment, then ask the server: "Show me the list of recent submissions".
+ * 3. We find the one that matches our click time.
+ * 4. We ask the server: "Is this submission finished processing? Was it Accepted?"
+ * 5. If yes, we save it.
+ */
+
+/**
+ * Poll the LeetCode API to find the result of the submission.
+ * 
+ * FLOW:
+ * 1. GET /api/submissions/{slug}/?offset=0&limit=5 -> Returns a list of recent attempts.
+ * 2. Find the attempt whose `timestamp` is close to our `clickTime`.
+ * 3. Loop until we find it (it might take a second to appear).
+ * 4. Once found, get its `id`.
+ * 5. Pass that `id` to `checkSubmissionStatus` to see if it passed.
+ */
+async function pollSubmissionResult(slug, clickTime, title, difficulty) {
+    try {
+        console.log(`[LeetCode EasyRepeat] [LEETCODE-DEBUG] Polling for ${slug} since ${clickTime}`);
+        let attempts = 0;
+        const maxAttempts = 20; // Try for ~40-60 seconds (backoff will increase delay)
+
+        // Step 1: Find the Submission ID
+        // We might need to wait a moment for the server to register the submission
+        let submissionId = null;
+
+        const findSubmission = async () => {
+            try {
+                // Fetch submission list
+                // Note: LeetCode API returns JSON with submission_list array
+                const response = await fetch(`/api/submissions/${slug}/?offset=0&limit=5`);
+                if (!response.ok) {
+                    console.warn(`[LeetCode EasyRepeat] [LEETCODE-DEBUG] API error: ${response.status} ${response.statusText}`);
+                    return null;
+                }
+                const data = await response.json();
+
+                // Debugging: Check structure
+                if (!data || !data.submission_list) {
+                    console.warn("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Unexpected API response format:", JSON.stringify(data).substring(0, 200));
+                    return null; // Retry
+                }
+
+                // Look for a submission that happened AFTER our click (with 5s buffer for clock skew)
+                // The API timestamp is in seconds.
+                const match = data.submission_list.find(sub =>
+                    sub.timestamp >= (clickTime - 5) &&
+                    sub.status_display !== "Internal Error" // Ignore failed system errors
+                );
+
+                return match ? match.id : null;
+            } catch (e) {
+                console.warn("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Error fetching submission list:", e);
+                return null;
+            }
+        };
+
+        // Retry loop to find the ID (it might take a few seconds to appear in the list)
+        while (!submissionId && attempts < 10) {
+            submissionId = await findSubmission();
+            if (!submissionId) {
+                console.log(`[LeetCode EasyRepeat] [LEETCODE-DEBUG] Submission list check ${attempts + 1}/10...`);
+                attempts++;
+                await new Promise(r => setTimeout(r, 2000)); // Wait 2s
+            }
+        }
+
+        if (!submissionId) {
+            console.log("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Timed out waiting for submission to appear in list.");
+            return;
+        }
+
+        console.log(`[LeetCode EasyRepeat] [LEETCODE-DEBUG] Found submission ID: ${submissionId}. Polling status...`);
+
+        // Step 2: Poll for Result (Accepted/Wrong Answer)
+        await checkSubmissionStatus(submissionId, title, slug, difficulty);
+    } catch (e) {
+        console.error("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Critical error in pollSubmissionResult:", e);
+    }
+}
+
+async function checkSubmissionStatus(submissionId, title, slug, difficulty) {
+    let checks = 0;
+    while (checks < 20) {
+        try {
+            const res = await fetch(`/submissions/detail/${submissionId}/check/`);
+            if (!res.ok) throw new Error("Check API failed");
+
+            const data = await res.json();
+            // data.state could be "PENDING", "STARTED", "SUCCESS"
+
+            if (data.state === "SUCCESS") {
+                // DONE! Check if Accepted
+                if (data.status_code === 10 || data.status_msg === "Accepted") {
+                    console.log(`[LeetCode EasyRepeat] Submission ${submissionId} ACCEPTED!`);
+
+                    // We can also get runtime/memory here if we want!
+                    // saveSubmission handles storage
+                    await saveSubmission(title, slug, difficulty, 'api_poll');
+                    return true;
+                } else {
+                    console.log(`[LeetCode EasyRepeat] Submission ${submissionId} finished but NOT Accepted (${data.status_msg}).`);
+                    return false;
+                }
+            }
+
+            // Still Pending
+            checks++;
+            await new Promise(r => setTimeout(r, 1000)); // Wait 1s
+
+        } catch (e) {
+            console.warn("[LeetCode EasyRepeat] Error polling check API:", e);
+            checks++;
+            await new Promise(r => setTimeout(r, 2000));
+        }
+    }
+    console.log("[LeetCode EasyRepeat] Timed out polling submission status.");
+    return false;
+}
+
+// Export removed from here, consolidated at the end of file
+
 
 // The Core Check Function: "Did the user pass?" (Sync version for MutationObserver)
 function checkForAcceptedState() {
@@ -731,13 +923,15 @@ function checkForAcceptedState() {
 
     // Validate result
     if (foundNode) {
-        console.log("[LeetCode EasyRepeat] Found 'Accepted' state via selector/text scan.");
-        // Get the details
+        // [MODIFIED] Legacy freshness check removed.
+        // We rely primarily on the API polling (monitorSubmissionClicks) for freshness.
+        // But if MutationObserver finds "Accepted" (backup method), we save it too.
+        console.log("[LeetCode EasyRepeat] Found 'Accepted' state via passive observer.");
         const details = extractProblemDetails();
-        // Save it!
         saveSubmission(details.title, details.slug, details.difficulty, details.difficultySource);
-        return true; // Return true to indicate success
+        return true;
     }
+
 
     return false; // Nothing found
 }
@@ -798,87 +992,8 @@ const observer = new MutationObserver((mutations) => {
 observer.observe(document.body, { childList: true, subtree: true });
 
 
-/**
- * ============================================================================
- * DETECTION STRATEGY 2: Click Listener (Active Polling Detection)
- * ============================================================================
- * 
- * WHY HAVE TWO STRATEGIES?
- * MutationObserver is passive - it waits for DOM changes. But sometimes:
- * - Changes happen before our observer is fully set up
- * - LeetCode's update pattern doesn't trigger our observer reliably
- * 
- * This strategy ACTIVELY watches for the user clicking "Submit", then
- * starts polling to detect the result.
- */
-document.addEventListener('click', (e) => {
-    /**
-     * DETECTING THE SUBMIT BUTTON:
-     * LeetCode's button structure might vary, so we check multiple ways:
-     * 
-     * 1. innerText.includes('Submit') - Button text contains "Submit"
-     * 2. data-cy="submit-code-btn" - Cypress test attribute (stable for testing)
-     * 3. target.closest(...) - Check if click was inside a matching button
-     * 
-     * ELEMENT.CLOSEST(selector):
-     * Walks up the DOM tree to find the first ancestor matching the selector.
-     * Returns null if no match is found.
-     * 
-     * Useful because the click might be on a child element (like an icon or text)
-     * inside the button, not the button itself.
-     */
-    const target = e.target;
-    const isSubmitBtn = target.innerText.includes('Submit') ||
-        target.getAttribute('data-cy') === 'submit-code-btn' ||
-        target.closest('button[data-e2e-locator="console-submit-button"]');
-
-    if (isSubmitBtn) {
-        console.log("[LeetCode EasyRepeat] 'Submit' clicked. Starting aggressive polling...");
-        startPolling();
-    }
-}, true);
-/**
- * THE 'true' ARGUMENT - CAPTURE PHASE:
- * 
- * DOM events have 3 phases:
- * 1. CAPTURE: Event travels DOWN from document to target
- * 2. TARGET: Event reaches the clicked element
- * 3. BUBBLE: Event travels back UP to document
- * 
- * By default, addEventListener listens during BUBBLE phase.
- * Passing 'true' makes it listen during CAPTURE phase.
- * 
- * WHY USE CAPTURE?
- * If LeetCode calls event.stopPropagation() on their submit button,
- * the event would never bubble up to our listener. By capturing,
- * we see the event BEFORE LeetCode's handlers can stop it.
- */
-
-let pollInterval;
-
-// Function to check repeatedly every 500ms
-function startPolling() {
-    // Clear any existing poll to avoid duplicates
-    if (pollInterval) clearInterval(pollInterval);
-
-    let attempts = 0;
-    pollInterval = setInterval(() => {
-        attempts++;
-        console.log(`[LeetCode EasyRepeat] Poll attempt ${attempts}...`);
-
-        // Run the check
-        const success = checkForAcceptedState();
-
-        // STOP condition:
-        // 1. We found the success state!
-        // 2. OR we tried 40 times (20 seconds) and gave up.
-        if (success || attempts >= 40) {
-            clearInterval(pollInterval);
-            if (success) console.log("[LeetCode EasyRepeat] Polling success!");
-            else console.log("[LeetCode EasyRepeat] Polling timed out. No 'Accepted' found.");
-        }
-    }, 500);
-}
+// [Legacy Click Listener Removed]
+// We now use monitorSubmissionClicks() defined earlier for API-based polling.
 
 /**
  * CONDITIONAL EXPORT FOR TESTING
@@ -888,16 +1003,16 @@ function startPolling() {
  * HOW IT WORKS:
  * - In Node.js: `module` is a global object → condition is true → we export
  * - In Browser: `module` is undefined → condition is false → nothing happens
- * 
- * WHY DO THIS?
- * Our tests need to import these functions using require().
- * But in the browser, we don't use module.exports (functions are just global).
- * This pattern makes the file work in BOTH environments.
  */
+// --- Exports for Node.js Testing ---
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
-        extractProblemDetails,
+        saveSubmission,
         checkForAcceptedState,
-        saveSubmission
+        checkForAcceptedStateAsync,
+        extractProblemDetails,
+        pollSubmissionResult,       // New
+        checkSubmissionStatus,      // New
+        monitorSubmissionClicks     // New
     };
 }

@@ -76,6 +76,21 @@ describe('checkForAcceptedState', () => {
         checkForAcceptedState = contentScript.checkForAcceptedState;
     });
 
+    // Helper to create the submission table required for freshness check
+    function setupFreshSubmissionTable() {
+        const table = document.createElement('table');
+        const tbody = document.createElement('tbody');
+        tbody.className = 'ant-table-tbody';
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        // We need text that passes the verifyLatestSubmissionFreshness check
+        td.textContent = "Accepted just now";
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        table.appendChild(tbody);
+        document.body.appendChild(table);
+    }
+
     /**
      * TEST: No Accepted element exists
      * When there's no success indicator on the page, should return false.
@@ -94,7 +109,9 @@ describe('checkForAcceptedState', () => {
         const acceptedEl = document.createElement('div');
         acceptedEl.setAttribute('data-e2e-locator', 'submission-result-accepted');
         acceptedEl.innerText = 'Accepted';
+        acceptedEl.innerText = 'Accepted';
         document.body.appendChild(acceptedEl);
+        setupFreshSubmissionTable(); // Add required table
 
         const result = checkForAcceptedState();
         expect(result).toBe(true);
@@ -108,7 +125,9 @@ describe('checkForAcceptedState', () => {
         const acceptedEl = document.createElement('span');
         acceptedEl.className = 'text-green-s';
         acceptedEl.innerText = 'Accepted';
+        acceptedEl.innerText = 'Accepted';
         document.body.appendChild(acceptedEl);
+        setupFreshSubmissionTable();
 
         const result = checkForAcceptedState();
         expect(result).toBe(true);
@@ -122,7 +141,9 @@ describe('checkForAcceptedState', () => {
         const acceptedEl = document.createElement('div');
         acceptedEl.className = 'text-success';
         acceptedEl.innerText = 'Accepted';
+        acceptedEl.innerText = 'Accepted';
         document.body.appendChild(acceptedEl);
+        setupFreshSubmissionTable();
 
         const result = checkForAcceptedState();
         expect(result).toBe(true);
@@ -136,7 +157,9 @@ describe('checkForAcceptedState', () => {
         const acceptedEl = document.createElement('span');
         acceptedEl.className = 'some-class text-green-500 another-class';
         acceptedEl.innerText = 'Accepted';
+        acceptedEl.innerText = 'Accepted';
         document.body.appendChild(acceptedEl);
+        setupFreshSubmissionTable();
 
         const result = checkForAcceptedState();
         expect(result).toBe(true);
@@ -169,7 +192,9 @@ describe('checkForAcceptedState', () => {
         const el = document.createElement('div');
         el.setAttribute('data-e2e-locator', 'submission-result-accepted');
         el.innerText = 'Solution Accepted Successfully';
+        el.innerText = 'Solution Accepted Successfully';
         document.body.appendChild(el);
+        setupFreshSubmissionTable();
 
         const result = checkForAcceptedState();
         expect(result).toBe(true);

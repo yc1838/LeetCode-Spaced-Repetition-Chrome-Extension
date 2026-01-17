@@ -95,6 +95,8 @@
             // 3rd+ review: multiply previous interval by ease factor
             // Math.round() ensures we get whole days (e.g., 37.5 → 38)
             nextInterval = Math.round(interval * easeFactor);
+            // SAFETY CHECK: Ensure interval always grows or stays at least 1 day to prevent infinite loops
+            if (nextInterval < 1) nextInterval = 1;
         }
 
         // DATE MANIPULATION:

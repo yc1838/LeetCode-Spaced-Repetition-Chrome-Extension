@@ -36,7 +36,9 @@ A Chrome Extension that helps you master LeetCode problems using a **Spaced Repe
 - **Live Clock**: Real-time system clock in the status bar
 
 ### 🔬 Robust Detection
-- **Hybrid Detection**: Combines MutationObserver and polling for reliable submission capture
+- **API-Based Verification**: Polls LeetCode's internal API to confirm submissions, ignoring UI layout glitches
+- **Infinite Loop Protection**: Safeguard against corrupted data causing browser freezes
+- **Resilience**: Comprehensive error handling to prevent "Context Lost" extension crashes
 - **SPA Navigation Aware**: Handles LeetCode's single-page-app navigation correctly
 - **Difficulty Caching**: Pre-caches difficulty before submission to handle DOM changes
 
@@ -94,8 +96,9 @@ Click the extension icon to see:
 ## 🧪 Running Tests
 
 The project includes comprehensive unit tests covering:
-- **SRS Logic**: Interval calculations, repetition tracking, ease factors
-- **DOM Detection**: Problem extraction, difficulty parsing, accepted state detection
+- **SRS Logic**: Interval calculations, repetition tracking, ease factors (including infinite loop resilience)
+- **API Integration**: Mocked tests for submission polling and status verification
+- **DOM Detection**: Problem extraction, difficulty parsing
 - **E2E Tests**: Puppeteer-based end-to-end browser testing (requires Chrome)
 
 ```bash
@@ -120,9 +123,11 @@ leetcode-srs-extension/
 ├── popup.css          # Cyberpunk UI styles
 ├── srs_logic.js       # SM-2 algorithm implementation (UMD module)
 ├── tests/
-│   ├── srs.test.js    # SRS logic unit tests
-│   ├── dom.test.js    # DOM detection unit tests
-│   └── e2e.js         # End-to-end Puppeteer tests
+│   ├── srs.test.js              # SRS logic unit tests
+│   ├── dom.test.js              # DOM detection unit tests
+│   ├── api_submission_check.test.js # API polling logic tests
+│   ├── resilience.test.js       # Safety/Inf-loop protection tests
+│   └── e2e.js                   # End-to-end Puppeteer tests
 └── icons/             # Extension icons
 ```
 

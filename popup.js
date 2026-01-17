@@ -507,11 +507,15 @@ function setupManualTools() {
             if (chrome.runtime.lastError) {
                 // If we get here, the URL was correct but the content script isn't responding.
                 // likely the user just navigated or the extension was reloaded.
-                showNotification('error', 'CONNECTION_LOST', 'Extension context lost. Please refresh the LeetCode page and try again.');
+                const err = chrome.runtime.lastError.message || "Unknown runtime error";
+                console.error("[Popup] Connection failed:", err);
+                showNotification('error', 'CONNECTION_LOST', `Extension context lost (${err}). Please refresh the LeetCode page.`);
             } else if (response && response.success) {
                 window.close(); // Close popup, user will see toast on page
             } else if (response && response.duplicate) {
                 showNotification('warning', 'DUPLICATE_DETECTED', `"${response.problemTitle}" was already logged today. Wait for its next review date.`);
+            } else if (response && response.error) {
+                showNotification('error', 'SCAN_ERROR', `Scan failed: ${response.error}`);
             } else {
                 showNotification('error', 'SCAN_FAILED', 'No "Accepted" submission found on this page. Make sure you have solved the problem.');
             }
