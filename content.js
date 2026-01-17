@@ -118,23 +118,209 @@ async function saveSubmission(problemTitle, problemSlug, difficulty) {
     return { success: true };
 }
 
+// Theme colors matching popup.js THEMES
+const TOAST_THEMES = {
+    sakura: {
+        terminal: '#FF10F0',
+        electric: '#FF6B35',
+        borderGlow: 'rgba(255, 16, 240, 0.4)',
+        shadowMid: 'rgba(255, 16, 240, 0.2)',
+        shadowInner: 'rgba(255, 16, 240, 0.05)',
+        textShadow: 'rgba(255, 16, 240, 0.5)',
+        electricShadow: 'rgba(255, 107, 53, 0.4)',
+        electricBorderDash: 'rgba(255, 107, 53, 0.3)'
+    },
+    matrix: {
+        terminal: '#00FF41',
+        electric: '#2DE2E6',
+        borderGlow: 'rgba(0, 255, 65, 0.4)',
+        shadowMid: 'rgba(0, 255, 65, 0.2)',
+        shadowInner: 'rgba(0, 255, 65, 0.05)',
+        textShadow: 'rgba(0, 255, 65, 0.5)',
+        electricShadow: 'rgba(45, 226, 230, 0.4)',
+        electricBorderDash: 'rgba(45, 226, 230, 0.3)'
+    }
+};
+
 // Function to show a little popup notification (Toast) on the webpage itself
-function showCompletionToast(title, nextDate) {
+async function showCompletionToast(title, nextDate) {
     // If a toast already exists (maybe from a previous click), remove it so they don't stack up.
     const existing = document.querySelector('.lc-srs-toast');
     if (existing) existing.remove();
+
+    // Also remove old styles to allow theme refresh
+    const existingStyles = document.querySelector('#lc-srs-toast-styles');
+    if (existingStyles) existingStyles.remove();
+
+    // Get current theme from storage
+    let themeName = 'sakura'; // default
+    try {
+        const storage = await chrome.storage.local.get({ theme: 'sakura' });
+        themeName = storage.theme || 'sakura';
+    } catch (e) {
+        console.log('[LeetCode EasyRepeat] Could not read theme, using default');
+    }
+    const theme = TOAST_THEMES[themeName] || TOAST_THEMES.sakura;
+
+    // Inject styles with dynamic theme colors
+    const style = document.createElement('style');
+    style.id = 'lc-srs-toast-styles';
+    style.textContent = `
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        .lc-srs-toast,
+        .lc-srs-toast *,
+        .lc-srs-toast *::before,
+        .lc-srs-toast *::after {
+            all: revert !important;
+            box-sizing: border-box !important;
+        }
+        
+        .lc-srs-toast {
+            position: fixed !important;
+            bottom: 30px !important;
+            right: 30px !important;
+            z-index: 999999 !important;
+            opacity: 0 !important;
+            transform: translateY(20px) !important;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            pointer-events: none !important;
+            border: none !important;
+            background: none !important;
+            outline: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            max-width: 350px !important;
+        }
+        
+        .lc-srs-toast.show {
+            opacity: 1 !important;
+            transform: translateY(0) !important;
+        }
+        
+        .lc-srs-toast-content {
+            background: rgba(10, 10, 10, 0.95) !important;
+            border: 2px solid ${theme.terminal} !important;
+            border-radius: 0 !important;
+            box-shadow: 
+                0 0 20px ${theme.borderGlow},
+                0 0 40px ${theme.shadowMid},
+                inset 0 0 30px ${theme.shadowInner} !important;
+            backdrop-filter: blur(10px) !important;
+            padding: 16px 20px !important;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace !important;
+            min-width: 280px !important;
+            max-width: 350px !important;
+            position: relative !important;
+            overflow: hidden !important;
+            outline: none !important;
+            margin: 0 !important;
+        }
+        
+        /* Scanline effect overlay */
+        .lc-srs-toast-content::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.15) 50%
+            );
+            background-size: 100% 2px;
+            pointer-events: none;
+            opacity: 0.3;
+        }
+        
+        /* Corner accent */
+        .lc-srs-toast-content::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 6px;
+            height: 6px;
+            background: ${theme.terminal};
+            box-shadow: 0 0 8px ${theme.terminal};
+        }
+        
+        .lc-srs-toast-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .lc-srs-toast-icon {
+            font-size: 16px;
+            color: ${theme.terminal} !important;
+            filter: drop-shadow(0 0 4px ${theme.terminal});
+        }
+        
+        .lc-srs-toast-title {
+            font-weight: 700;
+            font-size: 13px;
+            color: ${theme.terminal} !important;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            text-shadow: 0 0 10px ${theme.textShadow};
+        }
+        
+        .lc-srs-toast-problem {
+            font-size: 14px;
+            color: #ffffff !important;
+            margin-bottom: 10px;
+            padding-left: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 300px;
+        }
+        
+        .lc-srs-toast-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: ${theme.electric} !important;
+            letter-spacing: 0.5px;
+            border-top: 1px dashed ${theme.electricBorderDash};
+            padding-top: 10px;
+            margin-top: 4px;
+        }
+        
+        .lc-srs-toast-label {
+            opacity: 0.7;
+        }
+        
+        .lc-srs-toast-date {
+            font-weight: 700;
+            color: ${theme.electric} !important;
+            text-shadow: 0 0 8px ${theme.electricShadow};
+        }
+    `;
+    document.head.appendChild(style);
 
     const dateStr = new Date(nextDate).toLocaleDateString();
 
     // Create a new HTML element for the toast
     const toast = document.createElement('div');
-    toast.className = 'lc-srs-toast'; // Class usage explained in CSS file
+    toast.className = 'lc-srs-toast';
     toast.innerHTML = `
-    <div class="lc-srs-toast-content">
-      <strong>✅ ${title} Captured!</strong>
-      <span>Next review: ${dateStr}</span>
-    </div>
-  `;
+        <div class="lc-srs-toast-content">
+            <div class="lc-srs-toast-header">
+                <span class="lc-srs-toast-icon">✓</span>
+                <span class="lc-srs-toast-title">Vector Captured</span>
+            </div>
+            <div class="lc-srs-toast-problem">${title}</div>
+            <div class="lc-srs-toast-meta">
+                <span class="lc-srs-toast-label">NEXT_REVIEW:</span>
+                <span class="lc-srs-toast-date">${dateStr}</span>
+            </div>
+        </div>
+    `;
 
     // Add it to the webpage body
     document.body.appendChild(toast);
