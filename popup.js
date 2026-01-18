@@ -238,8 +238,9 @@ async function updateDashboard() {
     // Sort All Problems: Sort exactly like dueProblems (Ascending Review Date)
     problems.sort((a, b) => new Date(a.nextReviewDate) - new Date(b.nextReviewDate));
 
-    // Update stats (Streak display requires history parsing, for now just show count or mock)
-    // document.getElementById('streak-display').innerText = `STREAK: ${calculateStreak(problems)}`
+    // Update stats
+    const streakEl = document.getElementById('streak-display');
+    if (streakEl) streakEl.innerText = `STREAK: ${calculateStreak(problems)}`;
 
     // Initial Render
     // 'dashboard' view = Due Problems
@@ -696,4 +697,58 @@ async function updateProblemSRS(slug, ease) {
     await chrome.storage.local.set({ problems });
     // Re-render the dashboard to remove the item from the "Due" list
     await updateDashboard();
+}
+
+/**
+ * Calculate Streak
+ * 
+ * Logic:
+ * - Collect all unique dates from history (converted to Local YYYY-MM-DD)
+ * - Start from "Today" (getCurrentDate())
+ * - If Today is present, add to streak, move to Yesterday
+ * - If Today is MISSING, don't break yet (grace period), just move to Yesterday
+ * - Continue backwards until a date is missing
+ */
+function calculateStreak(problems) {
+    const activeDates = new Set();
+
+    problems.forEach(p => {
+        if (!p.history) return;
+        p.history.forEach(h => {
+            // Convert stored ISO string back to Local Date for consistency
+            const dateObj = new Date(h.date);
+            const dateStr = dateObj.getFullYear() + '-' +
+                (dateObj.getMonth() + 1).toString().padStart(2, '0') + '-' +
+                dateObj.getDate().toString().padStart(2, '0');
+            activeDates.add(dateStr);
+        });
+    });
+
+    let streak = 0;
+    let checkDate = getCurrentDate();
+
+    // Check backwards for up to 10 years (safety limit)
+    for (let i = 0; i < 3650; i++) {
+        const checkStr = checkDate.getFullYear() + '-' +
+            (checkDate.getMonth() + 1).toString().padStart(2, '0') + '-' +
+            checkDate.getDate().toString().padStart(2, '0');
+
+        if (activeDates.has(checkStr)) {
+            streak++;
+            // Move back 1 day
+            checkDate.setDate(checkDate.getDate() - 1);
+        } else {
+            // Grace Period: If we are checking "Today" (i===0) and it's missing, 
+            // we assume the user just hasn't started YET. This doesn't break the streak.
+            // We just check yesterday.
+            if (i === 0) {
+                checkDate.setDate(checkDate.getDate() - 1);
+                continue;
+            } else {
+                break; // Streak broken
+            }
+        }
+    }
+
+    return streak;
 }
