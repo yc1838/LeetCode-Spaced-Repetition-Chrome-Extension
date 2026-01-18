@@ -47,21 +47,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     try {
         // Check if the message action is "scanPage"
         if (request.action === "scanPage") {
-            console.log("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Manual scan requested.");
+            const currentSlug = getCurrentProblemSlug();
+            console.log(`[LeetCode EasyRepeat] [LEETCODE-DEBUG] Manual scan requested for ${currentSlug}.`);
 
-            /**
-             * ASYNC MESSAGE HANDLING:
-             * Since checkForAcceptedStateAsync() is async (returns a Promise),
-             * we need to return `true` from this listener to tell Chrome:
-             * "Don't close the message channel yet, I'll send a response later!"
-             */
-            checkForAcceptedStateAsync()
+            if (!currentSlug) {
+                sendResponse({ success: false, error: "Could not determine problem slug." });
+                return false;
+            }
+
+            checkLatestSubmissionViaApi(currentSlug)
                 .then(result => {
-                    console.log("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Scan result:", result);
+                    console.log("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Manual scan result:", result);
                     sendResponse(result);
                 })
                 .catch(err => {
-                    console.error("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Scan failed:", err);
+                    console.error("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Manual scan failed:", err);
                     sendResponse({ success: false, error: err.message });
                 });
             return true; // CRITICAL: Required for async sendResponse
@@ -569,109 +569,38 @@ function extractProblemDetails() {
 }
 
 /**
- * Async version of the "Accepted" detection - returns detailed response for popup.
+ * Check the latest submission via API for the manual "Scan Now" feature.
  * 
- * This is used when the user clicks "Scan Now" in the popup.
- * We return an object describing what we found (for user feedback).
+ * @param {string} slug - The problem slug (e.g. "two-sum")
+ * @returns {Promise<Object>} The result object for the popup
  */
-async function checkForAcceptedStateAsync() {
-    /**
-     * COLOR DETECTION HELPER:
-     * LeetCode shows "Accepted" in green. We need to check if a computed
-     * CSS color is "greenish" to confirm we found the right element.
-     * 
-     * REGEX FOR RGB COLOR:
-     * /rgb\((\d+),\s*(\d+),\s*(\d+)\)/
-     *   rgb\(     - Matches "rgb(" (parenthesis is escaped with \)
-     *   (\d+)     - Capture group: one or more digits (the red value)
-     *   ,\s*      - Comma followed by optional whitespace
-     *   (\d+)     - Capture group: digits (green value)
-     *   ,\s*      - Comma + optional whitespace
-     *   (\d+)     - Capture group: digits (blue value)
-     *   \)        - Closing parenthesis
-     * 
-     * For "rgb(44, 187, 93)":
-     *   match[0] = "rgb(44, 187, 93)" (full match)
-     *   match[1] = "44" (R)
-     *   match[2] = "187" (G)
-     *   match[3] = "93" (B)
-     * 
-     * @param {string} color - A CSS color string like "rgb(44, 187, 93)"
-     * @returns {boolean} True if the color looks "green"
-     */
-    const isGreen = (color) => {
-        if (!color) return false;
-        const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-        if (match) {
-            /**
-             * ARRAY DESTRUCTURING:
-             * const [_, r, g, b] = match.map(Number);
-             * 
-             * match.map(Number) converts string matches to numbers:
-             *   ["rgb(44, 187, 93)", "44", "187", "93"] → [NaN, 44, 187, 93]
-             *   (The first element can't be parsed as a number)
-             * 
-             * Destructuring [_, r, g, b] assigns:
-             *   _ = NaN (we ignore this with underscore convention)
-             *   r = 44 (red)
-             *   g = 187 (green)
-             *   b = 93 (blue)
-             */
-            const [_, r, g, b] = match.map(Number);
-            // Color is "green" if: green channel > 100 AND significantly larger than red
-            return g > 100 && g > r * 1.5;
+async function checkLatestSubmissionViaApi(slug) {
+    try {
+        // 1. Get recent submissions
+        const response = await fetch(`/api/submissions/${slug}/?offset=0&limit=1`);
+        if (!response.ok) throw new Error("API request failed");
+
+        const data = await response.json();
+        const submissions = data.submission_list || data.submissions_dump;
+        const latestInfo = submissions && submissions[0];
+
+        if (!latestInfo) {
+            return { success: false, error: "No submissions found." };
         }
-        return false;
-    };
 
-    const specificSelectors = [
-        '[data-e2e-locator="submission-result-accepted"]',
-        '.text-green-s',
-        '.text-success',
-        '[class*="text-green"]'
-    ];
-
-    let foundNode = null;
-
-    for (const selector of specificSelectors) {
-        const elements = document.querySelectorAll(selector);
-        for (const el of elements) {
-            if (el.innerText.includes('Accepted')) {
-                foundNode = el;
-                break;
-            }
+        // 2. Check if it is Accepted
+        if (latestInfo.status_display === "Accepted") {
+            const details = extractProblemDetails();
+            const result = await saveSubmission(details.title, details.slug, details.difficulty, 'manual_api_scan');
+            return result || { success: true };
         }
-        if (foundNode) break;
-    }
 
-    if (!foundNode) {
-        const allSpans = document.getElementsByTagName('span');
-        for (const span of allSpans) {
-            if (span.innerText === 'Accepted') {
-                const style = getComputedStyle(span);
-                if (isGreen(style.color)) {
-                    foundNode = span;
-                    break;
-                }
-                const parentStyle = getComputedStyle(span.parentElement);
-                if (isGreen(parentStyle.color)) {
-                    foundNode = span;
-                    break;
-                }
-            }
-        }
-    }
+        return { success: false, error: `Latest submission is ${latestInfo.status_display}`, status: latestInfo.status_display };
 
-    if (foundNode) {
-        // [MODIFIED] Legacy freshness check removed.
-        // For manual scan, if we find "Accepted", we assume the user verified it is the correct submission.
-        console.log("[LeetCode EasyRepeat] Found 'Accepted' via async scan. Proceeding to save.");
-        const details = extractProblemDetails();
-        const result = await saveSubmission(details.title, details.slug, details.difficulty, details.difficultySource);
-        return result || { success: true };
+    } catch (e) {
+        console.error("[LeetCode EasyRepeat] API check failed:", e);
+        return { success: false, error: e.message };
     }
-
-    return { success: false }; // Nothing found
 }
 
 /**
@@ -769,14 +698,17 @@ async function pollSubmissionResult(slug, clickTime, title, difficulty) {
                 const data = await response.json();
 
                 // Debugging: Check structure
-                if (!data || !data.submission_list) {
-                    console.warn("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Unexpected API response format:", JSON.stringify(data).substring(0, 200));
+                const submissions = data.submission_list || data.submissions_dump;
+
+                // Debugging: Check structure
+                if (!submissions) {
+                    console.warn("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Unexpected API response format (missing list):", JSON.stringify(data).substring(0, 200));
                     return null; // Retry
                 }
 
                 // Look for a submission that happened AFTER our click (with 5s buffer for clock skew)
                 // The API timestamp is in seconds.
-                const match = data.submission_list.find(sub =>
+                const match = submissions.find(sub =>
                     sub.timestamp >= (clickTime - 5) &&
                     sub.status_display !== "Internal Error" // Ignore failed system errors
                 );
@@ -854,142 +786,7 @@ async function checkSubmissionStatus(submissionId, title, slug, difficulty) {
 // Export removed from here, consolidated at the end of file
 
 
-// The Core Check Function: "Did the user pass?" (Sync version for MutationObserver)
-function checkForAcceptedState() {
-    // 1. Look for the big "Accepted" text.
-    // We try to find ANY element that contains "Accepted" and looks green.
-    // This is more robust than relying on specific class names which change often.
 
-    // Helper to check if a color is "green-ish"
-    // rgb(44, 187, 93) or rgb(45, 181, 93) refer to standard LeetCode success greens.
-    const isGreen = (color) => {
-        if (!color) return false;
-        // Parse rgb(r, g, b)
-        const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-        if (match) {
-            const [_, r, g, b] = match.map(Number);
-            // Green is dominant and significantly larger than Red
-            return g > 100 && g > r * 1.5;
-        }
-        return false;
-    };
-
-    // Candidate elements: 
-    // 1. Specific data attributes (most reliable if present)
-    // 2. Classes with 'green' in them
-    // 3. Any element with text "Accepted" (expensive, so we scope it if possible)
-
-    // Strategy A: Specific Selectors
-    const specificSelectors = [
-        '[data-e2e-locator="submission-result-accepted"]',
-        '.text-green-s',
-        '.text-success',
-        '[class*="text-green"]' // Catch-all for Tailwind-style green classes
-    ];
-
-    let foundNode = null;
-
-    for (const selector of specificSelectors) {
-        const elements = document.querySelectorAll(selector);
-        for (const el of elements) {
-            if (el.innerText.includes('Accepted')) {
-                foundNode = el;
-                break;
-            }
-        }
-        if (foundNode) break;
-    }
-
-    // Strategy B: Deep Search for exact "Accepted" text node with green style
-    // This handles cases where the text is in a plain <span> inside a styled parent.
-    if (!foundNode) {
-        const allSpans = document.getElementsByTagName('span');
-        for (const span of allSpans) {
-            if (span.innerText === 'Accepted') {
-                const style = getComputedStyle(span);
-                if (isGreen(style.color)) {
-                    foundNode = span;
-                    break;
-                }
-                // Check parent's color if span is transparent/inherited
-                const parentStyle = getComputedStyle(span.parentElement);
-                if (isGreen(parentStyle.color)) {
-                    foundNode = span;
-                    break;
-                }
-            }
-        }
-    }
-
-    // Validate result
-    if (foundNode) {
-        // [MODIFIED] Legacy freshness check removed.
-        // We rely primarily on the API polling (monitorSubmissionClicks) for freshness.
-        // But if MutationObserver finds "Accepted" (backup method), we save it too.
-        console.log("[LeetCode EasyRepeat] Found 'Accepted' state via passive observer.");
-        const details = extractProblemDetails();
-        saveSubmission(details.title, details.slug, details.difficulty, details.difficultySource);
-        return true;
-    }
-
-
-    return false; // Nothing found
-}
-
-/**
- * ============================================================================
- * DETECTION STRATEGY 1: MutationObserver (Passive Detection)
- * ============================================================================
- * 
- * WHAT IS MutationObserver?
- * MutationObserver is a browser API that lets you watch for changes to the DOM.
- * When elements are added, removed, or modified, your callback function runs.
- * 
- * WHY USE IT?
- * LeetCode dynamically updates the page when submission results come in.
- * We want to detect these updates and check if "Accepted" appeared.
- * 
- * ALTERNATIVE APPROACHES (less reliable):
- * - Polling (setInterval) - wastes CPU, might miss quick changes
- * - Event listeners - only work for specific events, not DOM changes
- * 
- * The callback receives an array of MutationRecord objects, but we don't
- * analyze them here - we just use it as a trigger to run our check.
- */
-const observer = new MutationObserver((mutations) => {
-    /**
-     * DEBOUNCING:
-     * When LeetCode updates the page, many mutations happen rapidly.
-     * Without debouncing, checkForAcceptedState() might run 50+ times.
-     * 
-     * HOW IT WORKS:
-     * 1. Mutation happens → set a 300ms timer to run the check
-     * 2. Another mutation happens within 300ms → cancel old timer, set new one
-     * 3. Repeat until mutations stop for 300ms
-     * 4. Finally run the check once
-     * 
-     * USING WINDOW FOR STATE:
-     * We store the timeout ID on `window._srsObsTimeout` so it persists
-     * between calls and can be cleared on the next mutation.
-     */
-    if (window._srsObsTimeout) clearTimeout(window._srsObsTimeout);
-    window._srsObsTimeout = setTimeout(() => {
-        checkForAcceptedState();
-    }, 300);
-});
-
-/**
- * STARTING THE OBSERVER:
- * 
- * observer.observe(target, options)
- *   - target: Which DOM node to watch (document.body = entire page)
- *   - options: What types of changes to observe:
- *     - childList: true - Watch for added/removed child elements
- *     - subtree: true - Also watch all descendants (not just direct children)
- *     - attributes: true (not used) - Watch for attribute changes
- *     - characterData: true (not used) - Watch for text content changes
- */
-observer.observe(document.body, { childList: true, subtree: true });
 
 
 // [Legacy Click Listener Removed]
@@ -1008,8 +805,7 @@ observer.observe(document.body, { childList: true, subtree: true });
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         saveSubmission,
-        checkForAcceptedState,
-        checkForAcceptedStateAsync,
+        checkLatestSubmissionViaApi,
         extractProblemDetails,
         pollSubmissionResult,       // New
         checkSubmissionStatus,      // New
