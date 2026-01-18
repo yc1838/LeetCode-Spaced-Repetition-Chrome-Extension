@@ -41,7 +41,7 @@ describe('Storage Logic', () => {
     });
 
     test('should allow difficulty update if difficulty changes on same day', async () => {
-        const today = new Date().toISOString().split('T')[0];
+        const today = new Date().toISOString();
         const problemKey = 'two-sum';
 
         // ARRANGE: Pre-populate storage with an "incorrect" Medium entry solved today
@@ -78,7 +78,7 @@ describe('Storage Logic', () => {
     });
 
     test('should still skip exact duplicate (same day, same difficulty)', async () => {
-        const today = new Date().toISOString().split('T')[0];
+        const today = new Date().toISOString();
         const problemKey = 'two-sum';
 
         const existingData = {

@@ -33,11 +33,24 @@ global.document = {
     referrer: '',
     head: { appendChild: jest.fn() },
     body: { appendChild: jest.fn() },
-    createElement: jest.fn().mockReturnValue({
-        style: {},
-        classList: { add: jest.fn(), remove: jest.fn() },
-        remove: jest.fn(),
-        setAttribute: jest.fn()
+    createElement: jest.fn().mockImplementation((tag) => {
+        return {
+            tagName: tag.toUpperCase(),
+            style: {},
+            classList: { add: jest.fn(), remove: jest.fn() },
+            remove: jest.fn(),
+            setAttribute: jest.fn(),
+            appendChild: jest.fn(),
+            // Auto-click buttons to bypass modal in these tests
+            addEventListener: jest.fn((evt, cb) => {
+                if (tag === 'button' && evt === 'click') {
+                    // Execute immediately to simulate instant user interaction
+                    cb();
+                }
+            }),
+            // Legacy support if specific tests use it
+            click: jest.fn()
+        };
     })
 };
 

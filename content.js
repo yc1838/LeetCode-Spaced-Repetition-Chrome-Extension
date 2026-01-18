@@ -96,7 +96,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  * @param {string} problemSlug - URL identifier like "two-sum"
  * @param {string} difficulty - "Easy", "Medium", or "Hard"
  */
-async function saveSubmission(problemTitle, problemSlug, difficulty, difficultySource = 'unknown') {
+async function saveSubmission(problemTitle, problemSlug, difficulty, difficultySource = 'unknown', rating = null) {
     /**
      * OPTIONAL CHAINING (?.) - ES2020 FEATURE
      * 
@@ -137,16 +137,45 @@ async function saveSubmission(problemTitle, problemSlug, difficulty, difficultyS
 
     const problems = result.problems;
 
-    // Get today's date in YYYY-MM-DD format (so we can compare dates easily)
-    const today = new Date().toISOString().split('T')[0];
+    // Capture current time as Full ISO String (e.g. "2026-01-18T17:30:00.000Z")
+    // This avoids "UTC Date vs Local Date" ambiguity that caused duplicate blocks.
+    const now = new Date();
+    const nowISO = now.toISOString();
 
-    // The "slug" is the unique part of the URL for the problem (e.g., "two-sum")
     const problemKey = problemSlug;
 
+    // Helper: Check if two dates are the same LOCALLY (ignoring time)
+    // This ensures "Today" means "My Waking Day", not "UTC Day".
+    const isSameLocalDay = (d1, d2) => {
+        return d1.getFullYear() === d2.getFullYear() &&
+            d1.getMonth() === d2.getMonth() &&
+            d1.getDate() === d2.getDate();
+    };
+
     // Debounce: Check if we ALREADY tracked this problem TODAY.
-    // If we solve the same problem 5 times in a row today, we only want to update the SRS schedule ONCE.
-    // BUT: If the difficulty stored is wrong (mismatch), we should update it!
-    if (problems[problemKey] && problems[problemKey].lastSolved === today) {
+    let isDuplicateDay = false;
+
+    if (problems[problemKey] && problems[problemKey].lastSolved) {
+        const lastSolvedVal = problems[problemKey].lastSolved;
+        let lastSolvedDate;
+
+        // Handle Legacy (YYYY-MM-DD) vs New (ISO) formats
+        if (lastSolvedVal.length === 10) {
+            // Legacy: "2026-01-18" (UTC)
+            // Treated as UTC Midnight. If user is in US (UTC-5), this is 7pm PREVIOUS DAY.
+            // If they are solving it "Today" (Local), likely it won't match, allowing a fix-up review.
+            lastSolvedDate = new Date(lastSolvedVal);
+        } else {
+            // ISO String
+            lastSolvedDate = new Date(lastSolvedVal);
+        }
+
+        if (isSameLocalDay(lastSolvedDate, now)) {
+            isDuplicateDay = true;
+        }
+    }
+
+    if (isDuplicateDay) {
         if (problems[problemKey].difficulty === difficulty) {
             console.log("[LeetCode EasyRepeat] Already logged today. Skipping storage update to prevent dups.");
             return { duplicate: true, problemTitle: problemTitle };
@@ -184,20 +213,73 @@ async function saveSubmission(problemTitle, problemSlug, difficulty, difficultyS
         }
     }
 
-    // Calculate the new schedule based on current stats
-    const nextStep = calculateNextReview(currentProblem.interval, currentProblem.repetition, currentProblem.easeFactor);
+    // Use FSRS logic if rating is provided, otherwise fall back to SM-2
+    let nextStep;
+
+    // Check if fsrs is available (it should be since we added it to manifest)
+    if (rating && typeof fsrs !== 'undefined') {
+        console.log(`[LeetCode EasyRepeat] Using FSRS algorithm with rating: ${rating}`);
+
+        // Prepare card object for FSRS
+        // We need to map our storage format to what FSRS expects or keep them separate.
+        // FSRS logic expects: { stability, difficulty, state, last_review }
+        const card = {
+            state: currentProblem.fsrs_state || (currentProblem.repetition > 0 ? 'Review' : 'New'),
+            stability: currentProblem.fsrs_stability || 0,
+            difficulty: currentProblem.fsrs_difficulty || 0,
+            last_review: currentProblem.fsrs_last_review ? new Date(currentProblem.fsrs_last_review) : null
+        };
+
+        // Calculate elapsed days since last review
+        let elapsed_days = 0;
+        if (card.last_review) {
+            const diffTime = Math.abs(now - card.last_review);
+            elapsed_days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+
+        const fsrsResult = fsrs.calculateFSRS(card, rating, elapsed_days);
+
+        nextStep = {
+            nextInterval: fsrsResult.nextInterval,
+            nextRepetition: currentProblem.repetition + 1,
+            nextEaseFactor: currentProblem.easeFactor, // Legacy field, keep it
+            nextReviewDate: (() => {
+                const date = new Date(now);
+                date.setDate(date.getDate() + fsrsResult.nextInterval);
+                return date.toISOString();
+            })(),
+
+            // FSRS specific fields to save
+            fsrs_stability: fsrsResult.newStability,
+            fsrs_difficulty: fsrsResult.newDifficulty,
+            fsrs_state: fsrsResult.nextState,
+            fsrs_last_review: nowISO
+        };
+
+    } else {
+        // Legacy SM-2 Path (or if user closed modal without rating?)
+        console.log(`[LeetCode EasyRepeat] Using Legacy SM-2 algorithm.`);
+        nextStep = calculateNextReview(currentProblem.interval, currentProblem.repetition, currentProblem.easeFactor);
+    }
 
     // Update the problem data with the new values
     problems[problemKey] = {
-        ...currentProblem, // Keep existing fields (like title, slug)
-        difficulty: difficulty, // ⬅️ ALWAYS use freshly detected difficulty
-        lastSolved: today, // Mark today as the last solved date
+        ...currentProblem, // Keep existing fields
+        difficulty: difficulty,
+        lastSolved: nowISO,
         interval: nextStep.nextInterval,
         repetition: nextStep.nextRepetition,
         easeFactor: nextStep.nextEaseFactor,
         nextReviewDate: nextStep.nextReviewDate,
-        // Add specific history entry to the array
-        history: [...currentProblem.history, { date: today, status: 'Accepted' }]
+
+        // FSRS fields (only if they exist in nextStep)
+        fsrs_stability: nextStep.fsrs_stability !== undefined ? nextStep.fsrs_stability : currentProblem.fsrs_stability,
+        fsrs_difficulty: nextStep.fsrs_difficulty !== undefined ? nextStep.fsrs_difficulty : currentProblem.fsrs_difficulty,
+        fsrs_state: nextStep.fsrs_state !== undefined ? nextStep.fsrs_state : currentProblem.fsrs_state,
+        fsrs_last_review: nextStep.fsrs_last_review !== undefined ? nextStep.fsrs_last_review : currentProblem.fsrs_last_review,
+
+        // Add history
+        history: [...currentProblem.history, { date: nowISO, status: 'Accepted', rating: rating }]
     };
 
     // Save the ENTIRE updated 'problems' object back to storage.
@@ -569,6 +651,114 @@ function extractProblemDetails() {
 }
 
 /**
+ * Show a modal asking the user to rate the problem difficulty.
+ * Returns a Promise that resolves to the rating (1-4).
+ */
+function showRatingModal(title) {
+    return new Promise((resolve) => {
+        // Create backdrop
+        const backdrop = document.createElement('div');
+        backdrop.className = 'lc-srs-rating-backdrop';
+        backdrop.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); z-index: 1000000;
+            display: flex; justify-content: center; align-items: center;
+            backdrop-filter: blur(5px);
+        `;
+
+        // Create Modal content
+        const modal = document.createElement('div');
+        modal.className = 'lc-srs-rating-modal rating-modal'; // Added rating-modal for testing
+
+        // Basic Theme Logic (Simplified, could use TOAST_THEMES)
+        // Hardcoding a sleek look for now that should work with both themes
+        modal.style.cssText = `
+            background: #1a1a1a;
+            border: 2px solid #00FF41; /* Matrix Green Default */
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 0 30px rgba(0, 255, 65, 0.2);
+            font-family: 'JetBrains Mono', monospace;
+            text-align: center;
+            color: #fff;
+            max-width: 500px;
+            width: 90%;
+            animation: lc-srs-popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        `;
+
+        // Title
+        const heading = document.createElement('h3');
+        heading.innerText = "How was it?";
+        heading.style.cssText = "margin: 0 0 10px 0; font-size: 20px; color: #00FF41;";
+
+        const sub = document.createElement('p');
+        sub.innerText = title;
+        sub.style.cssText = "margin: 0 0 25px 0; opacity: 0.7; font-size: 14px;";
+
+        // Button Container
+        const btnContainer = document.createElement('div');
+        btnContainer.style.cssText = "display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;";
+
+        const ratings = [
+            { label: "Again", value: 1, color: "#FF3333", desc: "Forgot it" },
+            { label: "Hard", value: 2, color: "#FFAA00", desc: "Struggled" },
+            { label: "Good", value: 3, color: "#00CCFF", desc: "Recalled" },
+            { label: "Easy", value: 4, color: "#00FF41", desc: "Trivial" }
+        ];
+
+        ratings.forEach(r => {
+            const btn = document.createElement('button');
+            btn.className = `rating-btn-${r.label.toLowerCase()}`; // For testing
+            btn.innerHTML = `<div style='font-size:16px; font-weight:bold;'>${r.label}</div><div style='font-size:10px; opacity:0.8;'>${r.desc}</div>`;
+            btn.style.cssText = `
+                padding: 12px 20px;
+                border: 2px solid ${r.color};
+                background: rgba(0,0,0,0.3);
+                color: ${r.color};
+                border-radius: 8px;
+                cursor: pointer;
+                transition: all 0.2s;
+                font-family: inherit;
+                min-width: 90px;
+            `;
+
+            // Hover effect
+            btn.onmouseenter = () => {
+                btn.style.background = r.color;
+                btn.style.color = '#000';
+            };
+            btn.onmouseleave = () => {
+                btn.style.background = 'rgba(0,0,0,0.3)';
+                btn.style.color = r.color;
+            };
+
+            btn.addEventListener('click', () => {
+                backdrop.remove();
+                resolve(r.value);
+            });
+
+            btnContainer.appendChild(btn);
+        });
+
+        // Add Keyframe animation for popIn
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes lc-srs-popIn {
+                from { transform: scale(0.8); opacity: 0; }
+                to { transform: scale(1); opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+
+        modal.appendChild(heading);
+        modal.appendChild(sub);
+        modal.appendChild(btnContainer);
+        backdrop.appendChild(modal);
+        document.body.appendChild(backdrop);
+    });
+}
+
+/**
  * Check the latest submission via API for the manual "Scan Now" feature.
  * 
  * @param {string} slug - The problem slug (e.g. "two-sum")
@@ -591,7 +781,9 @@ async function checkLatestSubmissionViaApi(slug) {
         // 2. Check if it is Accepted
         if (latestInfo.status_display === "Accepted") {
             const details = extractProblemDetails();
-            const result = await saveSubmission(details.title, details.slug, details.difficulty, 'manual_api_scan');
+            // Prompt for rating manually too? Yes.
+            const rating = await showRatingModal(details.title);
+            const result = await saveSubmission(details.title, details.slug, details.difficulty, 'manual_api_scan', rating);
             return result || { success: true };
         }
 
@@ -760,8 +952,11 @@ async function checkSubmissionStatus(submissionId, title, slug, difficulty) {
                     console.log(`[LeetCode EasyRepeat] Submission ${submissionId} ACCEPTED!`);
 
                     // We can also get runtime/memory here if we want!
+
+                    const rating = await showRatingModal(title);
+
                     // saveSubmission handles storage
-                    await saveSubmission(title, slug, difficulty, 'api_poll');
+                    await saveSubmission(title, slug, difficulty, 'api_poll', rating);
                     return true;
                 } else {
                     console.log(`[LeetCode EasyRepeat] Submission ${submissionId} finished but NOT Accepted (${data.status_msg}).`);
@@ -808,6 +1003,8 @@ if (typeof module !== 'undefined' && module.exports) {
         checkLatestSubmissionViaApi,
         extractProblemDetails,
         pollSubmissionResult,       // New
+        // New UI function
+        showRatingModal,
         checkSubmissionStatus,      // New
         monitorSubmissionClicks     // New
     };

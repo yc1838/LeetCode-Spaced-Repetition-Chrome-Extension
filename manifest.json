@@ -20,6 +20,7 @@
             ],
             "js": [
                 "srs_logic.js",
+                "fsrs_logic.js",
                 "content.js"
             ],
             "css": [
