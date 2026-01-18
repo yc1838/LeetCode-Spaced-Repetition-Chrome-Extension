@@ -292,11 +292,14 @@ async function syncCurrentProblemDifficulty() {
 
 function updateClock() {
     const now = new Date();
+    const dateStr = now.getFullYear() + '-' +
+        (now.getMonth() + 1).toString().padStart(2, '0') + '-' +
+        now.getDate().toString().padStart(2, '0');
     const time = now.getHours().toString().padStart(2, '0') + ':' +
         now.getMinutes().toString().padStart(2, '0') + ':' +
         now.getSeconds().toString().padStart(2, '0');
     const el = document.getElementById('clock');
-    if (el) el.innerText = time;
+    if (el) el.innerText = `${dateStr} ${time}`;
 }
 
 function setupSidebar(dueProblems, allProblems) {
@@ -653,11 +656,18 @@ async function setupTestMode() {
 }
 
 function getCurrentDate() {
+    // In Test Mode, use the selected date at 23:59:59
     if (isTestMode && testDate) {
         const [year, month, day] = testDate.split('-').map(Number);
         return new Date(year, month - 1, day, 23, 59, 59);
     }
-    return new Date();
+
+    // In Normal Mode, ALSO use today at 23:59:59
+    // This ensures that any Card due "Today" (even if due at 10pm and it's 9am)
+    // shows up in the "Due" list. Standard SRS behavior: "Due" = "Due Today".
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+    return now;
 }
 
 // Function called when you click Hard/Med/Easy
