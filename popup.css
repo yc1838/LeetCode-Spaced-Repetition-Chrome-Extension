@@ -512,3 +512,54 @@ body::before {
     transform: scale(1.1);
     box-shadow: 0 0 8px var(--electric);
 }
+
+/* Notes Flashcard Style (Popup) */
+.notes-flashcard {
+    margin-top: 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px dashed var(--border-dim);
+    border-radius: 4px;
+    padding: 10px;
+    font-family: var(--font-data);
+    font-size: 0.7rem;
+    color: #e0e0e0;
+    position: relative;
+    overflow: hidden;
+}
+
+.notes-flashcard::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 2px;
+    height: 100%;
+    background: var(--terminal);
+    opacity: 0.5;
+}
+
+.notes-label {
+    color: var(--terminal);
+    font-size: 0.6rem;
+    margin-bottom: 4px;
+    opacity: 0.8;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.notes-content {
+    line-height: 1.4;
+    white-space: pre-wrap;
+    /* Preserve whitespace but wrap text */
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+/* Scrollbar for notes */
+.notes-content::-webkit-scrollbar {
+    width: 2px;
+}
+
+.notes-content::-webkit-scrollbar-thumb {
+    background: var(--border-dim);
+}

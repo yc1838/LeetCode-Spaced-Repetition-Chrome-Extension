@@ -73,6 +73,12 @@
                     ${ratingHtml}
                     <div class="mini-heatmap-label">PROJECTED_TIMELINE:</div>
                     <div class="heatmap-grid mini-heatmap" id="grid-${uniqueId}"></div>
+                    ${problem.notes ? `
+                        <div class="notes-flashcard">
+                            <div class="notes-label">USER_NOTES //</div>
+                            <div class="notes-content">${problem.notes.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>
+                        </div>
+                    ` : ''}
                 </div>
             `;
 
