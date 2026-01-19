@@ -141,6 +141,8 @@ function applyTheme(themeName) {
     root.style.setProperty('--cell-4', theme.cellColors[3]);
 
     // Some elements need direct style updates (can't use CSS variables everywhere)
+    root.style.setProperty('--hover-bg', theme.hoverBg);
+
     const statusBar = document.querySelector('.status-bar');
     if (statusBar) statusBar.style.background = theme.statusBg;
 

@@ -320,10 +320,10 @@ body::before {
 
 .vector-card:hover {
     border-color: var(--terminal);
-    background: rgba(255, 154, 86, 0.1);
+    background: var(--hover-bg);
     box-shadow:
-        0 0 15px rgba(255, 154, 86, 0.2),
-        0 0 30px rgba(209, 98, 164, 0.1);
+        0 0 15px var(--border-glow),
+        0 0 30px var(--border-dim);
 }
 
 .vector-card::before {
