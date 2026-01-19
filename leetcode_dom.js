@@ -114,10 +114,15 @@
         setInterval(updateDifficultyCache, 1000);
     }
 
+    function getDifficultyFromCache(slug) {
+        return difficultyCache[slug];
+    }
+
     return {
         getCurrentProblemSlug,
         updateDifficultyCache,
         extractProblemDetails,
-        startDifficultyTracking
+        startDifficultyTracking,
+        getDifficultyFromCache
     };
 }));

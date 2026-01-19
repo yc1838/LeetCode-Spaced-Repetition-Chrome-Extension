@@ -70,8 +70,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // Handle getDifficulty request from popup (for syncing stored data)
         if (request.action === "getDifficulty") {
             // Force refresh the cache first
-            updateDifficultyCache();
-            const difficulty = difficultyCache[getCurrentProblemSlug()] || 'Medium'; // fallback
+            if (typeof updateDifficultyCache === 'function') updateDifficultyCache();
+
+            let difficulty = 'Medium';
+            if (typeof getDifficultyFromCache === 'function') {
+                difficulty = getDifficultyFromCache(getCurrentProblemSlug()) || 'Medium';
+            }
+
             console.log(`[LeetCode EasyRepeat] [LEETCODE-DEBUG] getDifficulty requested, returning: ${difficulty}`);
             sendResponse({ difficulty: difficulty });
             return false; // Sync response - no need to keep channel open
@@ -148,3 +153,38 @@ if (typeof monitorSubmissionClicks === 'function') {
     global.monitorSubmissionClicks();
 }
 // API logic moved to leetcode_api.js
+
+/* --- Notes Feature Injection --- */
+// Run periodically to handle navigation (mounting/unmounting of React components)
+setInterval(insertNotesButton, 2000);
+
+/* --- Notes Feature Injection --- */
+function insertNotesButton() {
+    // 0. Safety Checks
+    if (typeof getCurrentProblemSlug !== 'function' || typeof createNotesButton !== 'function') {
+        return;
+    }
+
+    const slug = getCurrentProblemSlug();
+    if (!slug) return;
+
+    // 1. Duplication check
+    if (document.querySelector('.lc-notes-btn')) return;
+
+    // 2. Direct Injection (Floating UI)
+    console.log(`[LeetCode EasyRepeat] Injecting Floating Notes Button for ${slug}`);
+
+    const btn = createNotesButton(async () => {
+        if (typeof getNotes !== 'function' || typeof showNotesModal !== 'function') {
+            console.error("[LeetCode EasyRepeat] Modules not loaded fully.");
+            return;
+        }
+        const notes = await getNotes(slug);
+        const details = extractProblemDetails();
+        showNotesModal(details.title, notes, async (newContent) => {
+            await saveNotes(slug, newContent);
+        });
+    });
+
+    document.body.appendChild(btn);
+}

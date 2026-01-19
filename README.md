@@ -142,6 +142,26 @@ The extension implements a modified SM-2 spaced repetition algorithm:
 - Subsequent reviews: `interval × ease_factor`
 - Ease factor adjusts based on your difficulty ratings (1.3 - 2.5+)
 
+### Architecture
+
+```mermaid
+graph TD
+    User((User))
+    subgraph Browser Context
+        Popup[Popup UI]
+        Content[Content Script]
+    end
+    subgraph Storage Layer
+        CS[(Chrome Storage Local)]
+    end
+    
+    User -- Reads/Writes Notes --> Content
+    User -- Views SRS Status --> Popup
+    
+    Content -- Save Submission/Notes --> CS
+    Popup -- Read Due Problems --> CS
+```
+
 ### Storage
 Uses Chrome's `chrome.storage.local` API to persist:
 - Problem data (title, slug, difficulty, interval, repetition, ease factor)

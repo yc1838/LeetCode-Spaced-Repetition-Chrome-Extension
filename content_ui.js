@@ -213,6 +213,116 @@
 
     return {
         showCompletionToast,
-        showRatingModal
+        showRatingModal,
+        createNotesButton,
+        showNotesModal
     };
 }));
+
+/**
+ * Create the "Notes" button to inject into the page.
+ * @param {Function} onClick - Handler for click event
+ * @returns {HTMLElement} The button element
+ */
+function createNotesButton(onClick) {
+    const btn = document.createElement('button');
+    btn.className = 'lc-notes-btn';
+    btn.innerHTML = `
+            <svg viewBox="0 0 24 24">
+                <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+            </svg>
+            Notes
+        `;
+    btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+    };
+    return btn;
+}
+
+/**
+ * Show the Notes modal.
+ * @param {string} title - Problem title
+ * @param {string} initialContent - Existing notes
+ * @param {Function} onSave - Callback(newContent)
+ */
+function showNotesModal(title, initialContent, onSave) {
+    // Create elements
+    const backdrop = document.createElement('div');
+    backdrop.className = 'lc-notes-backdrop';
+
+    const modal = document.createElement('div');
+    modal.className = 'lc-notes-modal';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'lc-notes-header';
+    header.innerHTML = `
+            <div class="lc-notes-title">
+                <span>📝</span> ${title}
+            </div>
+            <button class="lc-notes-close">×</button>
+        `;
+
+    // Textarea
+    const textarea = document.createElement('textarea');
+    textarea.className = 'lc-notes-textarea';
+    textarea.placeholder = "Write your thoughts, approach, or key insights here...";
+    textarea.value = initialContent || '';
+    // Auto-focus logic
+    setTimeout(() => textarea.focus(), 100);
+
+    // Footer
+    const footer = document.createElement('div');
+    footer.className = 'lc-notes-footer';
+
+    const btnCancel = document.createElement('button');
+    btnCancel.className = 'lc-btn lc-btn-cancel';
+    btnCancel.innerText = 'CMD+ENTER to Save';
+
+    const btnSave = document.createElement('button');
+    btnSave.className = 'lc-btn lc-btn-save';
+    btnSave.innerText = 'SAVE NOTES';
+
+    // Assembly
+    footer.appendChild(btnCancel);
+    footer.appendChild(btnSave);
+
+    modal.appendChild(header);
+    modal.appendChild(textarea);
+    modal.appendChild(footer);
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+
+    // Logic
+    const close = () => {
+        // Animation out could go here
+        backdrop.remove();
+    };
+
+    const save = () => {
+        const content = textarea.value;
+        onSave(content);
+        close();
+    };
+
+    header.querySelector('.lc-notes-close').onclick = close;
+    btnCancel.onclick = close; // Or maybe cancel shouldn't save? Yes.
+    btnSave.onclick = save;
+
+    // Backdrop click close
+    backdrop.onclick = (e) => {
+        if (e.target === backdrop) close();
+    };
+
+    // Shortcuts
+    textarea.onkeydown = (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            save();
+        }
+        if (e.key === 'Escape') {
+            close();
+        }
+    };
+}

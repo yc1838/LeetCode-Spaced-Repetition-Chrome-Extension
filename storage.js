@@ -168,7 +168,48 @@
         return { success: true };
     }
 
+    /**
+     * Save notes for a specific problem.
+     * @param {string} slug 
+     * @param {string} notes 
+     */
+    async function saveNotes(slug, notes) {
+        if (!slug) return;
+        const result = await chrome.storage.local.get({ problems: {} });
+        const problems = result.problems;
+
+        if (!problems[slug]) {
+            // Create a hollow entry if note is saved before any submission
+            problems[slug] = {
+                slug: slug,
+                title: slug, // Fallback title
+                difficulty: 'Medium', // Fallback difficulty
+                notes: notes,
+                history: []
+            };
+        } else {
+            problems[slug].notes = notes;
+        }
+
+        await chrome.storage.local.set({ problems });
+        console.log(`[LeetCode EasyRepeat] Notes saved for ${slug}`);
+        return { success: true };
+    }
+
+    /**
+     * Get notes for a specific problem.
+     * @param {string} slug 
+     * @returns {string} The notes content
+     */
+    async function getNotes(slug) {
+        if (!slug) return '';
+        const result = await chrome.storage.local.get({ problems: {} });
+        return (result.problems[slug] && result.problems[slug].notes) || '';
+    }
+
     return {
-        saveSubmission
+        saveSubmission,
+        saveNotes,
+        getNotes
     };
 }));
