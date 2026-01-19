@@ -1,4 +1,4 @@
-const fsrs = require('../fsrs_logic');
+const fsrs = require('../src/algorithms/fsrs_logic');
 
 describe('FSRS v4.5 Algorithm Standard Behavior', () => {
 

@@ -205,11 +205,58 @@
         });
     }
 
+    /**
+     * Inject the Notes button, handling SPA navigation updates.
+     */
+    function insertNotesButton(dependencies) {
+        const { getCurrentProblemSlug, getNotes, saveNotes, extractProblemDetails } = dependencies || {};
+
+        // 0. Safety Checks
+        if (typeof getCurrentProblemSlug !== 'function' || typeof createNotesButton !== 'function') {
+            return;
+        }
+
+        const slug = getCurrentProblemSlug();
+        if (!slug) return;
+
+        // 1. Duplication check with Slug Verification
+        const existingBtn = document.querySelector('.lc-notes-btn');
+        if (existingBtn) {
+            if (existingBtn.dataset.slug === slug) {
+                return; // Already exists for current problem
+            } else {
+                // Slug changed (user navigated)! Remove old button.
+                console.log(`[LeetCode EasyRepeat] Slug changed (${existingBtn.dataset.slug} -> ${slug}). recreating button.`);
+                existingBtn.remove();
+            }
+        }
+
+        // 2. Direct Injection (Floating UI)
+        console.log(`[LeetCode EasyRepeat] Injecting Floating Notes Button for ${slug}`);
+
+        const btn = createNotesButton(slug, async () => {
+            // Dependencies check inside click handler
+            if (!getNotes || !saveNotes || !extractProblemDetails || !showNotesModal) {
+                console.error("[LeetCode EasyRepeat] Modules not loaded fully.");
+                return;
+            }
+
+            const notes = await getNotes(slug);
+            const details = extractProblemDetails();
+            showNotesModal(details.title, notes, async (newContent) => {
+                await saveNotes(slug, newContent);
+            });
+        });
+
+        document.body.appendChild(btn);
+    }
+
     return {
         showCompletionToast,
         showRatingModal,
         createNotesButton,
-        showNotesModal
+        showNotesModal,
+        insertNotesButton
     };
 }));
 
@@ -218,9 +265,10 @@
  * @param {Function} onClick - Handler for click event
  * @returns {HTMLElement} The button element
  */
-function createNotesButton(onClick) {
+function createNotesButton(slug, onClick) {
     const btn = document.createElement('button');
     btn.className = 'lc-notes-btn';
+    btn.dataset.slug = slug;
     btn.innerHTML = `
             <svg viewBox="0 0 24 24">
                 <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>

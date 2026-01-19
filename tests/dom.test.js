@@ -180,7 +180,7 @@ describe('DOM Extraction Logic', () => {
          * We require the module AFTER resetModules() to get a fresh copy.
          * This ensures cachedDifficulty is null at the start of each test.
          */
-        const leetcodeDom = require('../leetcode_dom.js');
+        const leetcodeDom = require('../src/content/leetcode_dom.js');
         extractProblemDetails = leetcodeDom.extractProblemDetails;
     });
 
@@ -294,7 +294,7 @@ describe('DOM Extraction Logic', () => {
      */
     test('extractProblemDetails should define default difficulty for unknown problem', () => {
         // Setup global dep
-        const { TOAST_THEMES } = require('../config.js');
+        const { TOAST_THEMES } = require('../src/shared/config.js');
         global.TOAST_THEMES = TOAST_THEMES;
         // No difficulty element added
         const details = extractProblemDetails();

@@ -60,16 +60,15 @@
                     <span>#${problem.slug}</span>
                     <span>RETENTION: ${Math.min(100, Math.round(problem.easeFactor * 40))}%</span>
                 </div>
-                
-                <div class="title-row">
-                    <div class="vector-title">${problem.title.toUpperCase()}</div>
-                    <button class="del-btn" data-slug="${problem.slug}" title="Delete Record">DEL</button>
-                </div>
+                <div class="vector-title">${problem.title.toUpperCase()}</div>
                 <div class="vector-stats">
                     <span class="stat-tag ${diffStyle}">${(problem.difficulty || 'MEDIUM').toUpperCase()}</span>
                     <span class="stat-tag">INT: ${interval}D</span>
                     <span class="stat-tag">DUE: ${nextReview}</span>
-                    <button class="go-btn" data-slug="${problem.slug}">GO >></button>
+                    <div class="action-group" style="margin-left: auto; display: flex; flex-direction: column; gap: 4px; align-items: flex-end;">
+                        <button class="del-btn" data-slug="${problem.slug}">DEL</button>
+                        <button class="go-btn" data-slug="${problem.slug}">GO</button>
+                    </div>
                 </div>
                 <button class="tactical-btn">INITIALIZE_SEQUENCE</button>
                 

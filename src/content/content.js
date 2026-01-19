@@ -156,35 +156,17 @@ if (typeof monitorSubmissionClicks === 'function') {
 
 /* --- Notes Feature Injection --- */
 // Run periodically to handle navigation (mounting/unmounting of React components)
-setInterval(insertNotesButton, 2000);
-
 /* --- Notes Feature Injection --- */
-function insertNotesButton() {
-    // 0. Safety Checks
-    if (typeof getCurrentProblemSlug !== 'function' || typeof createNotesButton !== 'function') {
-        return;
+// Run periodically to handle navigation (mounting/unmounting of React components)
+setInterval(() => {
+    if (typeof insertNotesButton === 'function') {
+        // Collect dependencies from global scope (loaded by manifest)
+        const deps = {
+            getCurrentProblemSlug: (typeof getCurrentProblemSlug !== 'undefined') ? getCurrentProblemSlug : null,
+            getNotes: (typeof getNotes !== 'undefined') ? getNotes : null,
+            saveNotes: (typeof saveNotes !== 'undefined') ? saveNotes : null,
+            extractProblemDetails: (typeof extractProblemDetails !== 'undefined') ? extractProblemDetails : null
+        };
+        insertNotesButton(deps);
     }
-
-    const slug = getCurrentProblemSlug();
-    if (!slug) return;
-
-    // 1. Duplication check
-    if (document.querySelector('.lc-notes-btn')) return;
-
-    // 2. Direct Injection (Floating UI)
-    console.log(`[LeetCode EasyRepeat] Injecting Floating Notes Button for ${slug}`);
-
-    const btn = createNotesButton(async () => {
-        if (typeof getNotes !== 'function' || typeof showNotesModal !== 'function') {
-            console.error("[LeetCode EasyRepeat] Modules not loaded fully.");
-            return;
-        }
-        const notes = await getNotes(slug);
-        const details = extractProblemDetails();
-        showNotesModal(details.title, notes, async (newContent) => {
-            await saveNotes(slug, newContent);
-        });
-    });
-
-    document.body.appendChild(btn);
-}
+}, 2000);

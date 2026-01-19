@@ -1,4 +1,4 @@
-const { projectSchedule, calculateNextReview } = require('../srs_logic.js');
+const { projectSchedule, calculateNextReview } = require('../src/algorithms/srs_logic.js');
 
 describe('SRS Logic Resilience', () => {
     test('calculateNextReview should never return interval < 1 for repetitions > 1', () => {

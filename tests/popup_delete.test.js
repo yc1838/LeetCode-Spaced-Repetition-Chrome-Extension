@@ -43,7 +43,7 @@ describe('Popup Delete Button', () => {
 
         // Load modules
         jest.resetModules();
-        popupUI = require('../popup_ui.js');
+        popupUI = require('../src/popup/popup_ui.js');
 
         // We need to mock the updateDashboard function from popup.js 
         // because deleteProblem calls it.

@@ -33,14 +33,14 @@ describe('Storage Logic', () => {
         global.chrome.storage.local.get.mockResolvedValue({ problems: {} });
 
         // Mock srs_logic and config
-        global.calculateNextReview = require('../srs_logic.js').calculateNextReview;
-        const { TOAST_THEMES } = require('../config.js');
+        global.calculateNextReview = require('../src/algorithms/srs_logic.js').calculateNextReview;
+        const { TOAST_THEMES } = require('../src/shared/config.js');
         global.TOAST_THEMES = TOAST_THEMES;
 
         // Mock global showCompletionToast from content_ui
         global.showCompletionToast = jest.fn();
 
-        const storageScript = require('../storage.js');
+        const storageScript = require('../src/shared/storage.js');
         saveSubmission = storageScript.saveSubmission;
     });
 

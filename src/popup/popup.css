@@ -342,33 +342,17 @@ body::before {
     margin-bottom: 6px;
     display: flex;
     justify-content: space-between;
-    padding-right: 0;
-    /* Reset */
-}
-
-/* TITLE ROW Wrapper */
-.title-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 10px;
 }
 
 .vector-title {
     font-weight: 700;
     font-size: 0.85rem;
-    margin-bottom: 0;
-    /* Handled by row */
+    margin-bottom: 10px;
     color: #fff;
     letter-spacing: 0.5px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    flex: 1;
-    /* Take available width */
-    min-width: 0;
-    /* Allow truncation */
 }
 
 .vector-stats {
@@ -509,62 +493,52 @@ body::before {
     border-radius: 2px;
 }
 
-/* GO BUTTON - Inline with stats */
+/* GO BUTTON */
 .go-btn {
+    /* margin-left: auto; Removed - handled by container */
     background: var(--terminal);
     color: var(--void);
-    border: 1px solid var(--terminal);
+    border: none;
     padding: 2px 8px;
     font-family: var(--font-data);
     font-weight: bold;
-    font-size: 0.65rem;
+    font-size: 0.7rem;
     cursor: pointer;
-    border-radius: 0;
+    border-radius: 2px;
     transition: all 0.2s;
+    width: 32px;
+    /* Fixed width for alignment */
     text-align: center;
-    margin-left: auto;
-    /* Push to right of flex container */
-    height: 100%;
-    /* Match height of flex items if set */
-    display: inline-flex;
-    align-items: center;
-    text-transform: uppercase;
 }
 
 .go-btn:hover {
     background: var(--electric);
-    border-color: var(--electric);
-    transform: translateX(2px);
+    transform: scale(1.1);
     box-shadow: 0 0 8px var(--electric);
 }
 
-/* DEL BUTTON - Inline in Title Row */
 .del-btn {
-    position: static;
-    /* No longer absolute */
-    background: rgba(0, 0, 0, 0.4);
+    background: transparent;
     border: 1px solid var(--flag-red);
     color: var(--flag-red);
+    padding: 1px 6px;
     font-family: var(--font-data);
-    font-size: 0.55rem;
-    font-weight: bold;
+    font-size: 0.6rem;
     cursor: pointer;
-    opacity: 0.8;
-    transition: all 0.2s;
-    padding: 2px 6px;
-    width: auto;
-    height: auto;
-    display: inline-block;
     border-radius: 2px;
-    flex-shrink: 0;
-    /* Keep size */
+    transition: all 0.2s;
+    opacity: 0.7;
+    width: 32px;
+    /* Fixed width for alignment */
+    text-align: center;
 }
 
 .del-btn:hover {
     background: var(--flag-red);
     color: #fff;
-    box-shadow: 0 0 8px var(--flag-red);
     opacity: 1;
+    box-shadow: 0 0 8px var(--flag-red);
+    transform: scale(1.1);
 }
 
 /* Notes Flashcard Style (Popup) */

@@ -29,7 +29,7 @@
  * 
  * The '..' means "go up one directory" (from /tests to the root folder)
  */
-const { calculateNextReview, projectSchedule } = require('../srs_logic');
+const { calculateNextReview, projectSchedule } = require('../src/algorithms/srs_logic');
 
 /**
  * DESCRIBE BLOCK:
