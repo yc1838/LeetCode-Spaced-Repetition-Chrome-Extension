@@ -502,6 +502,32 @@ function calculateStreak(problems) {
     return streak;
 }
 
+/**
+ * Delete a problem from storage.
+ * @param {string} slug - The problem unique identifier
+ */
+async function deleteProblem(slug) {
+    if (!confirm(`Are you sure you want to delete "${slug}" from your SRS history? This cannot be undone.`)) {
+        return;
+    }
+
+    const result = await chrome.storage.local.get({ problems: {} });
+    const problems = result.problems;
+
+    if (problems[slug]) {
+        delete problems[slug];
+        await chrome.storage.local.set({ problems });
+        await updateDashboard(); // Refresh UI
+    }
+}
+
+// Make globally available for popup_ui.js
+if (typeof window !== 'undefined') {
+    window.deleteProblem = deleteProblem;
+    // Also attach updateProblemSRS if not already
+    window.updateProblemSRS = updateProblemSRS;
+}
+
 // Export for testing
 // Export for testing initialization logic if needed
 if (typeof module !== 'undefined') {

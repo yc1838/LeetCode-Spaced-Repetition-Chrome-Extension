@@ -361,6 +361,8 @@ body::before {
     font-family: var(--font-data);
     font-size: 0.65rem;
     margin-bottom: 8px;
+    align-items: center;
+    /* Prevent stretching */
 }
 
 .stat-tag {
@@ -493,8 +495,7 @@ body::before {
 
 /* GO BUTTON */
 .go-btn {
-    margin-left: auto;
-    /* Push to right */
+    /* margin-left: auto; Removed - handled by container */
     background: var(--terminal);
     color: var(--void);
     border: none;
@@ -505,12 +506,39 @@ body::before {
     cursor: pointer;
     border-radius: 2px;
     transition: all 0.2s;
+    width: 32px;
+    /* Fixed width for alignment */
+    text-align: center;
 }
 
 .go-btn:hover {
     background: var(--electric);
     transform: scale(1.1);
     box-shadow: 0 0 8px var(--electric);
+}
+
+.del-btn {
+    background: transparent;
+    border: 1px solid var(--flag-red);
+    color: var(--flag-red);
+    padding: 1px 6px;
+    font-family: var(--font-data);
+    font-size: 0.6rem;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: all 0.2s;
+    opacity: 0.7;
+    width: 32px;
+    /* Fixed width for alignment */
+    text-align: center;
+}
+
+.del-btn:hover {
+    background: var(--flag-red);
+    color: #fff;
+    opacity: 1;
+    box-shadow: 0 0 8px var(--flag-red);
+    transform: scale(1.1);
 }
 
 /* Notes Flashcard Style (Popup) */

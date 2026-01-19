@@ -65,7 +65,10 @@
                     <span class="stat-tag ${diffStyle}">${(problem.difficulty || 'MEDIUM').toUpperCase()}</span>
                     <span class="stat-tag">INT: ${interval}D</span>
                     <span class="stat-tag">DUE: ${nextReview}</span>
-                    <button class="go-btn" data-slug="${problem.slug}">GO</button>
+                    <div class="action-group" style="margin-left: auto; display: flex; flex-direction: column; gap: 4px; align-items: flex-end;">
+                        <button class="del-btn" data-slug="${problem.slug}">DEL</button>
+                        <button class="go-btn" data-slug="${problem.slug}">GO</button>
+                    </div>
                 </div>
                 <button class="tactical-btn">INITIALIZE_SEQUENCE</button>
                 
@@ -104,6 +107,19 @@
                     e.stopPropagation();
                     if (typeof chrome !== 'undefined' && chrome.tabs) {
                         chrome.tabs.create({ url: `https://leetcode.com/problems/${problem.slug}/` });
+                    }
+                };
+            }
+
+            // DELETE Button Handler
+            const delBtn = card.querySelector('.del-btn');
+            if (delBtn) {
+                delBtn.onclick = async (e) => {
+                    e.stopPropagation();
+                    if (typeof deleteProblem === 'function') {
+                        await deleteProblem(problem.slug);
+                    } else {
+                        console.error("deleteProblem is not defined");
                     }
                 };
             }
