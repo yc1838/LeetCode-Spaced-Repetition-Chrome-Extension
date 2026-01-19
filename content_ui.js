@@ -137,56 +137,49 @@
     function showRatingModal(title) {
         return new Promise((resolve) => {
             const backdrop = document.createElement('div');
-            backdrop.className = 'lc-srs-rating-backdrop';
-            backdrop.style.cssText = `
-                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-                background: rgba(0,0,0,0.7); z-index: 1000000;
-                display: flex; justify-content: center; align-items: center;
-                backdrop-filter: blur(5px);
-            `;
+            backdrop.className = 'lc-rating-backdrop';
 
             const modal = document.createElement('div');
-            modal.className = 'lc-srs-rating-modal rating-modal';
-            modal.style.cssText = `
-                background: #1a1a1a;
-                border: 2px solid #00FF41;
-                padding: 30px; border-radius: 12px;
-                box-shadow: 0 0 30px rgba(0, 255, 65, 0.2);
-                font-family: 'JetBrains Mono', monospace; text-align: center; color: #fff;
-                max-width: 500px; width: 90%;
-                animation: lc-srs-popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            `;
+            modal.className = 'lc-rating-modal';
+
+            // Header Container
+            const header = document.createElement('div');
+            header.className = 'lc-rating-header';
 
             const heading = document.createElement('h3');
-            heading.innerText = "How was it?";
-            heading.style.cssText = "margin: 0 0 10px 0; font-size: 20px; color: #00FF41;";
+            heading.innerText = "Difficulty Check"; // Toast like title
+            header.appendChild(heading);
 
-            const sub = document.createElement('p');
+            const sub = document.createElement('div');
+            sub.className = 'lc-rating-subtitle';
             sub.innerText = title;
-            sub.style.cssText = "margin: 0 0 25px 0; opacity: 0.7; font-size: 14px;";
 
             const btnContainer = document.createElement('div');
-            btnContainer.style.cssText = "display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;";
+            btnContainer.className = 'lc-rating-btn-container';
 
             const ratings = [
-                { label: "Again", value: 1, color: "#FF3333", desc: "Forgot it" },
-                { label: "Hard", value: 2, color: "#FFAA00", desc: "Struggled" },
-                { label: "Good", value: 3, color: "#00CCFF", desc: "Recalled" },
-                { label: "Easy", value: 4, color: "#00FF41", desc: "Trivial" }
+                { label: "Again", value: 1, desc: "Forgot it" },
+                { label: "Hard", value: 2, desc: "Struggled" },
+                { label: "Good", value: 3, desc: "Recalled" },
+                { label: "Easy", value: 4, desc: "Trivial" }
             ];
 
             ratings.forEach(r => {
                 const btn = document.createElement('button');
-                btn.className = `rating-btn-${r.label.toLowerCase()}`;
-                btn.innerHTML = `<div style='font-size:16px; font-weight:bold;'>${r.label}</div><div style='font-size:10px; opacity:0.8;'>${r.desc}</div>`;
-                btn.style.cssText = `
-                    padding: 12px 20px; border: 2px solid ${r.color};
-                    background: rgba(0,0,0,0.3); color: ${r.color};
-                    border-radius: 8px; cursor: pointer; transition: all 0.2s;
-                    font-family: inherit; min-width: 90px;
-                `;
-                btn.onmouseenter = () => { btn.style.background = r.color; btn.style.color = '#000'; };
-                btn.onmouseleave = () => { btn.style.background = 'rgba(0,0,0,0.3)'; btn.style.color = r.color; };
+                btn.className = `lc-rating-btn rating-btn-${r.label.toLowerCase()}`;
+
+                // Construct button content
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'lc-rating-btn-label';
+                labelDiv.innerText = r.label;
+
+                const descDiv = document.createElement('div');
+                descDiv.className = 'lc-rating-btn-desc';
+                descDiv.innerText = r.desc;
+
+                btn.appendChild(labelDiv);
+                btn.appendChild(descDiv);
+
                 btn.addEventListener('click', () => {
                     backdrop.remove();
                     resolve(r.value);
@@ -194,20 +187,21 @@
                 btnContainer.appendChild(btn);
             });
 
-            const style = document.createElement('style');
-            style.textContent = `
-                @keyframes lc-srs-popIn {
-                    from { transform: scale(0.8); opacity: 0; }
-                    to { transform: scale(1); opacity: 1; }
-                }
-            `;
-            document.head.appendChild(style);
-
-            modal.appendChild(heading);
+            modal.appendChild(header);
             modal.appendChild(sub);
             modal.appendChild(btnContainer);
             backdrop.appendChild(modal);
             document.body.appendChild(backdrop);
+
+            // Allow closing by clicking backdrop (optional safety, returning null/undefined)
+            /*
+            backdrop.onclick = (e) => {
+                if (e.target === backdrop) {
+                    backdrop.remove();
+                    // resolve(null); // Or just close
+                }
+            };
+            */
         });
     }
 

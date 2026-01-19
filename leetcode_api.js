@@ -20,12 +20,52 @@
     const API_BASE = '/api/submissions';
     const SUBMISSION_CHECK_BASE = '/submissions/detail';
 
-    // Helper to get global dependencies safely
     const getDep = (name) => {
         if (typeof global !== 'undefined' && global[name]) return global[name];
         if (typeof window !== 'undefined' && window[name]) return window[name];
         return undefined;
     };
+
+    /**
+     * Fetch question details (difficulty) directly from LeetCode GraphQL API.
+     * This is the source of truth, bypassing DOM issues.
+     * @param {string} slug 
+     */
+    async function fetchQuestionDetails(slug) {
+        try {
+            const query = `
+                query questionTitle($titleSlug: String!) {
+                  question(titleSlug: $titleSlug) {
+                    difficulty
+                  }
+                }
+            `;
+
+            const response = await fetch('/graphql', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-csrftoken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] || ''
+                },
+                body: JSON.stringify({
+                    query: query,
+                    variables: { titleSlug: slug }
+                })
+            });
+
+            if (!response.ok) throw new Error("GraphQL request failed");
+
+            const data = await response.json();
+            if (data.data && data.data.question) {
+                console.log(`[LeetCode EasyRepeat] Fetched difficulty from API: ${data.data.question.difficulty}`);
+                return data.data.question.difficulty;
+            }
+            return null;
+        } catch (e) {
+            console.warn("[LeetCode EasyRepeat] Error fetching question details via API:", e);
+            return null;
+        }
+    }
 
     /**
      * Check the latest submission via API for the manual "Scan Now" feature.
@@ -59,6 +99,11 @@
                 }
 
                 const details = extractProblemDetails();
+
+                // Enhance details with reliable API difficulty
+                const apiDifficulty = await fetchQuestionDetails(slug);
+                if (apiDifficulty) details.difficulty = apiDifficulty;
+
                 // Prompt for rating manually too? Yes.
                 const rating = await showRatingModal(details.title);
                 const result = await saveSubmission(details.title, details.slug, details.difficulty, 'manual_api_scan', rating);
@@ -160,8 +205,12 @@
                         const saveSubmission = getDep('saveSubmission');
 
                         if (showRatingModal && saveSubmission) {
+                            // Fetch authoritative difficulty
+                            const apiDifficulty = await fetchQuestionDetails(slug);
+                            const finalDifficulty = apiDifficulty || difficulty; // Use API or fallback to passed param
+
                             const rating = await showRatingModal(title);
-                            await saveSubmission(title, slug, difficulty, 'api_poll', rating);
+                            await saveSubmission(title, slug, finalDifficulty, 'api_poll', rating);
                             return true;
                         } else {
                             console.warn("[LeetCode EasyRepeat] Dependencies missing. Cannot save.");
@@ -230,6 +279,7 @@
         checkLatestSubmissionViaApi,
         pollSubmissionResult,
         checkSubmissionStatus,
-        monitorSubmissionClicks
+        monitorSubmissionClicks,
+        fetchQuestionDetails
     };
 }));
