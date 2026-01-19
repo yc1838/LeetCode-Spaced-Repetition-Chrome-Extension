@@ -142,6 +142,7 @@ function applyTheme(themeName) {
 
     // Some elements need direct style updates (can't use CSS variables everywhere)
     root.style.setProperty('--hover-bg', theme.hoverBg);
+    root.style.setProperty('--glass', theme.glass || 'rgba(20, 10, 15, 0.85)'); // Fallback
 
     const statusBar = document.querySelector('.status-bar');
     if (statusBar) statusBar.style.background = theme.statusBg;
