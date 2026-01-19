@@ -1,128 +1,190 @@
-// LeetCode SRS Master - Content Script
-
-console.log("LeetCode SRS Master loaded.");
+/**
+ * LeetCode EasyRepeat - Content Script
+ * 
+ * WHAT IS A CONTENT SCRIPT?
+ * In Chrome Extensions, a "content script" is JavaScript that runs IN THE CONTEXT
+ * of a web page. Unlike the popup (which runs in its own window), this code can:
+ * - Read and modify the page's DOM (document)
+ * - React to page events (clicks, mutations)
+ * - Communicate with the popup via Chrome's messaging API
+ * 
+ * WHEN DOES IT RUN?
+ * This script runs automatically on every LeetCode problem page, as defined in
+ * manifest.json under "content_scripts" -> "matches": ["https://leetcode.com/problems/*"]
+ * 
+ * RESPONSIBILITIES:
+ * 1. Detecting when a user submits a solution
+ * 2. Checking if that solution was "Accepted"
+ * 3. Saving the result to browser storage for SRS tracking
+ */
+console.log("[LeetCode EasyRepeat] Extension content script loaded (v2 - Hybrid Detection).");
 
 /**
- * SRS Logic: Simple SM-2 Implementation
- * This will be used to calculate the next interval.
+ * ============================================================================
+ * CHROME EXTENSION MESSAGE PASSING
+ * ============================================================================
+ * 
+ * Chrome Extensions have separate "worlds" that can't directly call each other:
+ * - Popup script (popup.js) - runs when you click the extension icon
+ * - Content script (this file) - runs inside the web page
+ * - Background script (not used here) - runs in the background
+ * 
+ * To communicate between them, we use Chrome's MESSAGE PASSING API.
+ * 
+ * HOW IT WORKS:
+ * 1. Sender calls: chrome.tabs.sendMessage(tabId, {action: "scanPage"}, callback)
+ * 2. Receiver (this script) handles it with: chrome.runtime.onMessage.addListener(...)
+ * 3. Receiver can send back a response with: sendResponse({...})
+ * 
+ * THE LISTENER PATTERN:
+ * chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {...})
+ *   - request: The message object sent (e.g., {action: "scanPage"})
+ *   - sender: Information about who sent the message
+ *   - sendResponse: A function to send a reply back to the sender
+ *   - Return true: Required if sendResponse will be called asynchronously
  */
-function calculateNextReview(interval = 0, repetition = 0, easeFactor = 2.5) {
-  let nextInterval;
-  if (repetition === 0) {
-    nextInterval = 1;
-  } else if (repetition === 1) {
-    nextInterval = 6;
-  } else {
-    nextInterval = Math.round(interval * easeFactor);
-  }
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    try {
+        // Check if the message action is "scanPage"
+        if (request.action === "scanPage") {
+            const currentSlug = getCurrentProblemSlug();
+            console.log(`[LeetCode EasyRepeat] [LEETCODE-DEBUG] Manual scan requested for ${currentSlug}.`);
 
-  const nextDate = new Date();
-  nextDate.setDate(nextDate.getDate() + nextInterval);
-  
-  return {
-    nextInterval,
-    nextRepetition: repetition + 1,
-    nextEaseFactor: easeFactor,
-    nextReviewDate: nextDate.toISOString()
-  };
-}
+            if (!currentSlug) {
+                sendResponse({ success: false, error: "Could not determine problem slug." });
+                return false;
+            }
 
-async function saveSubmission(problemTitle, problemSlug, difficulty) {
-  const result = await chrome.storage.local.get({ problems: {} });
-  const problems = result.problems;
+            checkLatestSubmissionViaApi(currentSlug)
+                .then(result => {
+                    console.log("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Manual scan result:", result);
+                    sendResponse(result);
+                })
+                .catch(err => {
+                    console.error("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Manual scan failed:", err);
+                    sendResponse({ success: false, error: err.message });
+                });
+            return true; // CRITICAL: Required for async sendResponse
+        }
 
-  // Check if already exists to avoid duplicate logs for same solving session
-  const today = new Date().toISOString().split('T')[0];
-  const problemKey = problemSlug;
+        // Handle getDifficulty request from popup (for syncing stored data)
+        if (request.action === "getDifficulty") {
+            // Force refresh the cache first
+            if (typeof updateDifficultyCache === 'function') updateDifficultyCache();
 
-  if (problems[problemKey] && problems[problemKey].lastSolved === today) {
-    console.log("Already logged this problem today.");
-    return;
-  }
+            let difficulty = 'Medium';
+            if (typeof getDifficultyFromCache === 'function') {
+                difficulty = getDifficultyFromCache(getCurrentProblemSlug()) || 'Medium';
+            }
 
-  const currentProblem = problems[problemKey] || {
-    title: problemTitle,
-    slug: problemSlug,
-    difficulty: difficulty,
-    interval: 0,
-    repetition: 0,
-    easeFactor: 2.5,
-    history: []
-  };
-
-  const nextStep = calculateNextReview(currentProblem.interval, currentProblem.repetition, currentProblem.easeFactor);
-
-  problems[problemKey] = {
-    ...currentProblem,
-    lastSolved: today,
-    interval: nextStep.nextInterval,
-    repetition: nextStep.nextRepetition,
-    easeFactor: nextStep.nextEaseFactor,
-    nextReviewDate: nextStep.nextReviewDate,
-    history: [...currentProblem.history, { date: today, status: 'Accepted' }]
-  };
-
-  await chrome.storage.local.set({ problems });
-  console.log("✅ Problem scheduled for SRS:", problemTitle, "Next review:", nextStep.nextReviewDate);
-  
-  showCompletionToast(problemTitle, nextStep.nextReviewDate);
-}
-
-function showCompletionToast(title, nextDate) {
-  const dateStr = new Date(nextDate).toLocaleDateString();
-  const toast = document.createElement('div');
-  toast.className = 'lc-srs-toast';
-  toast.innerHTML = `
-    <div class="lc-srs-toast-content">
-      <strong>✅ ${title} Logged!</strong>
-      <span>Next review: ${dateStr}</span>
-    </div>
-  `;
-  document.body.appendChild(toast);
-  
-  setTimeout(() => {
-    toast.classList.add('show');
-    setTimeout(() => {
-      toast.classList.remove('show');
-      setTimeout(() => toast.remove(), 500);
-    }, 4000);
-  }, 100);
-}
-
-// Observer to detect "Accepted" status
-const observer = new MutationObserver((mutations) => {
-  for (const mutation of mutations) {
-    if (mutation.type === 'childList') {
-      // Look for the "Accepted" text in the submission result panel
-      // LeetCode uses dynamic classes, but often has data-test attributes or specific text
-      const acceptedNode = Array.from(document.querySelectorAll('*')).find(el => 
-        el.textContent === 'Accepted' && 
-        (el.classList.contains('text-success') || el.classList.contains('text-green-s'))
-      );
-
-      if (acceptedNode) {
-        handleAcceptedSubmission();
-        break;
-      }
+            console.log(`[LeetCode EasyRepeat] [LEETCODE-DEBUG] getDifficulty requested, returning: ${difficulty}`);
+            sendResponse({ difficulty: difficulty });
+            return false; // Sync response - no need to keep channel open
+        }
+    } catch (e) {
+        console.error("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Error in message listener:", e);
+        sendResponse({ success: false, error: e.message });
     }
-  }
 });
 
-function handleAcceptedSubmission() {
-  // Extract info from URL or page
-  const pathParts = window.location.pathname.split('/');
-  const problemSlug = pathParts[2]; // /problems/problem-slug/
-  
-  // Try to find title
-  const titleEl = document.querySelector('span.text-lg.font-medium, div.mr-2.text-lg.font-medium');
-  const title = titleEl ? titleEl.innerText : problemSlug.replace(/-/g, ' ');
+// --- SRS Logic ---
+// Logic is now imported from srs_logic.js
 
-  // Try to find difficulty
-  const diffEl = document.querySelector('div[class*="text-difficulty-"], div[class*="text-yellow"], div[class*="text-green"], div[class*="text-red"]');
-  const difficulty = diffEl ? diffEl.innerText : 'Unknown';
+/**
+ * Save a successful submission to Chrome's local storage.
+ * 
+ * ASYNC FUNCTION:
+ * The 'async' keyword means this function returns a Promise and can use 'await'.
+ * Callers can use: await saveSubmission(...) or saveSubmission(...).then(...)
+ * 
+ * @param {string} problemTitle - Display name like "1. Two Sum"
+ * @param {string} problemSlug - URL identifier like "two-sum"
+ * @param {string} difficulty - "Easy", "Medium", or "Hard"
+ */
+// saveSubmission moved to storage.js
 
-  saveSubmission(title, problemSlug, difficulty);
+/**
+ * ============================================================================
+ * CACHING LOGIC FOR SPA (Single Page Application) NAVIGATION
+ * ============================================================================
+ * 
+ * WHAT IS SPA NAVIGATION?
+ * LeetCode is a Single Page Application - when you click from one problem to
+ * another, the browser doesn't fully reload. Instead, JavaScript updates the
+ * page content dynamically. This is faster for users but tricky for extensions.
+ * 
+ * THE PROBLEM:
+ * When the user submits a solution, LeetCode shows the "Submission Result" view.
+ * During this time, the difficulty badge might be REMOVED from the DOM!
+ * If we don't cache it, we'd lose the difficulty info.
+ * 
+ * THE SOLUTION:
+ * We periodically cache the difficulty while the user browses, BEFORE they submit.
+ * Then when we need it during submission handling, we use the cached value.
+ */
+
+// DOM logic moved to leetcode_dom.js (including difficultyCache)
+// Initialize tracking
+if (typeof startDifficultyTracking === 'function') {
+    startDifficultyTracking();
 }
 
-// Start observing the body for changes
-observer.observe(document.body, { childList: true, subtree: true });
+
+// --- Robust Detection Logic ---
+
+// Helper function to read the webpage and find the problem details (Title, Difficulty, ID)
+// extractProblemDetails moved to leetcode_dom.js
+
+/**
+ * Show a modal asking the user to rate the problem difficulty.
+ * Returns a Promise that resolves to the rating (1-4).
+ */
+// showRatingModal moved to content_ui.js
+
+// Initialize submission monitoring (assuming monitorSubmissionClicks is globally available via leetcode_api.js)
+if (typeof monitorSubmissionClicks === 'function') {
+    try {
+        monitorSubmissionClicks();
+    } catch (e) {
+        console.error("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Failed to start click monitoring:", e);
+    }
+} else if (typeof global !== 'undefined' && global.monitorSubmissionClicks) {
+    // Safe guard, though usually monitorSubmissionClicks is in global scope in Browser
+    global.monitorSubmissionClicks();
+}
+// API logic moved to leetcode_api.js
+
+/* --- Notes Feature Injection --- */
+// Run periodically to handle navigation (mounting/unmounting of React components)
+setInterval(insertNotesButton, 2000);
+
+/* --- Notes Feature Injection --- */
+function insertNotesButton() {
+    // 0. Safety Checks
+    if (typeof getCurrentProblemSlug !== 'function' || typeof createNotesButton !== 'function') {
+        return;
+    }
+
+    const slug = getCurrentProblemSlug();
+    if (!slug) return;
+
+    // 1. Duplication check
+    if (document.querySelector('.lc-notes-btn')) return;
+
+    // 2. Direct Injection (Floating UI)
+    console.log(`[LeetCode EasyRepeat] Injecting Floating Notes Button for ${slug}`);
+
+    const btn = createNotesButton(async () => {
+        if (typeof getNotes !== 'function' || typeof showNotesModal !== 'function') {
+            console.error("[LeetCode EasyRepeat] Modules not loaded fully.");
+            return;
+        }
+        const notes = await getNotes(slug);
+        const details = extractProblemDetails();
+        showNotesModal(details.title, notes, async (newContent) => {
+            await saveNotes(slug, newContent);
+        });
+    });
+
+    document.body.appendChild(btn);
+}

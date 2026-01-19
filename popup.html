@@ -1,40 +1,117 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LeetCode SRS Master</title>
-  <link rel="stylesheet" href="popup.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LeetCode SRS OS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;600&family=JetBrains+Mono:wght@100;400;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="popup.css">
 </head>
+
 <body>
-  <div class="container">
-    <header>
-      <h1>SRS Master</h1>
-      <div class="stats">
-        <div class="stat-item">
-          <span id="due-count">0</span>
-          <label>Due Today</label>
-        </div>
-        <div class="stat-item">
-          <span id="total-count">0</span>
-          <label>Total Tracked</label>
-        </div>
-      </div>
-    </header>
 
-    <main>
-      <section id="review-section">
-        <h2>Today's Queue</h2>
-        <div id="problem-list" class="problem-list">
-          <div class="empty-state">No problems due for review today! Great job.</div>
-        </div>
-      </section>
-    </main>
+    <div class="extension-container">
+        <!-- STATUS BAR -->
+        <header class="status-bar">
+            <div>LeetCode EasyRepeat OS</div>
+            <div class="status-ready">[SYS_READY] <span id="clock">00:00:00</span></div>
+        </header>
 
-    <footer>
-      <p>Keep coding, keep growing.</p>
-    </footer>
-  </div>
-  <script src="popup.js"></script>
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <div class="nav-icon active" id="tab-dashboard" title="Dashboard">
+                <svg viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                </svg>
+            </div>
+            <div class="nav-icon" id="tab-all" title="All Vectors">
+                <svg viewBox="0 0 24 24">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                </svg>
+            </div>
+            <!-- Manual Scan / Sync -->
+            <div class="nav-icon" id="btn-sync" title="Initiate Scan">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+                    <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+                    <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+                    <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+                    <line x1="4" y1="12" x2="20" y2="12" opacity="0.5" stroke-dasharray="2 2" />
+                </svg>
+            </div>
+            <!-- Settings / Purge -->
+            <div class="nav-icon" id="btn-purge" title="Purge Memory">
+                <svg viewBox="0 0 24 24">
+                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                </svg>
+            </div>
+            <!-- Theme Toggle -->
+            <div class="nav-icon" id="btn-theme" title="Switch Theme">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="5" />
+                    <path
+                        d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+                </svg>
+            </div>
+        </aside>
+
+        <!-- VIEWPORT -->
+        <main class="viewport">
+
+            <!-- COGNITIVE MAP (Global Stats) -->
+            <section class="heatmap-container">
+                <div class="heatmap-header">
+                    <span>COGNITIVE_RETENTION_MAP</span>
+                    <span id="streak-display">STREAK: --</span>
+                </div>
+                <div class="heatmap-grid" id="global-heatmap">
+                    <!-- JS Generated Cells -->
+                </div>
+            </section>
+
+            <!-- Test Mode (Hidden unless toggled) -->
+            <div class="sim-controls" id="sim-controls"
+                style="display:none; border:1px solid var(--electric); padding:10px; margin-bottom:15px; background: rgba(45, 226, 230, 0.05);">
+                <div class="heatmap-header">SIMULATION_MODE_ACTIVE</div>
+                <input type="date" id="test-mode-date"
+                    style="background:transparent; border:none; color:var(--electric); font-family:inherit; width:100%;">
+            </div>
+
+            <!-- ACTIVE VECTORS (Queue) -->
+            <section>
+                <div class="heatmap-header" style="margin-bottom: 15px; display:flex; justify-content:space-between;">
+                    <span id="queue-title">ACTIVE_PROBLEM_VECTORS</span>
+
+                    <!-- Custom Switch for Test Mode -->
+                    <label style="cursor:pointer; display:flex; align-items:center; gap:5px; font-size:0.6rem;">
+                        <input type="checkbox" id="test-mode-toggle" style="display:none;">
+                        <span style="color:var(--terminal);">[SIM_MODE]</span>
+                    </label>
+                </div>
+
+                <div class="vector-list" id="vector-list">
+                    <!-- Cards will be injected here via popup.js -->
+                </div>
+            </section>
+
+
+        </main>
+    </div>
+
+    <div id="global-tooltip" class="srs-tooltip"></div>
+    <script src="config.js"></script>
+    <script src="srs_logic.js"></script>
+    <script src="popup_ui.js"></script>
+    <script src="popup.js"></script>
 </body>
+
 </html>
