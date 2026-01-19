@@ -37,6 +37,8 @@
                 query questionTitle($titleSlug: String!) {
                   question(titleSlug: $titleSlug) {
                     difficulty
+                    title
+                    questionFrontendId
                   }
                 }
             `;
@@ -57,8 +59,13 @@
 
             const data = await response.json();
             if (data.data && data.data.question) {
-                console.log(`[LeetCode EasyRepeat] Fetched difficulty from API: ${data.data.question.difficulty}`);
-                return data.data.question.difficulty;
+                const q = data.data.question;
+                console.log(`[LeetCode EasyRepeat] Fetched details from API: ${q.title} (${q.difficulty})`);
+                return {
+                    difficulty: q.difficulty,
+                    title: q.title,
+                    questionId: q.questionFrontendId
+                };
             }
             return null;
         } catch (e) {
@@ -101,8 +108,16 @@
                 const details = extractProblemDetails();
 
                 // Enhance details with reliable API difficulty
-                const apiDifficulty = await fetchQuestionDetails(slug);
-                if (apiDifficulty) details.difficulty = apiDifficulty;
+                // Enhance details with reliable API data
+                const apiData = await fetchQuestionDetails(slug);
+                if (apiData) {
+                    details.difficulty = apiData.difficulty;
+                    // details.slug is already correct (input arg)
+                    // Construct standard title "1. Two Sum"
+                    if (apiData.title && apiData.questionId) {
+                        details.title = `${apiData.questionId}. ${apiData.title}`;
+                    }
+                }
 
                 // Prompt for rating manually too? Yes.
                 const rating = await showRatingModal(details.title);
@@ -205,12 +220,18 @@
                         const saveSubmission = getDep('saveSubmission');
 
                         if (showRatingModal && saveSubmission) {
-                            // Fetch authoritative difficulty
-                            const apiDifficulty = await fetchQuestionDetails(slug);
-                            const finalDifficulty = apiDifficulty || difficulty; // Use API or fallback to passed param
+                            // Fetch authoritative data
+                            const apiData = await fetchQuestionDetails(slug);
 
-                            const rating = await showRatingModal(title);
-                            await saveSubmission(title, slug, finalDifficulty, 'api_poll', rating);
+                            const finalDifficulty = apiData ? apiData.difficulty : difficulty;
+                            let finalTitle = title;
+
+                            if (apiData && apiData.title && apiData.questionId) {
+                                finalTitle = `${apiData.questionId}. ${apiData.title}`;
+                            }
+
+                            const rating = await showRatingModal(finalTitle);
+                            await saveSubmission(finalTitle, slug, finalDifficulty, 'api_poll', rating);
                             return true;
                         } else {
                             console.warn("[LeetCode EasyRepeat] Dependencies missing. Cannot save.");
