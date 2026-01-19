@@ -281,25 +281,25 @@ body::before {
 .cell.v-1 {
     background: var(--cell-1);
     border-color: var(--cell-1);
-    box-shadow: 0 0 4px var(--flag-magenta);
+    box-shadow: 0 0 4px var(--cell-1);
 }
 
 .cell.v-2 {
     background: var(--cell-2);
     border-color: var(--cell-2);
-    box-shadow: 0 0 6px var(--flag-pink);
+    box-shadow: 0 0 6px var(--cell-2);
 }
 
 .cell.v-3 {
     background: var(--cell-3);
     border-color: var(--cell-3);
-    box-shadow: 0 0 8px var(--terminal);
+    box-shadow: 0 0 8px var(--cell-3);
 }
 
 .cell.v-4 {
     background: var(--cell-4);
     border-color: var(--cell-4);
-    box-shadow: 0 0 12px var(--flag-orange), 0 0 24px rgba(239, 118, 39, 0.6);
+    box-shadow: 0 0 12px var(--cell-4), 0 0 24px var(--cell-4);
 }
 
 /* PROBLEM VECTORS (CARDS) */
