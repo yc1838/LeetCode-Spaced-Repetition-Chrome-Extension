@@ -32,12 +32,16 @@ describe('Storage Logic', () => {
         // Setup default mock return for storage.get
         global.chrome.storage.local.get.mockResolvedValue({ problems: {} });
 
-        // Inject calculateNextReview into global scope so content.js can find it
-        const srsOnly = require('../srs_logic.js');
-        global.calculateNextReview = srsOnly.calculateNextReview;
+        // Mock srs_logic and config
+        global.calculateNextReview = require('../srs_logic.js').calculateNextReview;
+        const { TOAST_THEMES } = require('../config.js');
+        global.TOAST_THEMES = TOAST_THEMES;
 
-        const contentScript = require('../content.js');
-        saveSubmission = contentScript.saveSubmission;
+        // Mock global showCompletionToast from content_ui
+        global.showCompletionToast = jest.fn();
+
+        const storageScript = require('../storage.js');
+        saveSubmission = storageScript.saveSubmission;
     });
 
     test('should allow difficulty update if difficulty changes on same day', async () => {

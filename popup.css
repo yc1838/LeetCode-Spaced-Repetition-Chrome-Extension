@@ -490,3 +490,25 @@ body::before {
     background: var(--terminal);
     border-radius: 2px;
 }
+
+/* GO BUTTON */
+.go-btn {
+    margin-left: auto;
+    /* Push to right */
+    background: var(--terminal);
+    color: var(--void);
+    border: none;
+    padding: 2px 8px;
+    font-family: var(--font-data);
+    font-weight: bold;
+    font-size: 0.7rem;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: all 0.2s;
+}
+
+.go-btn:hover {
+    background: var(--electric);
+    transform: scale(1.1);
+    box-shadow: 0 0 8px var(--electric);
+}

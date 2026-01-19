@@ -71,13 +71,30 @@ global.calculateNextReview = jest.fn().mockReturnValue({
 const {
     pollSubmissionResult,
     checkSubmissionStatus,
-    checkLatestSubmissionViaApi,
-    saveSubmission // also mock this if needed
-} = require('../content.js'); // We will export these for testing
+    checkLatestSubmissionViaApi
+} = require('../leetcode_api.js');
+
+const { saveSubmission } = require('../storage.js');
 
 describe('API Submission Check Logic', () => {
     beforeEach(() => {
-        fetch.mockReset();
+        jest.clearAllMocks();
+
+        const { TOAST_THEMES } = require('../config.js');
+        global.TOAST_THEMES = TOAST_THEMES;
+
+        const { showCompletionToast, showRatingModal } = require('../content_ui.js');
+        global.showCompletionToast = showCompletionToast;
+        global.showRatingModal = showRatingModal;
+
+        const { extractProblemDetails, getCurrentProblemSlug } = require('../leetcode_dom.js');
+        global.extractProblemDetails = extractProblemDetails;
+        global.getCurrentProblemSlug = getCurrentProblemSlug;
+
+        // Make saveSubmission global for leetcode_api.js
+        global.saveSubmission = saveSubmission;
+
+        // Reset document body
         jest.useFakeTimers();
     });
 

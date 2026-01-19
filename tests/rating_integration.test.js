@@ -4,18 +4,22 @@ global.fetch = jest.fn();
 // Mock chrome global
 global.chrome = {
     runtime: {
-        onMessage: {
-            addListener: jest.fn()
-        },
-        id: 'test-id'
+        onMessage: { addListener: jest.fn() },
+        sendMessage: jest.fn(),
+        id: 'mock-id',
+        lastError: null
     },
     storage: {
         local: {
-            get: jest.fn().mockResolvedValue({ problems: {}, theme: 'sakura' }),
+            get: jest.fn().mockImplementation((defaults) => Promise.resolve(defaults || {})),
             set: jest.fn().mockResolvedValue()
         }
     }
 };
+
+// Mock global constants
+const { TOAST_THEMES } = require('../config.js');
+global.TOAST_THEMES = TOAST_THEMES;
 
 // Mock window and document
 global.window = {
@@ -121,8 +125,21 @@ describe('Rating Integration Flow', () => {
         global.chrome.storage.local.get.mockResolvedValue({ problems: {} });
         global.chrome.storage.local.set.mockResolvedValue();
 
+        // Mock local functions from content_ui.js
+        const contentUi = require('../content_ui.js');
+        // IMPORTANT: Assign to global BEFORE running tests that use content.js functions
+        global.showRatingModal = contentUi.showRatingModal;
+        global.showCompletionToast = contentUi.showCompletionToast;
+        global.document.head = { appendChild: jest.fn() }; // Required by content_ui
+
+        const { saveSubmission } = require('../storage.js');
+        global.saveSubmission = saveSubmission;
+
+        // Require the module under test
         // Require the module under test
         contentScript = require('../content.js');
+        const leetcodeApi = require('../leetcode_api.js');
+        global.checkSubmissionStatus = leetcodeApi.checkSubmissionStatus;
     });
 
     test('Step 1: Modal appears on Accepted submission', async () => {
@@ -133,7 +150,8 @@ describe('Rating Integration Flow', () => {
         });
 
         // Since checkSubmissionStatus awaits the user input, we run it without await first
-        const promise = contentScript.checkSubmissionStatus('123', 'Two Sum', 'two-sum', 'Medium');
+        // Since checkSubmissionStatus awaits the user input, we run it without await first
+        const promise = global.checkSubmissionStatus('123', 'Two Sum', 'two-sum', 'Medium');
 
         // Wait for async operations to hit the modal point
         await new Promise(r => setTimeout(r, 10));
@@ -159,7 +177,8 @@ describe('Rating Integration Flow', () => {
         // Setup: Spy on saveSubmission (it's internal to contentScript, but we can spy on storage.local.set)
 
         // Run Status Check
-        const statusPromise = contentScript.checkSubmissionStatus('123', 'Two Sum', 'two-sum', 'Medium');
+        // Run Status Check
+        const statusPromise = global.checkSubmissionStatus('123', 'Two Sum', 'two-sum', 'Medium');
         await new Promise(r => setTimeout(r, 10));
 
         // Find Modal Backdrop

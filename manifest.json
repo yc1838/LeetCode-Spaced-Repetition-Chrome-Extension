@@ -20,7 +20,12 @@
             ],
             "js": [
                 "srs_logic.js",
+                "config.js",
                 "fsrs_logic.js",
+                "content_ui.js",
+                "leetcode_dom.js",
+                "storage.js",
+                "leetcode_api.js",
                 "content.js"
             ],
             "css": [
