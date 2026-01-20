@@ -39,6 +39,10 @@
                     difficulty
                     title
                     questionFrontendId
+                    topicTags {
+                      name
+                      slug
+                    }
                   }
                 }
             `;
@@ -64,7 +68,8 @@
                 return {
                     difficulty: q.difficulty,
                     title: q.title,
-                    questionId: q.questionFrontendId
+                    questionId: q.questionFrontendId,
+                    topics: q.topicTags ? q.topicTags.map(t => t.name) : []
                 };
             }
             return null;
@@ -117,11 +122,12 @@
                     if (apiData.title && apiData.questionId) {
                         details.title = `${apiData.questionId}. ${apiData.title}`;
                     }
+                    details.topics = apiData.topics || [];
                 }
 
                 // Prompt for rating manually too? Yes.
                 const rating = await showRatingModal(details.title);
-                const result = await saveSubmission(details.title, details.slug, details.difficulty, 'manual_api_scan', rating);
+                const result = await saveSubmission(details.title, details.slug, details.difficulty, 'manual_api_scan', rating, details.topics);
                 return result || { success: true };
             }
 
@@ -225,13 +231,19 @@
 
                             const finalDifficulty = apiData ? apiData.difficulty : difficulty;
                             let finalTitle = title;
+                            let finalTopics = [];
 
-                            if (apiData && apiData.title && apiData.questionId) {
-                                finalTitle = `${apiData.questionId}. ${apiData.title}`;
+                            if (apiData) {
+                                if (apiData.title && apiData.questionId) {
+                                    finalTitle = `${apiData.questionId}. ${apiData.title}`;
+                                }
+                                if (apiData.topics) {
+                                    finalTopics = apiData.topics;
+                                }
                             }
 
                             const rating = await showRatingModal(finalTitle);
-                            await saveSubmission(finalTitle, slug, finalDifficulty, 'api_poll', rating);
+                            await saveSubmission(finalTitle, slug, finalDifficulty, 'api_poll', rating, finalTopics);
                             return true;
                         } else {
                             console.warn("[LeetCode EasyRepeat] Dependencies missing. Cannot save.");

@@ -57,7 +57,7 @@ body {
     background-color: var(--void);
     color: var(--terminal);
     font-family: var(--font-main);
-    width: 600px;
+    width: 400px;
     /* Adjusted to fit extension window better than 800 */
     height: auto;
     max-height: 600px;
@@ -122,8 +122,8 @@ body::before {
     align-items: center;
     padding: 0 15px;
     justify-content: space-between;
-    font-size: 0.7rem;
-    letter-spacing: 2px;
+    font-size: 0.45rem;
+    letter-spacing: 0.5px;
     background: rgba(255, 16, 240, 0.05);
 }
 
@@ -359,7 +359,7 @@ body::before {
     display: flex;
     gap: 10px;
     font-family: var(--font-data);
-    font-size: 0.65rem;
+    font-size: 0.55rem;
     margin-bottom: 8px;
     align-items: center;
     /* Prevent stretching */
@@ -384,6 +384,15 @@ body::before {
 .difficulty-easy {
     color: var(--terminal);
     border-color: var(--terminal);
+}
+
+.topic-tag {
+    color: var(--electric);
+    border: 1px dashed var(--electric);
+    padding: 1px 5px;
+    font-size: 0.5rem;
+    opacity: 0.9;
+    white-space: nowrap;
 }
 
 /* TACTICAL SWITCHES (BUTTONS) */

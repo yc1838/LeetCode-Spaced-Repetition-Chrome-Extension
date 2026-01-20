@@ -61,7 +61,12 @@
                     <span>RETENTION: ${Math.min(100, Math.round(problem.easeFactor * 40))}%</span>
                 </div>
                 <div class="vector-title">${problem.title.toUpperCase()}</div>
-                <div class="vector-stats">
+                ${(problem.topics && problem.topics.length > 0) ? `
+                    <div class="topic-row" style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:6px;">
+                        ${problem.topics.slice(0, 3).map(t => `<span class="stat-tag topic-tag">${t.toUpperCase()}</span>`).join('')}
+                    </div>
+                ` : ''}
+                <div class="vector-stats" style="flex-wrap: wrap;">
                     <span class="stat-tag ${diffStyle}">${(problem.difficulty || 'MEDIUM').toUpperCase()}</span>
                     <span class="stat-tag">INT: ${interval}D</span>
                     <span class="stat-tag">DUE: ${nextReview}</span>

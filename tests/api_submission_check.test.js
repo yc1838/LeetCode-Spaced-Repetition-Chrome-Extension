@@ -92,7 +92,7 @@ describe('API Submission Check Logic', () => {
         global.getCurrentProblemSlug = getCurrentProblemSlug;
 
         // Make saveSubmission global for leetcode_api.js
-        global.saveSubmission = saveSubmission;
+        global.saveSubmission = jest.fn().mockResolvedValue({ success: true });
 
         // Reset document body
         jest.useFakeTimers();
@@ -142,8 +142,22 @@ describe('API Submission Check Logic', () => {
 });
 
 describe('Manual API Scan Logic (checkLatestSubmissionViaApi)', () => {
+    let mockSaveSubmission;
+
     beforeEach(() => {
         fetch.mockReset();
+        mockSaveSubmission = jest.fn().mockResolvedValue({ success: true });
+        global.saveSubmission = mockSaveSubmission;
+
+        // Ensure legacy deps are there if needed
+        global.showRatingModal = jest.fn().mockResolvedValue(null);
+        global.extractProblemDetails = jest.fn().mockReturnValue({ title: "Two Sum", slug: "two-sum", difficulty: "Medium" });
+
+        // Fix for fetchQuestionDetails
+        Object.defineProperty(document, 'cookie', {
+            writable: true,
+            value: 'csrftoken=test-token',
+        });
     });
 
     test('returns success if latest submission is Accepted', async () => {
@@ -158,6 +172,44 @@ describe('Manual API Scan Logic (checkLatestSubmissionViaApi)', () => {
 
         const result = await checkLatestSubmissionViaApi("two-sum");
         expect(result).toEqual({ success: true });
+    });
+
+    test('should pass topics to saveSubmission', async () => {
+        // Mock finding the submission
+        fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                submission_list: [
+                    { id: "999", status_display: "Accepted", timestamp: 1234567890 }
+                ]
+            })
+        });
+
+        // Mock GraphQL details fetch
+        fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                data: {
+                    question: {
+                        difficulty: "Hard",
+                        title: "Two Sum",
+                        questionFrontendId: "1",
+                        topicTags: [{ name: "Array", slug: "array" }, { name: "Hash Table", slug: "hash-table" }]
+                    }
+                }
+            })
+        });
+
+        await checkLatestSubmissionViaApi("two-sum");
+
+        expect(mockSaveSubmission).toHaveBeenCalledWith(
+            "1. Two Sum",
+            "two-sum",
+            "Hard",
+            "manual_api_scan",
+            null, // rating (mocked to null)
+            ["Array", "Hash Table"] // topics
+        );
     });
 
     test('returns success if latest submission is Accepted (Legacy Format)', async () => {
