@@ -60,213 +60,263 @@
 
 /* --- Notes Feature Styles --- */
 
-/* Notes Button (Floating UI) */
-.lc-notes-btn {
+/* --- Notes Feature Styles (Floating Panel) --- */
+
+/* Standard Theme (Matrix/Green) Variables */
+.lc-notes-container {
+    --lc-terminal: #FF9A56;
+    /* Default fallback, overridden below */
+    --lc-void: #0A0A0A;
+    --lc-glass: rgba(10, 10, 10, 0.95);
+
+    /* Font */
+    --lc-font-main: 'JetBrains Mono', monospace;
+
+    /* Matrix Default */
+    --lc-theme-primary: #22c55e;
+    --lc-theme-border-glow: rgba(34, 197, 94, 0.5);
+    --lc-theme-box-shadow:
+        0 0 20px rgba(34, 197, 94, 0.3),
+        inset 0 0 30px rgba(34, 197, 94, 0.05);
+
+    --lc-scanline-1: rgba(34, 197, 94, 0.03);
+    --lc-scanline-2: rgba(34, 197, 94, 0.02);
+}
+
+/* Sakura Theme (Lesbian Flag Palette) Variables - MATCHING POPUP.CSS */
+.lc-notes-container.theme-sakura {
+    --lc-theme-primary: #FF9A56;
+    /* Terminal/Peach */
+    --lc-theme-electric: #D162A4;
+    /* Pink */
+    --lc-theme-accent: #EF7627;
+    /* Orange */
+
+    --lc-theme-border-glow: rgba(255, 154, 86, 0.5);
+    --lc-theme-box-shadow:
+        0 0 20px rgba(255, 154, 86, 0.3),
+        0 0 40px rgba(209, 98, 164, 0.15),
+        inset 0 0 30px rgba(239, 118, 39, 0.05);
+
+    /* Lesbian Flag Gradient for Scanlines */
+    --lc-scanline-1: rgba(213, 45, 0, 0.03);
+    /* Red */
+    --lc-scanline-2: rgba(209, 98, 164, 0.04);
+    /* Pink */
+}
+
+/* The main draggable container */
+.lc-notes-container {
     position: fixed;
     right: 20px;
     top: 85px;
-    /* Moved to top-right, avoiding standard header */
-    /* bottom: 100px; - OLD */
-    /* Above the toast usually */
     z-index: 99999;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    /* Align to right */
+    font-family: var(--lc-font-main);
+    user-select: none;
+    touch-action: none;
+    width: max-content;
+    pointer-events: none;
+    /* Let clicks pass through empty space */
+}
+
+.lc-notes-container>* {
+    pointer-events: auto;
+    /* Re-enable for children */
+}
+
+.lc-notes-container.dragging {
+    cursor: grabbing;
+    z-index: 100000;
+}
+
+/* The Toggle/Handle (The "Button") */
+.lc-notes-handle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: rgba(30, 30, 30, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    color: #fff;
+    background: var(--lc-void);
+    border: 1px solid var(--lc-theme-primary);
+    color: var(--lc-theme-primary);
     padding: 10px 16px;
-    border-radius: 50px;
-    /* Pill shape */
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 14px;
-    font-weight: 600;
+    border-radius: 4px;
+    /* Techy, slightly rounded */
+    font-size: 13px;
+    font-weight: 700;
     cursor: pointer;
     transition: all 0.2s ease;
-    backdrop-filter: blur(8px);
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-    user-select: none;
-    /* Prevent text selection during drag */
-    touch-action: none;
-    /* Prevent browser scrolling on touch */
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+    gap: 8px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    /* Increased for OS look */
+    position: relative;
+    overflow: hidden;
+    text-shadow: 0 0 5px var(--lc-theme-border-glow);
+    /* Neon Text Glow */
 }
 
-.lc-notes-btn:hover {
-    background: #22c55e;
-    color: #000;
-    border-color: #22c55e;
-    transform: translateY(-2px) scale(1.05);
-    box-shadow: 0 8px 25px rgba(34, 197, 94, 0.4);
+.lc-notes-handle:hover {
+    background: var(--lc-theme-primary);
+    color: var(--lc-void);
+    box-shadow: 0 0 15px var(--lc-theme-border-glow);
+    text-shadow: none;
+    /* Contrast is better without glow on hover background */
 }
 
-.lc-notes-btn.dragging {
-    cursor: grabbing;
-    transform: scale(1.1);
-    background: #22c55e;
-    color: #000;
-    border-color: #fff;
-    box-shadow: 0 12px 30px rgba(34, 197, 94, 0.6);
-    transition: transform 0.1s;
-    /* Faster response for drag */
-    z-index: 100000;
-    /* Ensure strictly on top */
+.lc-notes-container.dragging .lc-notes-handle {
+    transform: scale(1.05);
+    background: var(--lc-theme-primary);
+    color: var(--lc-void);
+    box-shadow: 0 0 20px var(--lc-theme-border-glow);
 }
 
-.lc-notes-btn svg {
-    margin-right: 8px;
-    width: 18px;
-    height: 18px;
+/* Expanded State for Handle */
+.lc-notes-container.expanded .lc-notes-handle {
+    border-radius: 4px 4px 0 0;
+    border-bottom: 1px solid transparent;
+    background: var(--lc-void);
+    color: var(--lc-theme-primary);
+    width: 320px;
+    justify-content: space-between;
+    z-index: 2;
+    /* Above panel */
+    border: 2px solid var(--lc-theme-primary);
+    border-bottom: none;
+    box-shadow: none;
+    /* Panel has the shadow */
+    text-shadow: 0 0 5px var(--lc-theme-border-glow);
+}
+
+.lc-notes-handle svg {
+    width: 16px;
+    height: 16px;
     fill: currentColor;
+    filter: drop-shadow(0 0 2px var(--lc-theme-border-glow));
 }
 
-/* Notes Modal Backdrop */
-.lc-notes-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.75);
-    backdrop-filter: blur(5px);
-    z-index: 100000;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    opacity: 0;
-    animation: fadeIn 0.3s forwards;
-}
-
-/* Notes Modal Container */
-.lc-notes-modal {
-    width: 600px;
-    max-width: 90%;
-    background: #121212;
-    border: 1px solid #333;
-    border-radius: 12px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-    display: flex;
+/* The Dropdown Panel */
+.lc-notes-panel {
+    display: none;
+    width: 320px;
+    background: var(--lc-void);
+    border: 2px solid var(--lc-theme-primary);
+    border-top: none;
+    /* Handle covers it */
+    border-radius: 0 0 4px 4px;
+    box-shadow: var(--lc-theme-box-shadow);
     flex-direction: column;
     overflow: hidden;
-    transform: scale(0.95);
-    animation: popIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
 }
 
-/* Modal Header */
-.lc-notes-header {
+/* SCANLINE OVERLAY ::after (Foreground) */
+/* cuts through text for that cyberpunk look */
+.lc-notes-handle::after,
+.lc-notes-panel::after {
+    content: " ";
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    pointer-events: none;
+    /* Allow clicks through */
+    z-index: 50;
+    /* Above text */
+    background:
+        linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+        linear-gradient(90deg, var(--lc-scanline-1), var(--lc-scanline-2));
+    background-size: 100% 2px, 3px 100%;
+}
+
+.lc-notes-container.expanded .lc-notes-panel {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px 20px;
-    border-bottom: 1px solid #2a2a2a;
-    background: #1a1a1a;
 }
 
-.lc-notes-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #eee;
-    font-family: 'JetBrains Mono', monospace;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.lc-notes-close {
-    background: none;
-    border: none;
-    color: #666;
-    cursor: pointer;
-    font-size: 20px;
-    transition: color 0.2s;
-    padding: 4px;
-}
-
-.lc-notes-close:hover {
-    color: #fff;
-}
-
-/* Textarea */
-.lc-notes-textarea {
-    width: 100%;
-    min-height: 300px;
-    background: #0a0a0a;
-    color: #e0e0e0;
-    border: none;
-    padding: 20px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 14px;
-    line-height: 1.6;
-    resize: vertical;
-    outline: none;
-}
-
-.lc-notes-textarea:focus {
-    background: #0f0f0f;
-}
-
-/* Footer / Controls */
-.lc-notes-footer {
-    padding: 16px 20px;
-    border-top: 1px solid #2a2a2a;
-    background: #1a1a1a;
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-}
-
-.lc-btn {
-    padding: 8px 16px;
-    border-radius: 6px;
-    border: none;
-    cursor: pointer;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    font-weight: 500;
-    transition: all 0.2s;
-}
-
-.lc-btn-cancel {
-    background: transparent;
-    color: #888;
-    border: 1px solid transparent;
-}
-
-.lc-btn-cancel:hover {
-    color: #ddd;
-    background: rgba(255, 255, 255, 0.05);
-}
-
-.lc-btn-save {
-    background: #22c55e;
-    /* Default green */
-    color: #000;
-    font-weight: 700;
-}
-
-.lc-btn-save:hover {
-    filter: brightness(1.1);
-    transform: translateY(-1px);
-}
-
-/* Animations */
-@keyframes fadeIn {
+@keyframes slideDown {
     from {
         opacity: 0;
+        transform: translateY(-5px);
     }
 
     to {
         opacity: 1;
+        transform: translateY(0);
     }
 }
 
-@keyframes popIn {
-    from {
-        transform: scale(0.95);
-    }
+/* Textarea in Panel */
+.lc-notes-textarea {
+    width: 100%;
+    min-height: 250px;
+    background: transparent;
+    /* See scanlines */
+    color: #e0e0e0;
+    border: none;
+    padding: 16px;
+    font-family: var(--lc-font-main);
+    font-size: 13px;
+    line-height: 1.6;
+    resize: vertical;
+    outline: none;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+    position: relative;
+    z-index: 2;
+    /* Clickable above scanlines */
+}
 
-    to {
-        transform: scale(1);
-    }
+.lc-notes-textarea:focus {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+/* Footer / Controls */
+.lc-notes-footer {
+    padding: 10px 16px;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    position: relative;
+    z-index: 2;
+}
+
+.lc-notes-status {
+    font-size: 10px;
+    color: var(--lc-theme-primary);
+    font-style: normal;
+    font-family: 'Fira Code', monospace;
+    opacity: 0.8;
+}
+
+.lc-btn {
+    padding: 4px 12px;
+    border-radius: 2px;
+    border: 1px solid var(--lc-theme-primary);
+    background: transparent;
+    cursor: pointer;
+    font-family: var(--lc-font-main);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--lc-theme-primary);
+    transition: all 0.2s;
+}
+
+.lc-btn-save {
+    /* Base style */
+}
+
+.lc-btn-save:hover {
+    background: var(--lc-theme-primary);
+    color: var(--lc-void);
+    box-shadow: 0 0 10px var(--lc-theme-border-glow);
 }
 
 /* --- Rating Modal Styles (Toast-like) --- */

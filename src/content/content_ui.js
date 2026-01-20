@@ -206,198 +206,277 @@
     }
 
     /**
-     * Inject the Notes button, handling SPA navigation updates.
+     * Inject shared styles (Fonts) if not already present.
+     */
+    function injectSharedStyles() {
+        if (document.getElementById('lc-srs-global-styles')) return;
+
+        const style = document.createElement('style');
+        style.id = 'lc-srs-global-styles';
+        style.textContent = `
+            @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+            @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap');
+        `;
+        document.head.appendChild(style);
+    }
+
+    /**
+     * Inject the Notes interface (Floating widget).
      */
     function insertNotesButton(dependencies) {
         const { getCurrentProblemSlug, getNotes, saveNotes, extractProblemDetails } = dependencies || {};
 
-        // 0. Safety Checks
-        if (typeof getCurrentProblemSlug !== 'function' || typeof createNotesButton !== 'function') {
+        // Safety Checks
+        if (typeof getCurrentProblemSlug !== 'function' || typeof createNotesWidget !== 'function') {
             return;
         }
+
+        // Ensure fonts are loaded
+        injectSharedStyles();
 
         const slug = getCurrentProblemSlug();
         if (!slug) return;
 
-        // 1. Duplication check with Slug Verification
-        const existingBtn = document.querySelector('.lc-notes-btn');
-        if (existingBtn) {
-            if (existingBtn.dataset.slug === slug) {
-                return; // Already exists for current problem
+        // Duplication check
+        const existingContainer = document.querySelector('.lc-notes-container');
+        if (existingContainer) {
+            if (existingContainer.dataset.slug === slug) {
+                return; // Already exists
             } else {
-                // Slug changed (user navigated)! Remove old button.
-                console.log(`[LeetCode EasyRepeat] Slug changed (${existingBtn.dataset.slug} -> ${slug}). recreating button.`);
-                existingBtn.remove();
+                existingContainer.remove();
             }
         }
 
-        // 2. Direct Injection (Floating UI)
-        console.log(`[LeetCode EasyRepeat] Injecting Floating Notes Button for ${slug}`);
+        console.log(`[LeetCode EasyRepeat] Injecting Floating Notes Widget for ${slug}`);
 
-        const btn = createNotesButton(slug, async () => {
-            // Dependencies check inside click handler
-            if (!getNotes || !saveNotes || !extractProblemDetails || !showNotesModal) {
-                console.error("[LeetCode EasyRepeat] Modules not loaded fully.");
-                return;
+        // Define callbacks for the widget
+        const onSave = async (content) => {
+            if (saveNotes) {
+                await saveNotes(slug, content);
             }
+        };
 
-            const notes = await getNotes(slug);
-            const details = extractProblemDetails();
-            showNotesModal(details.title, notes, async (newContent) => {
-                await saveNotes(slug, newContent);
+        const loadContent = async () => {
+            if (getNotes) {
+                return await getNotes(slug);
+            }
+            return "";
+        };
+
+        const widget = createNotesWidget(slug, loadContent, onSave);
+
+        // --- THEME LOGIC ---
+        // 1. Initial Load
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.get({ theme: 'sakura' }, (result) => {
+                const theme = result.theme || 'sakura';
+                if (theme === 'sakura') {
+                    widget.classList.add('theme-sakura');
+                } else {
+                    widget.classList.remove('theme-sakura');
+                }
             });
-        });
 
-        document.body.appendChild(btn);
+            // 2. Listen for changes (Live Update)
+            chrome.storage.onChanged.addListener((changes, namespace) => {
+                if (namespace === 'local' && changes.theme) {
+                    const newTheme = changes.theme.newValue;
+                    if (newTheme === 'sakura') {
+                        widget.classList.add('theme-sakura');
+                    } else {
+                        widget.classList.remove('theme-sakura');
+                    }
+                }
+            });
+        }
 
-        // 3. Tooltip Logic (First time seen)
+        document.body.appendChild(widget);
+
+        // Tooltip logic (reuses existing storage check)
+        checkAndShowTooltip(widget.querySelector('.lc-notes-handle'));
+    }
+
+    /**
+     * Check and show tooltip if needed
+     */
+    function checkAndShowTooltip(targetBtn) {
+        if (!targetBtn) return;
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
             chrome.storage.local.get(['seenDragTooltip'], (result) => {
                 if (!result.seenDragTooltip) {
-                    showDragTooltip(btn);
-                    // Mark as seen immediately so it doesn't show again on reload
+                    showDragTooltip(targetBtn);
                     chrome.storage.local.set({ seenDragTooltip: true });
                 }
             });
         }
     }
 
-    /**
-     * Show a tooltip for the draggable button.
-     */
-    function showDragTooltip(targetBtn) {
-        const tooltip = document.createElement('div');
-        tooltip.className = 'lc-notes-tooltip';
-        tooltip.innerHTML = `
-            Long press to drag!
-            <button class="lc-tooltip-close">×</button>
-            <div class="lc-notes-tooltip-arrow"></div>
-        `;
+    // Helper helper for tooltip (fix scope issue if showDragTooltip is below)
+    // Actually showDragTooltip is defined at bottom scope using hoisting, so it is safe.
 
-        document.body.appendChild(tooltip);
-
-        // Position it to the left of the button
-        const updatePosition = () => {
-            if (!targetBtn || !tooltip) return;
-            const btnRect = targetBtn.getBoundingClientRect();
-            const tipRect = tooltip.getBoundingClientRect();
-
-            // Position: Centered verticaly relative to button, spaced 12px to left
-            const top = btnRect.top + (btnRect.height / 2) - (tipRect.height / 2);
-            const left = btnRect.left - tipRect.width - 12;
-
-            tooltip.style.top = `${top}px`;
-            tooltip.style.left = `${left}px`;
-        };
-
-        // Initial position
-        updatePosition();
-
-        // Show after small delay
-        requestAnimationFrame(() => {
-            tooltip.classList.add('show');
-        });
-
-        const closeTooltip = () => {
-            tooltip.classList.remove('show');
-            setTimeout(() => tooltip.remove(), 300);
-        };
-
-        // Close button handler
-        const closeBtn = tooltip.querySelector('.lc-tooltip-close');
-        if (closeBtn) {
-            closeBtn.onclick = (e) => {
-                e.stopPropagation();
-                closeTooltip();
-            };
-        }
-
-        // Auto close after 15s
-        setTimeout(closeTooltip, 15000);
-
-        // Optional: Update position if window resizes (since button is fixed relative to window corner)
-        // But since button is fixed to right: 20px, left position changes on resize.
-        window.addEventListener('resize', updatePosition, { once: true }); // Simple check
-    }
+    // ... showDragTooltip implementation remains mostly same ...
 
     return {
         showCompletionToast,
         showRatingModal,
-        createNotesButton,
-        showNotesModal,
+        createNotesWidget, // Replaces createNotesButton
         insertNotesButton
     };
 }));
 
 /**
- * Create the "Notes" button to inject into the page.
- * @param {Function} onClick - Handler for click event
- * @returns {HTMLElement} The button element
+ * Create the Draggable Notes Widget (Handle + Dropdown Panel)
  */
-function createNotesButton(slug, onClick) {
-    const btn = document.createElement('button');
-    btn.className = 'lc-notes-btn';
-    btn.dataset.slug = slug;
-    btn.innerHTML = `
-            <svg viewBox="0 0 24 24" style="pointer-events: none;">
-                <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
-            </svg>
-            <span style="pointer-events: none;">Notes</span>
-        `;
+function createNotesWidget(slug, loadContentFn, onSaveFn) {
+    // 1. Container
+    const container = document.createElement('div');
+    container.className = 'lc-notes-container';
+    container.dataset.slug = slug;
 
-    // --- Drag & Long Press Logic ---
+    // 2. Handle (The "Button")
+    const handle = document.createElement('div');
+    handle.className = 'lc-notes-handle';
+    handle.innerHTML = `
+        <svg viewBox="0 0 24 24" style="pointer-events: none;">
+            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+        </svg>
+        <span class="lc-notes-label">Notes</span>
+        <span class="lc-notes-toggle-icon" style="font-size: 10px; margin-left: auto;">▼</span>
+    `;
+
+    // 3. Panel (Hidden content)
+    const panel = document.createElement('div');
+    panel.className = 'lc-notes-panel';
+
+    // Textarea
+    const textarea = document.createElement('textarea');
+    textarea.className = 'lc-notes-textarea';
+    textarea.placeholder = "Type your notes here... (CMD+Enter to Save)";
+
+    // Footer
+    const footer = document.createElement('div');
+    footer.className = 'lc-notes-footer';
+
+    const status = document.createElement('span');
+    status.className = 'lc-notes-status';
+    status.innerText = 'Synced'; // initial state
+
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'lc-btn lc-btn-save';
+    saveBtn.innerText = 'Save';
+
+    footer.appendChild(status);
+    footer.appendChild(saveBtn);
+    panel.appendChild(textarea);
+    panel.appendChild(footer);
+
+    container.appendChild(handle);
+    container.appendChild(panel);
+
+    // --- State & Logic ---
+    let isOpen = false;
     let isDragging = false;
     let dragTimer = null;
+    let hasLoaded = false;
+
+    // Toggle Logic
+    const togglePanel = async () => {
+        if (isDragging) return; // Don't toggle if dragging
+
+        isOpen = !isOpen;
+        if (isOpen) {
+            container.classList.add('expanded');
+            handle.querySelector('.lc-notes-toggle-icon').innerText = '▲';
+
+            // Load content if not loaded
+            if (!hasLoaded) {
+                textarea.value = "Loading...";
+                const content = await loadContentFn();
+                textarea.value = content || "";
+                hasLoaded = true;
+            }
+
+            // Focus
+            setTimeout(() => textarea.focus(), 100);
+        } else {
+            container.classList.remove('expanded');
+            handle.querySelector('.lc-notes-toggle-icon').innerText = '▼';
+        }
+    };
+
+    // Save Logic
+    const performSave = async () => {
+        status.innerText = 'Saving...';
+        status.style.color = '#eab308'; // yellow
+        await onSaveFn(textarea.value);
+        status.innerText = 'Saved via Sync';
+        status.style.color = '#22c55e'; // green
+        setTimeout(() => { status.innerText = 'Synced'; status.style.color = '#666'; }, 2000);
+    };
+
+    saveBtn.onclick = performSave;
+
+    textarea.onkeydown = (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            performSave();
+        }
+        // No escape to close for sidebar? Maybe user wants to keep it open.
+        // Let's allow Esc to close if focused.
+        if (e.key === 'Escape') {
+            togglePanel(); // Close
+        }
+    };
+
+    // --- Drag Logic (Applied to Container via Handle) ---
+    // Repurposing logic from previous implementation but targeting 'container' and triggering on 'handle'
+
     let startX, startY, initialLeft, initialTop;
-    const DRAG_DELAY = 400; // ms to hold before drag starts
+    const DRAG_DELAY = 300; // slightly faster
 
     const startDragCheck = (e) => {
-        // Only left click
         if (e.button !== 0) return;
+        // If clicking inside the panel (textarea, buttons), do NOT drag.
+        // Only drag if clicking the handle.
+        if (!handle.contains(e.target)) return;
 
         startX = e.clientX;
         startY = e.clientY;
 
-        // Use getComputedStyle to handle the fixed positioning correctly
-        const rect = btn.getBoundingClientRect();
+        const rect = container.getBoundingClientRect();
         initialLeft = rect.left;
         initialTop = rect.top;
 
-        // Clear any existing timer
         if (dragTimer) clearTimeout(dragTimer);
 
         dragTimer = setTimeout(() => {
             isDragging = true;
-            btn.classList.add('dragging');
+            container.classList.add('dragging');
 
-            // Switch to fixed positioning based on current viewport coords to prevent jumping
-            btn.style.right = 'auto';
-            btn.style.bottom = 'auto';
-            btn.style.left = `${initialLeft}px`;
-            btn.style.top = `${initialTop}px`;
+            // Fix position
+            container.style.right = 'auto';
+            container.style.bottom = 'auto';
+            container.style.left = `${initialLeft}px`;
+            container.style.top = `${initialTop}px`;
         }, DRAG_DELAY);
     };
 
     const performDrag = (e) => {
         if (!isDragging) return;
-
-        e.preventDefault(); // Prevent text selection etc
+        e.preventDefault();
 
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
-
         let newLeft = initialLeft + dx;
         let newTop = initialTop + dy;
 
-        // Optional: Bounds checking to keep on screen
-        const maxLeft = window.innerWidth - btn.offsetWidth;
-        const maxTop = window.innerHeight - btn.offsetHeight;
-
+        // Bounds
+        const maxLeft = window.innerWidth - container.offsetWidth;
+        const maxTop = window.innerHeight - 40; // minimal visibility
         newLeft = Math.max(0, Math.min(newLeft, maxLeft));
         newTop = Math.max(0, Math.min(newTop, maxTop));
 
-        btn.style.left = `${newLeft}px`;
-        btn.style.top = `${newTop}px`;
+        container.style.left = `${newLeft}px`;
+        container.style.top = `${newTop}px`;
     };
 
     const endDrag = (e) => {
@@ -407,159 +486,54 @@ function createNotesButton(slug, onClick) {
         }
 
         if (isDragging) {
-            // Determine if this was a valid drag 'session' or user just let go
             isDragging = false;
-            btn.classList.remove('dragging');
-
-            // Prevent the click event that follows mouseup
-            // We can do this by handling the click handler conditionally
+            container.classList.remove('dragging');
+            // Prevent click propagation logic
+            // We use a short timeout flag to block 'click' event on handle
+            handle.dataset.justDragged = "true";
+            setTimeout(() => { handle.dataset.justDragged = "false"; }, 50);
         }
     };
 
-    btn.addEventListener('mousedown', startDragCheck);
-
-    // Listen on window for move/up to catch if mouse leaves button
+    handle.onmousedown = startDragCheck;
     window.addEventListener('mousemove', performDrag);
     window.addEventListener('mouseup', endDrag);
 
-    // --- Click Logic ---
-    btn.onclick = (e) => {
+    handle.onclick = (e) => {
         e.preventDefault();
-        e.stopPropagation();
-
-        // If we were just dragging (or the timer fired and we are in "drag mode"), don't open
-        // Note: isDragging is cleared in mouseup, which fires BEFORE click.
-        // We need a flag that persists slightly or check if movement occurred.
-        // Simpler approach: If 'dragging' class was present or we moved significantly?
-
-        // ACTUALLY: The challenge is distinguishing long-press-release from click.
-        // If we held long enough to trigger 'dragging', we don't want click.
-        // But 'endDrag' clears 'isDragging'.
-
-        // Refined approach:
-        // Check if the 'dragging' class was REMOVED recently?
-        // Or better: Let mouseup handle the "was dragging" state?
-
-        // Let's use a closure variable that 'endDrag' sets if it was dragging
+        if (handle.dataset.justDragged === "true") return;
+        togglePanel();
     };
 
-    // We need to re-structure to properly block the click. 
-    // The cleanest way typically is to handle everything in mouseup or use a 'wasDragging' flag.
-
-    let wasDragging = false;
-    // Update endDrag to set this
-    const endDragRefined = (e) => {
-        if (dragTimer) {
-            clearTimeout(dragTimer);
-            dragTimer = null;
-        }
-
-        if (isDragging) {
-            wasDragging = true;
-            isDragging = false;
-            btn.classList.remove('dragging');
-            // Reset flag after a tick so click handler can see it
-            setTimeout(() => { wasDragging = false; }, 50);
-        }
-    };
-
-    // Remove previous listener to add refined one
-    window.removeEventListener('mouseup', endDrag);
-    window.addEventListener('mouseup', endDragRefined);
-
-    btn.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!wasDragging) {
-            onClick();
-        }
-    };
-
-    return btn;
+    return container;
 }
 
 /**
- * Show the Notes modal.
- * @param {string} title - Problem title
- * @param {string} initialContent - Existing notes
- * @param {Function} onSave - Callback(newContent)
+ * Show a tooltip for the draggable button (Moved here for scope access if needed)
  */
-function showNotesModal(title, initialContent, onSave) {
-    // Create elements
-    const backdrop = document.createElement('div');
-    backdrop.className = 'lc-notes-backdrop';
+function showDragTooltip(targetElement) {
+    if (!targetElement) return;
+    // ... reused logic ...
+    const tooltip = document.createElement('div');
+    tooltip.className = 'lc-notes-tooltip';
+    tooltip.innerHTML = `Long press to drag!<div class="lc-notes-tooltip-arrow"></div><button class="lc-tooltip-close">×</button>`;
+    document.body.appendChild(tooltip);
 
-    const modal = document.createElement('div');
-    modal.className = 'lc-notes-modal';
-
-    // Header
-    const header = document.createElement('div');
-    header.className = 'lc-notes-header';
-    header.innerHTML = `
-            <div class="lc-notes-title">
-                <span>📝</span> ${title}
-            </div>
-            <button class="lc-notes-close">×</button>
-        `;
-
-    // Textarea
-    const textarea = document.createElement('textarea');
-    textarea.className = 'lc-notes-textarea';
-    textarea.placeholder = "Write your thoughts, approach, or key insights here...";
-    textarea.value = initialContent || '';
-    // Auto-focus logic
-    setTimeout(() => textarea.focus(), 100);
-
-    // Footer
-    const footer = document.createElement('div');
-    footer.className = 'lc-notes-footer';
-
-    const btnCancel = document.createElement('button');
-    btnCancel.className = 'lc-btn lc-btn-cancel';
-    btnCancel.innerText = 'CMD+ENTER to Save';
-
-    const btnSave = document.createElement('button');
-    btnSave.className = 'lc-btn lc-btn-save';
-    btnSave.innerText = 'SAVE NOTES';
-
-    // Assembly
-    footer.appendChild(btnCancel);
-    footer.appendChild(btnSave);
-
-    modal.appendChild(header);
-    modal.appendChild(textarea);
-    modal.appendChild(footer);
-    backdrop.appendChild(modal);
-    document.body.appendChild(backdrop);
-
-    // Logic
-    const close = () => {
-        // Animation out could go here
-        backdrop.remove();
+    const updatePosition = () => {
+        try {
+            const rect = targetElement.getBoundingClientRect();
+            const tipRect = tooltip.getBoundingClientRect();
+            const top = rect.top + (rect.height / 2) - (tipRect.height / 2);
+            const left = rect.left - tipRect.width - 12;
+            tooltip.style.top = `${top}px`;
+            tooltip.style.left = `${left}px`;
+        } catch (e) { tooltip.remove(); }
     };
 
-    const save = () => {
-        const content = textarea.value;
-        onSave(content);
-        close();
-    };
+    updatePosition();
+    requestAnimationFrame(() => tooltip.classList.add('show'));
 
-    header.querySelector('.lc-notes-close').onclick = close;
-    btnCancel.onclick = close; // Or maybe cancel shouldn't save? Yes.
-    btnSave.onclick = save;
-
-    // Backdrop click close
-    backdrop.onclick = (e) => {
-        if (e.target === backdrop) close();
-    };
-
-    // Shortcuts
-    textarea.onkeydown = (e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-            save();
-        }
-        if (e.key === 'Escape') {
-            close();
-        }
-    };
+    const close = () => { tooltip.remove(); };
+    setTimeout(close, 15000);
+    tooltip.querySelector('.lc-tooltip-close').onclick = close;
 }

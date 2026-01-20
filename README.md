@@ -27,7 +27,14 @@ A Chrome Extension that helps you master LeetCode problems using a **Spaced Repe
   - Problem title and difficulty
   - Current interval and repetition count
   - Easy/Medium/Hard rating buttons
+  - Easy/Medium/Hard rating buttons
   - Direct link to the problem
+
+### 📝 Contextual Notes
+- **Floating Notes Button**: Quickly jot down your thoughts, algorithms, or key insights for any problem without leaving the page.
+- **Draggable Interface**: Long-press (0.4s) the "Notes" button to drag and reposition it anywhere on your screen.
+- **Smart Helpers**: Helpful tooltips guide you on valid interactions (like how to drag).
+- **Auto-Sync**: Notes are automatically saved to Chrome Storage and synced with the problem.
 
 ### ⚙️ Advanced Tools
 - **Manual Scan**: Force-scan the current page for accepted submissions
