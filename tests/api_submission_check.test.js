@@ -72,22 +72,22 @@ const {
     pollSubmissionResult,
     checkSubmissionStatus,
     checkLatestSubmissionViaApi
-} = require('../leetcode_api.js');
+} = require('../src/content/leetcode_api.js');
 
-const { saveSubmission } = require('../storage.js');
+const { saveSubmission } = require('../src/shared/storage.js');
 
 describe('API Submission Check Logic', () => {
     beforeEach(() => {
         jest.clearAllMocks();
 
-        const { TOAST_THEMES } = require('../config.js');
+        const { TOAST_THEMES } = require('../src/shared/config.js');
         global.TOAST_THEMES = TOAST_THEMES;
 
-        const { showCompletionToast, showRatingModal } = require('../content_ui.js');
+        const { showCompletionToast, showRatingModal } = require('../src/content/content_ui.js');
         global.showCompletionToast = showCompletionToast;
         global.showRatingModal = showRatingModal;
 
-        const { extractProblemDetails, getCurrentProblemSlug } = require('../leetcode_dom.js');
+        const { extractProblemDetails, getCurrentProblemSlug } = require('../src/content/leetcode_dom.js');
         global.extractProblemDetails = extractProblemDetails;
         global.getCurrentProblemSlug = getCurrentProblemSlug;
 

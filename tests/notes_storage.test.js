@@ -1,4 +1,4 @@
-const storage = require('../storage');
+const storage = require('../src/shared/storage');
 
 // Mock chrome.storage.local
 const mockStorage = {

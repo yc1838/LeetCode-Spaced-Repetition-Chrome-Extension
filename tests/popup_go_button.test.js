@@ -27,7 +27,7 @@ describe('Popup GO Button', () => {
         global.calculateNextReview = jest.fn().mockReturnValue({ nextInterval: 1, nextRepetition: 1, nextEaseFactor: 2.5, nextReviewDate: '' });
 
         // Mock global constants from config.js
-        const { THEMES } = require('../config.js');
+        const { THEMES } = require('../src/shared/config.js');
         global.THEMES = THEMES;
 
         // Reset DOM
@@ -40,7 +40,7 @@ describe('Popup GO Button', () => {
         jest.resetModules();
         // popup.js still needed for other logic if required, but renderVectors is in popup_ui
         // We can just require popup_ui directly for testing the UI
-        popup = require('../popup_ui.js');
+        popup = require('../src/popup/popup_ui.js');
 
         // Mock global updateProblemSRS if needed
         global.updateProblemSRS = jest.fn();

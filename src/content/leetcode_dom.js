@@ -99,6 +99,24 @@
                     difficultySource = 'dom';
                     difficultyCache[problemSlug] = difficulty; // Update cache
                     console.log(`[LeetCode EasyRepeat] Detected difficulty from DOM: ${difficulty}`);
+                } else {
+                    console.warn(`[LeetCode EasyRepeat] [LEETCODE-DEBUG] Difficulty node found but text '${text}' is not valid.`);
+                }
+            } else {
+                console.warn(`[LeetCode EasyRepeat] [LEETCODE-DEBUG] Difficulty node NOT found for ${problemSlug}. Selector: 'div[class*="text-difficulty-"]' failed.`);
+
+                // Fallback attempt: Try to find by specific colors if class parsing fails
+                const easyColor = document.querySelector('.text-difficulty-easy');
+                const mediumColor = document.querySelector('.text-difficulty-medium');
+                const hardColor = document.querySelector('.text-difficulty-hard');
+
+                if (easyColor) { difficulty = 'Easy'; difficultySource = 'dom-fallback-easy'; }
+                else if (mediumColor) { difficulty = 'Medium'; difficultySource = 'dom-fallback-medium'; }
+                else if (hardColor) { difficulty = 'Hard'; difficultySource = 'dom-fallback-hard'; }
+
+                if (difficultySource.startsWith('dom-fallback')) {
+                    console.log(`[LeetCode EasyRepeat] [LEETCODE-DEBUG] Recovered difficulty via class fallback: ${difficulty}`);
+                    difficultyCache[problemSlug] = difficulty;
                 }
             }
         }

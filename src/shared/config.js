@@ -28,6 +28,7 @@
             statusBg: 'rgba(255, 16, 240, 0.05)',
             hoverBg: 'rgba(255, 16, 240, 0.08)',
             containerShadow: 'rgba(255, 16, 240, 0.2)',
+            glass: 'rgba(20, 10, 15, 0.85)',
             cellColors: ['#661450', '#AA1177', '#FF10F0', '#FF6B35']  // Heatmap gradient
         },
         matrix: {
@@ -40,6 +41,7 @@
             statusBg: 'rgba(0, 255, 65, 0.05)',
             hoverBg: 'rgba(0, 255, 65, 0.05)',
             containerShadow: 'rgba(0, 255, 65, 0.15)',
+            glass: 'rgba(0, 20, 10, 0.85)',
             cellColors: ['#00441b', '#006d2c', '#238b45', '#00FF41']
         }
     };

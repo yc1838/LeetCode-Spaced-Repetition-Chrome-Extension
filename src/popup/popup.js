@@ -141,6 +141,9 @@ function applyTheme(themeName) {
     root.style.setProperty('--cell-4', theme.cellColors[3]);
 
     // Some elements need direct style updates (can't use CSS variables everywhere)
+    root.style.setProperty('--hover-bg', theme.hoverBg);
+    root.style.setProperty('--glass', theme.glass || 'rgba(20, 10, 15, 0.85)'); // Fallback
+
     const statusBar = document.querySelector('.status-bar');
     if (statusBar) statusBar.style.background = theme.statusBg;
 
@@ -500,6 +503,32 @@ function calculateStreak(problems) {
     }
 
     return streak;
+}
+
+/**
+ * Delete a problem from storage.
+ * @param {string} slug - The problem unique identifier
+ */
+async function deleteProblem(slug) {
+    if (!confirm(`Are you sure you want to delete "${slug}" from your SRS history? This cannot be undone.`)) {
+        return;
+    }
+
+    const result = await chrome.storage.local.get({ problems: {} });
+    const problems = result.problems;
+
+    if (problems[slug]) {
+        delete problems[slug];
+        await chrome.storage.local.set({ problems });
+        await updateDashboard(); // Refresh UI
+    }
+}
+
+// Make globally available for popup_ui.js
+if (typeof window !== 'undefined') {
+    window.deleteProblem = deleteProblem;
+    // Also attach updateProblemSRS if not already
+    window.updateProblemSRS = updateProblemSRS;
 }
 
 // Export for testing

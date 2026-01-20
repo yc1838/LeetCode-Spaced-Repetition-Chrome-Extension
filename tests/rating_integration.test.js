@@ -18,7 +18,7 @@ global.chrome = {
 };
 
 // Mock global constants
-const { TOAST_THEMES } = require('../config.js');
+const { TOAST_THEMES } = require('../src/shared/config.js');
 global.TOAST_THEMES = TOAST_THEMES;
 
 // Mock window and document
@@ -40,6 +40,7 @@ global.document = {
     },
     // Mock getElementById/querySelector if needed
     querySelector: jest.fn(),
+    cookie: '',
 
     createElement: jest.fn().mockImplementation((tag) => {
         const el = {
@@ -95,11 +96,11 @@ const mockCalculateFSRS = jest.fn().mockReturnValue({
     nextState: 'Review'
 });
 
-jest.mock('../fsrs_logic.js', () => ({
+jest.mock('../src/algorithms/fsrs_logic.js', () => ({
     calculateFSRS: mockCalculateFSRS
 }));
 
-const fsrs = require('../fsrs_logic.js');
+const fsrs = require('../src/algorithms/fsrs_logic.js');
 global.fsrs = fsrs; // Make it global for content.js
 
 // Mock SM-2 logic
@@ -126,19 +127,19 @@ describe('Rating Integration Flow', () => {
         global.chrome.storage.local.set.mockResolvedValue();
 
         // Mock local functions from content_ui.js
-        const contentUi = require('../content_ui.js');
+        const contentUi = require('../src/content/content_ui.js');
         // IMPORTANT: Assign to global BEFORE running tests that use content.js functions
         global.showRatingModal = contentUi.showRatingModal;
         global.showCompletionToast = contentUi.showCompletionToast;
         global.document.head = { appendChild: jest.fn() }; // Required by content_ui
 
-        const { saveSubmission } = require('../storage.js');
+        const { saveSubmission } = require('../src/shared/storage.js');
         global.saveSubmission = saveSubmission;
 
         // Require the module under test
         // Require the module under test
-        contentScript = require('../content.js');
-        const leetcodeApi = require('../leetcode_api.js');
+        contentScript = require('../src/content/content.js');
+        const leetcodeApi = require('../src/content/leetcode_api.js');
         global.checkSubmissionStatus = leetcodeApi.checkSubmissionStatus;
     });
 
