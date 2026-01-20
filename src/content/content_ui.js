@@ -249,6 +249,75 @@
         });
 
         document.body.appendChild(btn);
+
+        // 3. Tooltip Logic (First time seen)
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.get(['seenDragTooltip'], (result) => {
+                if (!result.seenDragTooltip) {
+                    showDragTooltip(btn);
+                    // Mark as seen immediately so it doesn't show again on reload
+                    chrome.storage.local.set({ seenDragTooltip: true });
+                }
+            });
+        }
+    }
+
+    /**
+     * Show a tooltip for the draggable button.
+     */
+    function showDragTooltip(targetBtn) {
+        const tooltip = document.createElement('div');
+        tooltip.className = 'lc-notes-tooltip';
+        tooltip.innerHTML = `
+            Long press to drag!
+            <button class="lc-tooltip-close">×</button>
+            <div class="lc-notes-tooltip-arrow"></div>
+        `;
+
+        document.body.appendChild(tooltip);
+
+        // Position it to the left of the button
+        const updatePosition = () => {
+            if (!targetBtn || !tooltip) return;
+            const btnRect = targetBtn.getBoundingClientRect();
+            const tipRect = tooltip.getBoundingClientRect();
+
+            // Position: Centered verticaly relative to button, spaced 12px to left
+            const top = btnRect.top + (btnRect.height / 2) - (tipRect.height / 2);
+            const left = btnRect.left - tipRect.width - 12;
+
+            tooltip.style.top = `${top}px`;
+            tooltip.style.left = `${left}px`;
+        };
+
+        // Initial position
+        updatePosition();
+
+        // Show after small delay
+        requestAnimationFrame(() => {
+            tooltip.classList.add('show');
+        });
+
+        const closeTooltip = () => {
+            tooltip.classList.remove('show');
+            setTimeout(() => tooltip.remove(), 300);
+        };
+
+        // Close button handler
+        const closeBtn = tooltip.querySelector('.lc-tooltip-close');
+        if (closeBtn) {
+            closeBtn.onclick = (e) => {
+                e.stopPropagation();
+                closeTooltip();
+            };
+        }
+
+        // Auto close after 15s
+        setTimeout(closeTooltip, 15000);
+
+        // Optional: Update position if window resizes (since button is fixed relative to window corner)
+        // But since button is fixed to right: 20px, left position changes on resize.
+        window.addEventListener('resize', updatePosition, { once: true }); // Simple check
     }
 
     return {
@@ -270,16 +339,142 @@ function createNotesButton(slug, onClick) {
     btn.className = 'lc-notes-btn';
     btn.dataset.slug = slug;
     btn.innerHTML = `
-            <svg viewBox="0 0 24 24">
+            <svg viewBox="0 0 24 24" style="pointer-events: none;">
                 <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
             </svg>
-            Notes
+            <span style="pointer-events: none;">Notes</span>
         `;
+
+    // --- Drag & Long Press Logic ---
+    let isDragging = false;
+    let dragTimer = null;
+    let startX, startY, initialLeft, initialTop;
+    const DRAG_DELAY = 400; // ms to hold before drag starts
+
+    const startDragCheck = (e) => {
+        // Only left click
+        if (e.button !== 0) return;
+
+        startX = e.clientX;
+        startY = e.clientY;
+
+        // Use getComputedStyle to handle the fixed positioning correctly
+        const rect = btn.getBoundingClientRect();
+        initialLeft = rect.left;
+        initialTop = rect.top;
+
+        // Clear any existing timer
+        if (dragTimer) clearTimeout(dragTimer);
+
+        dragTimer = setTimeout(() => {
+            isDragging = true;
+            btn.classList.add('dragging');
+
+            // Switch to fixed positioning based on current viewport coords to prevent jumping
+            btn.style.right = 'auto';
+            btn.style.bottom = 'auto';
+            btn.style.left = `${initialLeft}px`;
+            btn.style.top = `${initialTop}px`;
+        }, DRAG_DELAY);
+    };
+
+    const performDrag = (e) => {
+        if (!isDragging) return;
+
+        e.preventDefault(); // Prevent text selection etc
+
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        let newLeft = initialLeft + dx;
+        let newTop = initialTop + dy;
+
+        // Optional: Bounds checking to keep on screen
+        const maxLeft = window.innerWidth - btn.offsetWidth;
+        const maxTop = window.innerHeight - btn.offsetHeight;
+
+        newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+        newTop = Math.max(0, Math.min(newTop, maxTop));
+
+        btn.style.left = `${newLeft}px`;
+        btn.style.top = `${newTop}px`;
+    };
+
+    const endDrag = (e) => {
+        if (dragTimer) {
+            clearTimeout(dragTimer);
+            dragTimer = null;
+        }
+
+        if (isDragging) {
+            // Determine if this was a valid drag 'session' or user just let go
+            isDragging = false;
+            btn.classList.remove('dragging');
+
+            // Prevent the click event that follows mouseup
+            // We can do this by handling the click handler conditionally
+        }
+    };
+
+    btn.addEventListener('mousedown', startDragCheck);
+
+    // Listen on window for move/up to catch if mouse leaves button
+    window.addEventListener('mousemove', performDrag);
+    window.addEventListener('mouseup', endDrag);
+
+    // --- Click Logic ---
     btn.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        onClick();
+
+        // If we were just dragging (or the timer fired and we are in "drag mode"), don't open
+        // Note: isDragging is cleared in mouseup, which fires BEFORE click.
+        // We need a flag that persists slightly or check if movement occurred.
+        // Simpler approach: If 'dragging' class was present or we moved significantly?
+
+        // ACTUALLY: The challenge is distinguishing long-press-release from click.
+        // If we held long enough to trigger 'dragging', we don't want click.
+        // But 'endDrag' clears 'isDragging'.
+
+        // Refined approach:
+        // Check if the 'dragging' class was REMOVED recently?
+        // Or better: Let mouseup handle the "was dragging" state?
+
+        // Let's use a closure variable that 'endDrag' sets if it was dragging
     };
+
+    // We need to re-structure to properly block the click. 
+    // The cleanest way typically is to handle everything in mouseup or use a 'wasDragging' flag.
+
+    let wasDragging = false;
+    // Update endDrag to set this
+    const endDragRefined = (e) => {
+        if (dragTimer) {
+            clearTimeout(dragTimer);
+            dragTimer = null;
+        }
+
+        if (isDragging) {
+            wasDragging = true;
+            isDragging = false;
+            btn.classList.remove('dragging');
+            // Reset flag after a tick so click handler can see it
+            setTimeout(() => { wasDragging = false; }, 50);
+        }
+    };
+
+    // Remove previous listener to add refined one
+    window.removeEventListener('mouseup', endDrag);
+    window.addEventListener('mouseup', endDragRefined);
+
+    btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!wasDragging) {
+            onClick();
+        }
+    };
+
     return btn;
 }
 
