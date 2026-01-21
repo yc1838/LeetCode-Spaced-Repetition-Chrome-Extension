@@ -26,10 +26,12 @@
                 "src/content/leetcode_dom.js",
                 "src/shared/storage.js",
                 "src/content/leetcode_api.js",
+                "src/content/llm_sidecar.js",
                 "src/content/content.js"
             ],
             "css": [
-                "src/content/content.css"
+                "src/content/content.css",
+                "src/content/llm_sidecar.css"
             ]
         }
     ]

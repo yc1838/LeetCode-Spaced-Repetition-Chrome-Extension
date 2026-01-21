@@ -170,3 +170,7 @@ setInterval(() => {
         insertNotesButton(deps);
     }
 }, 2000);
+// Initialize LLM Sidecar
+if (window.LLMSidecar && typeof window.LLMSidecar.init === 'function') {
+    window.LLMSidecar.init();
+}
