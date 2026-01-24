@@ -218,7 +218,10 @@ async function updateDashboard() {
 
     // Update stats
     const streakEl = document.getElementById('streak-display');
-    if (streakEl) streakEl.innerText = `STREAK: ${calculateStreak(problems)}`;
+    if (streakEl) {
+        const count = await calculateStreakFn();
+        streakEl.innerText = `STREAK: ${count}`;
+    }
 
     // Initial Render
     // 'dashboard' view = Due Problems
@@ -315,18 +318,96 @@ function setupSidebar(dueProblems, allProblems) {
 
 
 // --- Manual Tools Logic ---
-function setupManualTools() {
-    // "Purge Memory" button
-    document.getElementById('btn-purge').onclick = async () => {
-        if (confirm("This will erase all your SRS progress. Are you sure?")) {
-            // Preserve theme preference before clearing
-            const savedTheme = currentTheme;
-            await chrome.storage.local.clear();
-            // Restore theme preference
-            await chrome.storage.local.set({ theme: savedTheme });
-            location.reload();
+/**
+ * Calculate Streak using Activity Log (Decoupled from Problems)
+ * 
+ * Logic:
+ * 1. Load `activityLog` (Array of YYYY-MM-DD).
+ * 2. If missing, auto-migrate from `problems` history.
+ * 3. Calculate streak of consecutive days ending Today or Yesterday.
+ */
+async function calculateStreakFn() {
+    const res = await chrome.storage.local.get({ problems: {}, activityLog: null });
+    let log = res.activityLog;
+    const problems = res.problems;
+
+    // --- MIGRATION: Populate Activity Log from History if missing ---
+    if (!log) {
+        log = [];
+        Object.values(problems).forEach(p => {
+            if (p.history) {
+                p.history.forEach(h => {
+                    const dateObj = new Date(h.date);
+                    const dateStr = dateObj.getFullYear() + '-' +
+                        (dateObj.getMonth() + 1).toString().padStart(2, '0') + '-' +
+                        dateObj.getDate().toString().padStart(2, '0');
+                    if (!log.includes(dateStr)) log.push(dateStr);
+                });
+            }
+        });
+        log.sort();
+        console.log("[Streak] Migrated history to Activity Log:", log);
+        await chrome.storage.local.set({ activityLog: log });
+    }
+
+    // --- CALCULATION ---
+    let streak = 0;
+    let checkDate = getCurrentDate(); // Handles Test Mode logic
+
+    // Check backwards
+    for (let i = 0; i < 3650; i++) {
+        const checkStr = checkDate.getFullYear() + '-' +
+            (checkDate.getMonth() + 1).toString().padStart(2, '0') + '-' +
+            checkDate.getDate().toString().padStart(2, '0');
+
+        if (log.includes(checkStr)) {
+            streak++;
+            // Move back 1 day
+            checkDate.setDate(checkDate.getDate() - 1);
+        } else {
+            // Grace Period: If "Today" is missing, check Yesterday
+            if (i === 0) {
+                checkDate.setDate(checkDate.getDate() - 1);
+                continue;
+            } else {
+                break; // Streak broken
+            }
         }
-    };
+    }
+    return streak;
+}
+
+// ... existing deleteProblem ...
+
+// --- Manual Tools Logic ---
+function setupManualTools() {
+    // "Repair Streak" button
+    const btnRepair = document.getElementById('btn-repair');
+    if (btnRepair) {
+        btnRepair.onclick = async () => {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const defaultDate = yesterday.toISOString().split('T')[0];
+
+            const input = prompt("Streak broken? Enter a date (YYYY-MM-DD) to mark as 'Active':", defaultDate);
+            if (input) {
+                // Basic Validation
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+                    showNotification('error', 'INVALID_DATE', 'Format must be YYYY-MM-DD');
+                    return;
+                }
+
+                // Call storage.js function
+                if (typeof logActivity === 'function') {
+                    await logActivity(input);
+                    showNotification('success', 'STREAK_REPAIRED', `Activity logged for ${input}.`);
+                    await updateDashboard(); // Refund UI
+                } else {
+                    showNotification('error', 'ERROR', 'Storage module not loaded.');
+                }
+            }
+        };
+    }
 
     // "Sync" button (Manual Scan)
     document.getElementById('btn-sync').onclick = async () => {
@@ -341,19 +422,17 @@ function setupManualTools() {
 
         chrome.tabs.sendMessage(tab.id, { action: "scanPage" }, (response) => {
             if (chrome.runtime.lastError) {
-                // If we get here, the URL was correct but the content script isn't responding.
-                // likely the user just navigated or the extension was reloaded.
                 const err = chrome.runtime.lastError.message || "Unknown runtime error";
                 console.error("[Popup] Connection failed:", err);
                 showNotification('error', 'CONNECTION_LOST', `Extension context lost (${err}). Please refresh the LeetCode page.`);
             } else if (response && response.success) {
-                window.close(); // Close popup, user will see toast on page
+                window.close(); // Close popup
             } else if (response && response.duplicate) {
-                showNotification('warning', 'DUPLICATE_DETECTED', `"${response.problemTitle}" was already logged today. Wait for its next review date.`);
+                showNotification('warning', 'DUPLICATE_DETECTED', `"${response.problemTitle}" was already logged today.`);
             } else if (response && response.error) {
                 showNotification('error', 'SCAN_ERROR', `Scan failed: ${response.error}`);
             } else {
-                showNotification('error', 'SCAN_FAILED', 'No "Accepted" submission found on this page. Make sure you have solved the problem.');
+                showNotification('error', 'SCAN_FAILED', 'No "Accepted" submission found on this page.');
             }
         });
     };
@@ -376,36 +455,40 @@ async function setupTestMode() {
     testDate = storage.testDate;
 
     // Set initial UI state
-    toggle.checked = isTestMode;
-    dateInput.value = testDate || new Date().toISOString().split('T')[0];
+    if (toggle) toggle.checked = isTestMode;
+    if (dateInput) dateInput.value = testDate || new Date().toISOString().split('T')[0];
 
     // Show/Hide controls based on mode
-    controls.style.display = isTestMode ? 'block' : 'none';
+    if (controls) controls.style.display = isTestMode ? 'block' : 'none';
 
     // Toggle Change Listener
-    toggle.onchange = async () => {
-        isTestMode = toggle.checked;
-        controls.style.display = isTestMode ? 'block' : 'none'; // UI Update
+    if (toggle) {
+        toggle.onchange = async () => {
+            isTestMode = toggle.checked;
+            if (controls) controls.style.display = isTestMode ? 'block' : 'none'; // UI Update
 
-        // If enabling and no date set, default to today
-        if (isTestMode && !dateInput.value) {
-            dateInput.value = new Date().toISOString().split('T')[0];
-            testDate = dateInput.value;
-        }
+            // If enabling and no date set, default to today
+            if (isTestMode && dateInput && !dateInput.value) {
+                dateInput.value = new Date().toISOString().split('T')[0];
+                testDate = dateInput.value;
+            }
 
-        await chrome.storage.local.set({ testMode: isTestMode, testDate: dateInput.value });
-        await updateDashboard();
-    };
+            await chrome.storage.local.set({ testMode: isTestMode, testDate: dateInput ? dateInput.value : null });
+            await updateDashboard();
+        };
+    }
 
     // Date Change Listener
-    dateInput.onchange = async () => {
-        testDate = dateInput.value;
-        await chrome.storage.local.set({ testDate: testDate });
-        // Only refresh if test mode is actually on
-        if (isTestMode) {
-            await updateDashboard();
-        }
-    };
+    if (dateInput) {
+        dateInput.onchange = async () => {
+            testDate = dateInput.value;
+            await chrome.storage.local.set({ testDate: testDate });
+            // Only refresh if test mode is actually on
+            if (isTestMode) {
+                await updateDashboard();
+            }
+        };
+    }
 }
 
 function getCurrentDate() {
@@ -449,60 +532,6 @@ async function updateProblemSRS(slug, ease) {
     await chrome.storage.local.set({ problems });
     // Re-render the dashboard to remove the item from the "Due" list
     await updateDashboard();
-}
-
-/**
- * Calculate Streak
- * 
- * Logic:
- * - Collect all unique dates from history (converted to Local YYYY-MM-DD)
- * - Start from "Today" (getCurrentDate())
- * - If Today is present, add to streak, move to Yesterday
- * - If Today is MISSING, don't break yet (grace period), just move to Yesterday
- * - Continue backwards until a date is missing
- */
-function calculateStreak(problems) {
-    const activeDates = new Set();
-
-    problems.forEach(p => {
-        if (!p.history) return;
-        p.history.forEach(h => {
-            // Convert stored ISO string back to Local Date for consistency
-            const dateObj = new Date(h.date);
-            const dateStr = dateObj.getFullYear() + '-' +
-                (dateObj.getMonth() + 1).toString().padStart(2, '0') + '-' +
-                dateObj.getDate().toString().padStart(2, '0');
-            activeDates.add(dateStr);
-        });
-    });
-
-    let streak = 0;
-    let checkDate = getCurrentDate();
-
-    // Check backwards for up to 10 years (safety limit)
-    for (let i = 0; i < 3650; i++) {
-        const checkStr = checkDate.getFullYear() + '-' +
-            (checkDate.getMonth() + 1).toString().padStart(2, '0') + '-' +
-            checkDate.getDate().toString().padStart(2, '0');
-
-        if (activeDates.has(checkStr)) {
-            streak++;
-            // Move back 1 day
-            checkDate.setDate(checkDate.getDate() - 1);
-        } else {
-            // Grace Period: If we are checking "Today" (i===0) and it's missing, 
-            // we assume the user just hasn't started YET. This doesn't break the streak.
-            // We just check yesterday.
-            if (i === 0) {
-                checkDate.setDate(checkDate.getDate() - 1);
-                continue;
-            } else {
-                break; // Streak broken
-            }
-        }
-    }
-
-    return streak;
 }
 
 /**

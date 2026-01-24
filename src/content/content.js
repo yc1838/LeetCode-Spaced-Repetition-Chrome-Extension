@@ -69,17 +69,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         // Handle getDifficulty request from popup (for syncing stored data)
         if (request.action === "getDifficulty") {
-            // Force refresh the cache first
-            if (typeof updateDifficultyCache === 'function') updateDifficultyCache();
+            const currentSlug = getCurrentProblemSlug();
+            console.log(`[LeetCode EasyRepeat] [LEETCODE-DEBUG] getDifficulty requested (API-Only) for: ${currentSlug}`);
 
-            let difficulty = 'Medium';
-            if (typeof getDifficultyFromCache === 'function') {
-                difficulty = getDifficultyFromCache(getCurrentProblemSlug()) || 'Medium';
+            if (!currentSlug) {
+                sendResponse({ error: "No slug found" });
+                return false;
             }
 
-            console.log(`[LeetCode EasyRepeat] [LEETCODE-DEBUG] getDifficulty requested, returning: ${difficulty}`);
-            sendResponse({ difficulty: difficulty });
-            return false; // Sync response - no need to keep channel open
+            // Calls leetcode_api.js function
+            if (typeof fetchQuestionDetails !== 'function') {
+                console.error("[LeetCode EasyRepeat] fetchQuestionDetails not available.");
+                sendResponse({ error: "Dependency missing" });
+                return false;
+            }
+
+            fetchQuestionDetails(currentSlug)
+                .then(details => {
+                    if (details && details.difficulty) {
+                        console.log(`[LeetCode EasyRepeat] API returned difficulty: ${details.difficulty}`);
+                        sendResponse({ difficulty: details.difficulty });
+                    } else {
+                        console.warn("[LeetCode EasyRepeat] API failed to return difficulty.");
+                        sendResponse({ error: "API returned no difficulty" });
+                    }
+                })
+                .catch(err => {
+                    console.error("[LeetCode EasyRepeat] API error in getDifficulty:", err);
+                    sendResponse({ error: err.message });
+                });
+
+            return true; // Keep channel open for async response
         }
     } catch (e) {
         console.error("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Error in message listener:", e);
