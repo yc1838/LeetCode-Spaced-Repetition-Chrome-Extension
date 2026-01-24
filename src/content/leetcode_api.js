@@ -251,6 +251,69 @@
                         }
                     } else {
                         console.log(`[LeetCode EasyRepeat] Submission ${submissionId} finished but NOT Accepted (${data.status_msg}).`);
+
+                        // --- AI Mistake Analysis Hook ---
+                        if (typeof window.LLMSidecar !== 'undefined' &&
+                            window.LLMSidecar.isAnalysisEnabled &&
+                            window.LLMSidecar.isAnalysisEnabled()) {
+
+                            (async () => {
+                                const showAnalysisModal = getDep('showAnalysisModal');
+                                const saveNotes = getDep('saveNotes');
+
+                                // 1. Check Preference
+                                let shouldAnalyze = false;
+                                try {
+                                    const storage = await chrome.storage.local.get(['alwaysAnalyze']);
+                                    shouldAnalyze = !!storage.alwaysAnalyze;
+                                } catch (e) { }
+
+                                // 2. Ask User if not set
+                                if (!shouldAnalyze && showAnalysisModal) {
+                                    shouldAnalyze = await showAnalysisModal(data.status_msg); // 'Wrong Answer', etc.
+                                }
+
+                                if (shouldAnalyze) {
+                                    // 3. Get Code (Scrape from DOM)
+                                    // Try to find Monaco lines
+                                    let code = "";
+                                    const lines = document.querySelectorAll('.view-lines .view-line');
+                                    if (lines && lines.length > 0) {
+                                        code = Array.from(lines).map(l => l.innerText).join('\n');
+                                    } else {
+                                        code = "// Code could not be scraped. Please check permissions.";
+                                    }
+
+                                    // 4. Retrieve Question Info
+                                    const apiData = await fetchQuestionDetails(slug);
+                                    let finalTitle = title;
+                                    if (apiData && apiData.title) finalTitle = apiData.title;
+
+                                    // 5. Run Analysis
+                                    const errorDetails = data.runtime_error || data.compile_error || data.full_runtime_error || data.status_msg;
+                                    const analysis = await window.LLMSidecar.analyzeMistake(code, errorDetails, { title: finalTitle, difficulty: difficulty });
+
+                                    // 6. Save to Notes
+                                    if (analysis && saveNotes) {
+                                        const now = new Date().toLocaleString();
+                                        const noteEntry = `\n\n### 🤖 AI Analysis (${now})\n**Mistake:** ${data.status_msg}\n\n${analysis}`;
+
+                                        // Append to existing
+                                        const getNotes = getDep('getNotes');
+                                        const existing = await getNotes(slug);
+                                        await saveNotes(slug, existing + noteEntry);
+
+                                        // Optional: Open notes widget to show result
+                                        const widget = document.querySelector(`.lc-notes-container[data-slug="${slug}"]`);
+                                        if (widget && !widget.classList.contains('expanded')) {
+                                            const handle = widget.querySelector('.lc-notes-handle');
+                                            if (handle) handle.click();
+                                        }
+                                    }
+                                }
+                            })();
+                        }
+
                         return false;
                     }
                 }

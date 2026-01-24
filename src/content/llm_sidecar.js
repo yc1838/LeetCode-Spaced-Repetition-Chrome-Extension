@@ -363,8 +363,10 @@
         console.log("[LLMSidecar] Neural Link Active.");
     }
 
-    // Expose init globally if needed, or run immediately if module system allows
-    // For Chrome Ext content script, we can just return an object
-    window.LLMSidecar = { init };
+    // Expose API globally
+    window.LLMSidecar = {
+        init,
+        callLLM
+    };
 
 })();

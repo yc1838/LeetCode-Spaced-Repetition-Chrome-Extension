@@ -316,10 +316,111 @@
 
     // ... showDragTooltip implementation remains mostly same ...
 
+    /**
+     * Show a modal asking if the user wants to analyze their mistake.
+     * Returns Promise<boolean> (true = analyze, false = cancel)
+     */
+    function showAnalysisModal(errorType) {
+        return new Promise((resolve) => {
+            const backdrop = document.createElement('div');
+            backdrop.className = 'lc-rating-backdrop'; // Reuse rating backdrop style
+
+            const modal = document.createElement('div');
+            modal.className = 'lc-rating-modal'; // Reuse rating modal style
+            modal.style.minWidth = '400px';
+
+            // Header
+            const header = document.createElement('div');
+            header.className = 'lc-rating-header';
+            const heading = document.createElement('h3');
+            heading.innerText = "Mistake Detected";
+            heading.style.color = '#ef4444'; // Red for error
+            header.appendChild(heading);
+
+            // Subtitle
+            const sub = document.createElement('div');
+            sub.className = 'lc-rating-subtitle';
+            sub.innerText = `Type: ${errorType}`;
+            sub.style.marginBottom = '20px';
+
+            // Checkbox Container
+            const checkContainer = document.createElement('div');
+            checkContainer.style.marginBottom = '20px';
+            checkContainer.style.display = 'flex';
+            checkContainer.style.alignItems = 'center';
+            checkContainer.style.justifyContent = 'center';
+            checkContainer.style.gap = '8px';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = 'lc-always-analyze';
+
+            // Check storage for preference
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+                chrome.storage.local.get(['alwaysAnalyze'], (res) => {
+                    if (res.alwaysAnalyze) checkbox.checked = true;
+                });
+            }
+
+            const label = document.createElement('label');
+            label.innerText = "Always analyze mistakes";
+            label.htmlFor = 'lc-always-analyze';
+            label.style.fontFamily = 'var(--font-mono)';
+            label.style.fontSize = '12px';
+            label.style.color = 'rgba(255,255,255,0.7)';
+
+            checkContainer.appendChild(checkbox);
+            checkContainer.appendChild(label);
+
+
+            // Buttons
+            const btnContainer = document.createElement('div');
+            btnContainer.className = 'lc-rating-btn-container';
+            btnContainer.style.justifyContent = 'center';
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'lc-rating-btn';
+            cancelBtn.style.textAlign = 'center';
+            cancelBtn.style.width = '120px';
+            cancelBtn.innerHTML = '<div class="lc-rating-btn-label">Cancel</div>';
+            cancelBtn.onclick = () => {
+                backdrop.remove();
+                resolve(false);
+            };
+
+            const analyzeBtn = document.createElement('button');
+            analyzeBtn.className = 'lc-rating-btn';
+            analyzeBtn.style.borderColor = '#22d3ee';
+            analyzeBtn.style.background = 'rgba(34, 211, 238, 0.1)';
+            analyzeBtn.style.textAlign = 'center';
+            analyzeBtn.style.width = '120px';
+            analyzeBtn.innerHTML = '<div class="lc-rating-btn-label" style="color:#22d3ee">Analyze</div>';
+            analyzeBtn.onclick = () => {
+                // Save preference logic
+                if (checkbox.checked && typeof chrome !== 'undefined') {
+                    chrome.storage.local.set({ alwaysAnalyze: true });
+                }
+                backdrop.remove();
+                resolve(true);
+            };
+
+            btnContainer.appendChild(cancelBtn);
+            btnContainer.appendChild(analyzeBtn);
+
+            modal.appendChild(header);
+            modal.appendChild(sub);
+            modal.appendChild(checkContainer);
+            modal.appendChild(btnContainer);
+            backdrop.appendChild(modal);
+            document.body.appendChild(backdrop);
+        });
+    }
+
     return {
         showCompletionToast,
         showRatingModal,
-        createNotesWidget, // Replaces createNotesButton
+        showAnalysisModal, // New Export
+        createNotesWidget,
         insertNotesButton
     };
 }));
