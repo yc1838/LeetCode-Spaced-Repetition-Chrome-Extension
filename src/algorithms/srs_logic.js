@@ -144,14 +144,11 @@
         const schedule = [];
 
         // Local variables to track state during simulation
-        // We don't want to modify the original values passed in
         let currentInterval = interval;
         let currentRepetition = repetition;
         let currentEase = easeFactor;
 
         // TERNARY OPERATOR:
-        // condition ? valueIfTrue : valueIfFalse
-        // Shorter way to write: if (currentDate) { simDate = new Date(currentDate) } else { simDate = new Date() }
         let simDate = currentDate ? new Date(currentDate) : new Date();
 
         // Calculate 90-day boundary for simulation
@@ -174,16 +171,130 @@
             // Stop if next review would be beyond our 90-day window
             if (dueDate > limitDate) break;
 
-            // STRING MANIPULATION:
-            // toISOString() returns "2024-01-15T12:00:00.000Z"
-            // .split('T') splits into ["2024-01-15", "12:00:00.000Z"]
-            // [0] takes the first part: "2024-01-15"
             schedule.push(dueDate.toISOString().split('T')[0]);
 
             // Move simulation forward to this review date
             simDate = dueDate;
         }
         return schedule;
+    }
+
+    /**
+     * Analyze the full timeline of a problem: Past, Present, and Future.
+     * 
+     * @param {Object} problem - The problem object including history and nextReviewDate
+     * @param {Date} now - Optional "Today" date (for consistency in testing)
+     * @returns {Object} map of "YYYY-MM-DD" -> Status String
+     * Statuses: 'completed', 'missed', 'due', 'scheduled'
+     */
+    function analyzeProblemTimeline(problem, now = new Date()) {
+        const timeline = {};
+        const todayStr = now.toLocaleDateString('en-CA');
+
+        // 1. History & Replay (Past -> Present)
+        const history = (problem.history || []).map(h => ({
+            date: new Date(h.date),
+            dateStr: new Date(h.date).toLocaleDateString('en-CA'),
+            rating: h.rating || 3
+        })).sort((a, b) => a.date - b.date);
+
+        // Track "Done" dates to avoid overwriting with "Missed"
+        const doneDates = new Set(history.map(h => h.dateStr));
+
+        let replayInterval = 0;
+        let replayRepetition = 0;
+        let replayEase = 2.5;
+        let expectedDueDate = null;
+
+        history.forEach(entry => {
+            // Mark Completed
+            timeline[entry.dateStr] = 'completed';
+
+            // Check for Procrastination Gap since LAST expected date
+            if (expectedDueDate) {
+                const dueStr = expectedDueDate.toLocaleDateString('en-CA');
+
+                // If the actual review was mostly LATER than due date
+                // (Using time comparison to be safe)
+                if (entry.date > expectedDueDate && entry.dateStr !== dueStr) {
+                    let curr = new Date(expectedDueDate);
+                    while (curr < entry.date) {
+                        const currStr = curr.toLocaleDateString('en-CA');
+                        if (!doneDates.has(currStr)) {
+                            timeline[currStr] = 'missed';
+                        }
+                        curr.setDate(curr.getDate() + 1);
+                    }
+                }
+            }
+
+            // Calculate NEXT step based on this history entry
+            const next = calculateNextReview(replayInterval, replayRepetition, replayEase, entry.date);
+            replayInterval = next.nextInterval;
+            replayRepetition = next.nextRepetition;
+            replayEase = next.nextEaseFactor;
+
+            expectedDueDate = new Date(entry.date);
+            expectedDueDate.setDate(expectedDueDate.getDate() + replayInterval);
+            expectedDueDate.setHours(0, 0, 0, 0); // Normalize
+        });
+
+        // 2. Current Gap (Last History -> Today)
+        // We use the STORED nextReviewDate as the definitive "Next Due" source
+        // to avoid drift between replay calculation and stored state.
+        const storedNextDue = new Date(problem.nextReviewDate);
+        storedNextDue.setHours(0, 0, 0, 0);
+
+        // If due date is in the past, mark gap until today as missed
+        const todayMidnight = new Date(now);
+        todayMidnight.setHours(0, 0, 0, 0);
+
+        if (storedNextDue < todayMidnight) {
+            let curr = new Date(storedNextDue);
+            while (curr < todayMidnight) {
+                const currStr = curr.toLocaleDateString('en-CA');
+                if (!doneDates.has(currStr)) {
+                    timeline[currStr] = 'missed';
+                }
+                curr.setDate(curr.getDate() + 1);
+            }
+        }
+
+        // 3. Status "Due Today"
+        const nextDueStr = storedNextDue.toLocaleDateString('en-CA');
+        if (nextDueStr === todayStr && storedNextDue <= todayMidnight) {
+            // Only mark as due if it hasn't been done today
+            if (!doneDates.has(todayStr)) {
+                timeline[todayStr] = 'due';
+            }
+        }
+
+        // 4. Future Projection
+        // Start projection from the STORED state
+
+        // First, mark the Next Review Date itself (if future)
+        if (storedNextDue > todayMidnight) {
+            timeline[nextDueStr] = 'scheduled';
+        }
+
+        // Generate subsequent future dates
+        let simStartDate = (storedNextDue > todayMidnight) ? storedNextDue : todayMidnight;
+
+        const futureDates = projectSchedule(
+            problem.interval,
+            problem.repetition,
+            problem.easeFactor,
+            simStartDate
+        );
+
+        futureDates.forEach(dateStr => {
+            // Don't overwrite existing history/due status
+            if (!timeline[dateStr]) {
+                timeline[dateStr] = 'scheduled';
+            }
+        });
+
+        return timeline;
     }
 
     /**
@@ -198,6 +309,7 @@
      */
     return {
         calculateNextReview,
-        projectSchedule
+        projectSchedule,
+        analyzeProblemTimeline
     };
 }));

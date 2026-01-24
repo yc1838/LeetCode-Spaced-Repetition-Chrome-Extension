@@ -416,6 +416,227 @@
         });
     }
 
+
+
+
+    /**
+     * Create the Draggable Notes Widget (Handle + Dropdown Panel)
+     */
+    /**
+     * Create the Draggable Notes Widget (Handle + Dropdown Panel)
+     */
+    function createNotesWidget(slug, loadContentFn, onSaveFn) {
+        // 1. Container
+
+        const container = document.createElement('div');
+        container.className = 'lc-notes-container';
+        container.dataset.slug = slug;
+
+        // 2. Handle (The "Button")
+        const handle = document.createElement('div');
+        handle.className = 'lc-notes-handle';
+        handle.innerHTML = `
+        <svg viewBox="0 0 24 24" style="pointer-events: none;">
+            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+        </svg>
+        <span class="lc-notes-label">Notes</span>
+        <span class="lc-notes-toggle-icon" style="font-size: 10px; margin-left: auto;">▼</span>
+    `;
+
+        // 3. Panel (Hidden content)
+        const panel = document.createElement('div');
+        panel.className = 'lc-notes-panel';
+
+        // Textarea
+        const textarea = document.createElement('textarea');
+        textarea.className = 'lc-notes-textarea';
+        textarea.placeholder = "Type your notes here... (CMD+Enter to Save)";
+
+        // Footer
+        const footer = document.createElement('div');
+        footer.className = 'lc-notes-footer';
+
+        const status = document.createElement('span');
+        status.className = 'lc-notes-status';
+        status.innerText = 'Synced'; // initial state
+
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'lc-btn lc-btn-save';
+        saveBtn.innerText = 'Save';
+
+        footer.appendChild(status);
+        footer.appendChild(saveBtn);
+        panel.appendChild(textarea);
+        panel.appendChild(footer);
+
+        container.appendChild(handle);
+        container.appendChild(panel);
+
+        // --- State & Logic ---
+        let isOpen = false;
+        let isDragging = false;
+        let dragTimer = null;
+        let hasLoaded = false;
+
+        // Toggle Logic
+        const togglePanel = async () => {
+            if (isDragging) return; // Don't toggle if dragging
+
+            isOpen = !isOpen;
+            if (isOpen) {
+                container.classList.add('expanded');
+                handle.querySelector('.lc-notes-toggle-icon').innerText = '▲';
+
+                // Load content if not loaded
+                if (!hasLoaded) {
+                    textarea.value = "Loading...";
+                    const content = await loadContentFn();
+                    textarea.value = content || "";
+                    hasLoaded = true;
+                }
+
+                // Focus
+                setTimeout(() => textarea.focus(), 100);
+            } else {
+                container.classList.remove('expanded');
+                handle.querySelector('.lc-notes-toggle-icon').innerText = '▼';
+            }
+        };
+
+        // Save Logic
+        const performSave = async () => {
+            status.innerText = 'Saving...';
+            status.style.color = '#eab308'; // yellow
+            await onSaveFn(textarea.value);
+            status.innerText = 'Saved via Sync';
+            status.style.color = '#22c55e'; // green
+            setTimeout(() => { status.innerText = 'Synced'; status.style.color = '#666'; }, 2000);
+        };
+
+        saveBtn.onclick = performSave;
+
+        textarea.onkeydown = (e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                performSave();
+            }
+            // No escape to close for sidebar? Maybe user wants to keep it open.
+            // Let's allow Esc to close if focused.
+            if (e.key === 'Escape') {
+                togglePanel(); // Close
+            }
+        };
+
+        // --- Drag Logic (Applied to Container via Handle) ---
+        // Repurposing logic from previous implementation but targeting 'container' and triggering on 'handle'
+
+        let startX, startY, initialLeft, initialTop;
+        const DRAG_DELAY = 300; // slightly faster
+
+        const startDragCheck = (e) => {
+            if (e.button !== 0) return;
+            // If clicking inside the panel (textarea, buttons), do NOT drag.
+            // Only drag if clicking the handle.
+            if (!handle.contains(e.target)) return;
+
+            startX = e.clientX;
+            startY = e.clientY;
+
+            const rect = container.getBoundingClientRect();
+            initialLeft = rect.left;
+            initialTop = rect.top;
+
+            if (dragTimer) clearTimeout(dragTimer);
+
+            dragTimer = setTimeout(() => {
+                isDragging = true;
+                container.classList.add('dragging');
+
+                // Fix position
+                container.style.right = 'auto';
+                container.style.bottom = 'auto';
+                container.style.left = `${initialLeft}px`;
+                container.style.top = `${initialTop}px`;
+            }, DRAG_DELAY);
+        };
+
+        const performDrag = (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            let newLeft = initialLeft + dx;
+            let newTop = initialTop + dy;
+
+            // Bounds
+            const maxLeft = window.innerWidth - container.offsetWidth;
+            const maxTop = window.innerHeight - 40; // minimal visibility
+            newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+            newTop = Math.max(0, Math.min(newTop, maxTop));
+
+            container.style.left = `${newLeft}px`;
+            container.style.top = `${newTop}px`;
+        };
+
+        const endDrag = (e) => {
+            if (dragTimer) {
+                clearTimeout(dragTimer);
+                dragTimer = null;
+            }
+
+            if (isDragging) {
+                isDragging = false;
+                container.classList.remove('dragging');
+                // Prevent click propagation logic
+                // We use a short timeout flag to block 'click' event on handle
+                handle.dataset.justDragged = "true";
+                setTimeout(() => { handle.dataset.justDragged = "false"; }, 50);
+            }
+        };
+
+        handle.onmousedown = startDragCheck;
+        window.addEventListener('mousemove', performDrag);
+        window.addEventListener('mouseup', endDrag);
+
+        handle.onclick = (e) => {
+            e.preventDefault();
+            if (handle.dataset.justDragged === "true") return;
+            togglePanel();
+        };
+
+        return container;
+    }
+
+    /**
+     * Show a tooltip for the draggable button (Moved here for scope access if needed)
+     */
+    function showDragTooltip(targetElement) {
+        if (!targetElement) return;
+        // ... reused logic ...
+        const tooltip = document.createElement('div');
+        tooltip.className = 'lc-notes-tooltip';
+        tooltip.innerHTML = `Long press to drag!<div class="lc-notes-tooltip-arrow"></div><button class="lc-tooltip-close">×</button>`;
+        document.body.appendChild(tooltip);
+
+        const updatePosition = () => {
+            try {
+                const rect = targetElement.getBoundingClientRect();
+                const tipRect = tooltip.getBoundingClientRect();
+                const top = rect.top + (rect.height / 2) - (tipRect.height / 2);
+                const left = rect.left - tipRect.width - 12;
+                tooltip.style.top = `${top}px`;
+                tooltip.style.left = `${left}px`;
+            } catch (e) { tooltip.remove(); }
+        };
+
+        updatePosition();
+        requestAnimationFrame(() => tooltip.classList.add('show'));
+
+        const close = () => { tooltip.remove(); };
+        setTimeout(close, 15000);
+        tooltip.querySelector('.lc-tooltip-close').onclick = close;
+    }
+
     return {
         showCompletionToast,
         showRatingModal,
@@ -424,217 +645,3 @@
         insertNotesButton
     };
 }));
-
-/**
- * Create the Draggable Notes Widget (Handle + Dropdown Panel)
- */
-function createNotesWidget(slug, loadContentFn, onSaveFn) {
-    // 1. Container
-    const container = document.createElement('div');
-    container.className = 'lc-notes-container';
-    container.dataset.slug = slug;
-
-    // 2. Handle (The "Button")
-    const handle = document.createElement('div');
-    handle.className = 'lc-notes-handle';
-    handle.innerHTML = `
-        <svg viewBox="0 0 24 24" style="pointer-events: none;">
-            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
-        </svg>
-        <span class="lc-notes-label">Notes</span>
-        <span class="lc-notes-toggle-icon" style="font-size: 10px; margin-left: auto;">▼</span>
-    `;
-
-    // 3. Panel (Hidden content)
-    const panel = document.createElement('div');
-    panel.className = 'lc-notes-panel';
-
-    // Textarea
-    const textarea = document.createElement('textarea');
-    textarea.className = 'lc-notes-textarea';
-    textarea.placeholder = "Type your notes here... (CMD+Enter to Save)";
-
-    // Footer
-    const footer = document.createElement('div');
-    footer.className = 'lc-notes-footer';
-
-    const status = document.createElement('span');
-    status.className = 'lc-notes-status';
-    status.innerText = 'Synced'; // initial state
-
-    const saveBtn = document.createElement('button');
-    saveBtn.className = 'lc-btn lc-btn-save';
-    saveBtn.innerText = 'Save';
-
-    footer.appendChild(status);
-    footer.appendChild(saveBtn);
-    panel.appendChild(textarea);
-    panel.appendChild(footer);
-
-    container.appendChild(handle);
-    container.appendChild(panel);
-
-    // --- State & Logic ---
-    let isOpen = false;
-    let isDragging = false;
-    let dragTimer = null;
-    let hasLoaded = false;
-
-    // Toggle Logic
-    const togglePanel = async () => {
-        if (isDragging) return; // Don't toggle if dragging
-
-        isOpen = !isOpen;
-        if (isOpen) {
-            container.classList.add('expanded');
-            handle.querySelector('.lc-notes-toggle-icon').innerText = '▲';
-
-            // Load content if not loaded
-            if (!hasLoaded) {
-                textarea.value = "Loading...";
-                const content = await loadContentFn();
-                textarea.value = content || "";
-                hasLoaded = true;
-            }
-
-            // Focus
-            setTimeout(() => textarea.focus(), 100);
-        } else {
-            container.classList.remove('expanded');
-            handle.querySelector('.lc-notes-toggle-icon').innerText = '▼';
-        }
-    };
-
-    // Save Logic
-    const performSave = async () => {
-        status.innerText = 'Saving...';
-        status.style.color = '#eab308'; // yellow
-        await onSaveFn(textarea.value);
-        status.innerText = 'Saved via Sync';
-        status.style.color = '#22c55e'; // green
-        setTimeout(() => { status.innerText = 'Synced'; status.style.color = '#666'; }, 2000);
-    };
-
-    saveBtn.onclick = performSave;
-
-    textarea.onkeydown = (e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-            performSave();
-        }
-        // No escape to close for sidebar? Maybe user wants to keep it open.
-        // Let's allow Esc to close if focused.
-        if (e.key === 'Escape') {
-            togglePanel(); // Close
-        }
-    };
-
-    // --- Drag Logic (Applied to Container via Handle) ---
-    // Repurposing logic from previous implementation but targeting 'container' and triggering on 'handle'
-
-    let startX, startY, initialLeft, initialTop;
-    const DRAG_DELAY = 300; // slightly faster
-
-    const startDragCheck = (e) => {
-        if (e.button !== 0) return;
-        // If clicking inside the panel (textarea, buttons), do NOT drag.
-        // Only drag if clicking the handle.
-        if (!handle.contains(e.target)) return;
-
-        startX = e.clientX;
-        startY = e.clientY;
-
-        const rect = container.getBoundingClientRect();
-        initialLeft = rect.left;
-        initialTop = rect.top;
-
-        if (dragTimer) clearTimeout(dragTimer);
-
-        dragTimer = setTimeout(() => {
-            isDragging = true;
-            container.classList.add('dragging');
-
-            // Fix position
-            container.style.right = 'auto';
-            container.style.bottom = 'auto';
-            container.style.left = `${initialLeft}px`;
-            container.style.top = `${initialTop}px`;
-        }, DRAG_DELAY);
-    };
-
-    const performDrag = (e) => {
-        if (!isDragging) return;
-        e.preventDefault();
-
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-        let newLeft = initialLeft + dx;
-        let newTop = initialTop + dy;
-
-        // Bounds
-        const maxLeft = window.innerWidth - container.offsetWidth;
-        const maxTop = window.innerHeight - 40; // minimal visibility
-        newLeft = Math.max(0, Math.min(newLeft, maxLeft));
-        newTop = Math.max(0, Math.min(newTop, maxTop));
-
-        container.style.left = `${newLeft}px`;
-        container.style.top = `${newTop}px`;
-    };
-
-    const endDrag = (e) => {
-        if (dragTimer) {
-            clearTimeout(dragTimer);
-            dragTimer = null;
-        }
-
-        if (isDragging) {
-            isDragging = false;
-            container.classList.remove('dragging');
-            // Prevent click propagation logic
-            // We use a short timeout flag to block 'click' event on handle
-            handle.dataset.justDragged = "true";
-            setTimeout(() => { handle.dataset.justDragged = "false"; }, 50);
-        }
-    };
-
-    handle.onmousedown = startDragCheck;
-    window.addEventListener('mousemove', performDrag);
-    window.addEventListener('mouseup', endDrag);
-
-    handle.onclick = (e) => {
-        e.preventDefault();
-        if (handle.dataset.justDragged === "true") return;
-        togglePanel();
-    };
-
-    return container;
-}
-
-/**
- * Show a tooltip for the draggable button (Moved here for scope access if needed)
- */
-function showDragTooltip(targetElement) {
-    if (!targetElement) return;
-    // ... reused logic ...
-    const tooltip = document.createElement('div');
-    tooltip.className = 'lc-notes-tooltip';
-    tooltip.innerHTML = `Long press to drag!<div class="lc-notes-tooltip-arrow"></div><button class="lc-tooltip-close">×</button>`;
-    document.body.appendChild(tooltip);
-
-    const updatePosition = () => {
-        try {
-            const rect = targetElement.getBoundingClientRect();
-            const tipRect = tooltip.getBoundingClientRect();
-            const top = rect.top + (rect.height / 2) - (tipRect.height / 2);
-            const left = rect.left - tipRect.width - 12;
-            tooltip.style.top = `${top}px`;
-            tooltip.style.left = `${left}px`;
-        } catch (e) { tooltip.remove(); }
-    };
-
-    updatePosition();
-    requestAnimationFrame(() => tooltip.classList.add('show'));
-
-    const close = () => { tooltip.remove(); };
-    setTimeout(close, 15000);
-    tooltip.querySelector('.lc-tooltip-close').onclick = close;
-}

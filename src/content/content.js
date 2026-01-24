@@ -176,8 +176,6 @@ if (typeof monitorSubmissionClicks === 'function') {
 
 /* --- Notes Feature Injection --- */
 // Run periodically to handle navigation (mounting/unmounting of React components)
-/* --- Notes Feature Injection --- */
-// Run periodically to handle navigation (mounting/unmounting of React components)
 setInterval(() => {
     if (typeof insertNotesButton === 'function') {
         // Collect dependencies from global scope (loaded by manifest)

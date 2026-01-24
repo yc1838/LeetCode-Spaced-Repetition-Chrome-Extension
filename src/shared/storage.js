@@ -89,7 +89,6 @@
             interval: 0,
             repetition: 0,
             easeFactor: 2.5,
-            easeFactor: 2.5,
             topics: topics || [],
             history: []
         };
@@ -154,8 +153,6 @@
             nextReviewDate: nextStep.nextReviewDate,
             fsrs_stability: nextStep.fsrs_stability !== undefined ? nextStep.fsrs_stability : currentProblem.fsrs_stability,
             fsrs_difficulty: nextStep.fsrs_difficulty !== undefined ? nextStep.fsrs_difficulty : currentProblem.fsrs_difficulty,
-            fsrs_state: nextStep.fsrs_state !== undefined ? nextStep.fsrs_state : currentProblem.fsrs_state,
-            fsrs_last_review: nextStep.fsrs_last_review !== undefined ? nextStep.fsrs_last_review : currentProblem.fsrs_last_review,
             fsrs_state: nextStep.fsrs_state !== undefined ? nextStep.fsrs_state : currentProblem.fsrs_state,
             fsrs_last_review: nextStep.fsrs_last_review !== undefined ? nextStep.fsrs_last_review : currentProblem.fsrs_last_review,
             topics: (topics && topics.length > 0) ? topics : (currentProblem.topics || []),

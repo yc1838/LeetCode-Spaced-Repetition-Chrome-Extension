@@ -245,7 +245,7 @@ async function updateDashboard() {
 async function syncCurrentProblemDifficulty() {
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab || !tab.url.includes('leetcode.com/problems/')) return;
+        if (!tab || !tab.url || !tab.url.includes('leetcode.com/problems/')) return;
 
         // Extract slug from URL
         const match = tab.url.match(/\/problems\/([^\/]+)/);
@@ -349,6 +349,8 @@ async function calculateStreakFn() {
         console.log("[Streak] Migrated history to Activity Log:", log);
         await chrome.storage.local.set({ activityLog: log });
     }
+
+    console.log("[LeetCode EasyRepeat] DEBUG - Full Activity Log:", log);
 
     // --- CALCULATION ---
     let streak = 0;
@@ -514,9 +516,56 @@ async function updateProblemSRS(slug, ease) {
 
     if (!p) return;
 
-    // Calculate next review based on the button clicked (ease)
-    // Pass getCurrentDate() to handle Test Mode
-    const nextStep = calculateNextReview(p.interval, p.repetition, ease, getCurrentDate());
+    let nextStep;
+    const now = getCurrentDate(); // Handles Test Mode
+    const nowISO = now.toISOString();
+
+    // Determine FSRS Rating from legacy "ease" param
+    // UI sends: Again (1.0), Hard (~1.3), Med (~2.5), Easy (~3.5)
+    let rating = 3; // Default Good
+    if (ease <= 1.1) rating = 1; // Again
+    else if (ease < 2.0) rating = 2; // Hard
+    else if (ease > 3.0) rating = 4; // Easy
+
+    // Check if FSRS is available
+    if (typeof fsrs !== 'undefined' && fsrs.calculateFSRS) {
+        // Calculate elapsed days
+        const lastReview = p.fsrs_last_review ? new Date(p.fsrs_last_review) : (p.lastSolved ? new Date(p.lastSolved) : new Date());
+        let elapsed = Math.max(0, (now - lastReview) / (1000 * 60 * 60 * 24)); // Fractional days allowed in FSRS logic? Standard is integers usually, but float is fine for math.
+
+        // FSRS Input Card
+        const card = {
+            state: p.fsrs_state || (p.repetition > 0 ? 'Review' : 'New'),
+            stability: p.fsrs_stability || 0,
+            difficulty: p.fsrs_difficulty || 0,
+            last_review: lastReview
+        };
+
+        const res = fsrs.calculateFSRS(card, rating, elapsed);
+
+        nextStep = {
+            nextInterval: res.nextInterval,
+            nextRepetition: p.repetition + 1,
+            nextEaseFactor: p.easeFactor, // Legacy field upkeep
+            nextReviewDate: (() => {
+                const d = new Date(now);
+                d.setDate(d.getDate() + res.nextInterval);
+                return d.toISOString();
+            })(),
+            fsrs_stability: res.newStability,
+            fsrs_difficulty: res.newDifficulty,
+            fsrs_state: res.nextState,
+            fsrs_last_review: nowISO
+        };
+
+    } else {
+        // Fallback to SM-2
+        if (typeof calculateNextReview !== 'function') {
+            console.error("SRS Logic not loaded");
+            return;
+        }
+        nextStep = calculateNextReview(p.interval, p.repetition, ease, now);
+    }
 
     // Save update
     problems[slug] = {
@@ -525,8 +574,12 @@ async function updateProblemSRS(slug, ease) {
         repetition: nextStep.nextRepetition,
         easeFactor: nextStep.nextEaseFactor,
         nextReviewDate: nextStep.nextReviewDate,
-        // Log this review in history, using the (potentially mocked) current date
-        history: [...p.history, { date: getCurrentDate().toISOString(), status: 'Reviewed' }]
+        fsrs_stability: nextStep.fsrs_stability,
+        fsrs_difficulty: nextStep.fsrs_difficulty,
+        fsrs_state: nextStep.fsrs_state,
+        fsrs_last_review: nextStep.fsrs_last_review,
+        // Log this review in history
+        history: [...p.history, { date: nowISO, status: 'Reviewed', rating: rating }]
     };
 
     await chrome.storage.local.set({ problems });
@@ -558,6 +611,7 @@ if (typeof window !== 'undefined') {
     window.deleteProblem = deleteProblem;
     // Also attach updateProblemSRS if not already
     window.updateProblemSRS = updateProblemSRS;
+    window.getCurrentDate = getCurrentDate;
 }
 
 // Export for testing
@@ -565,7 +619,7 @@ if (typeof window !== 'undefined') {
 if (typeof module !== 'undefined') {
     module.exports = {
         updateDashboard,
-        calculateStreak,
+        calculateStreak: calculateStreakFn,
         setupSidebar
     };
 }

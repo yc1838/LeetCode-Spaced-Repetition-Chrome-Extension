@@ -44,6 +44,16 @@
 
     --font-main: 'JetBrains Mono', monospace;
     --font-data: 'Fira Code', monospace;
+
+    /* Status Colors for Timeline */
+    --status-done: #EF7627;
+    /* Orange (Accomplished) */
+    --status-missed: rgba(255, 80, 80, 0.25);
+    /* Visible Faint Red/Gray (Procrastinated) */
+    --status-due: #A30262;
+    /* Deep Magenta (Action Required) */
+    --status-projected: rgba(163, 2, 98, 0.3);
+    /* Faint Magenta (Future) */
 }
 
 * {

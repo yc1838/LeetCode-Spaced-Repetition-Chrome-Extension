@@ -150,59 +150,159 @@
         });
     }
 
-    // Renders the mini projection grid inside a card
+    // Renders the rich timeline (History + Procrastination + Future)
     function renderMiniHeatmap(problem, gridId) {
         const grid = document.getElementById(gridId);
         if (!grid) return;
         grid.innerHTML = '';
 
-        // Expect getCurrentDate and projectSchedule to be global
-        const today = (typeof getCurrentDate === 'function') ? getCurrentDate() : new Date();
-        const projectedDates = (typeof projectSchedule === 'function')
-            ? projectSchedule(problem.interval, problem.repetition, problem.easeFactor, today)
-            : [];
+        // Helper for consistent YYYY-MM-DD formatting
+        const toDateStr = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 
-        const dateSet = new Set(projectedDates);
+        // 1. Prepare History & Replay State
+        const history = (problem.history || []).map(h => ({
+            date: new Date(h.date),
+            dateStr: toDateStr(new Date(h.date)), // YYYY-MM-DD
+            rating: h.rating || 3 // Default 'Good' if legacy
+        })).sort((a, b) => a.date - b.date);
 
-        // Generate ~60 days
-        const start = new Date(today);
+        const today = typeof window.getCurrentDate === 'function' ? window.getCurrentDate() : new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayStr = toDateStr(today);
 
-        // Date formatter for tooltips: "Mon, Jan 15"
+        // Determine Timeline Start: First history date or Today
+        let startDate = history.length > 0 ? new Date(history[0].date) : new Date(today);
+        startDate.setHours(0, 0, 0, 0); // Normalize to midnight
+
+        // Determine Timeline End: max(Today + 30d, NextReview + 7d)
+        let endLimit = new Date(today);
+        endLimit.setDate(today.getDate() + 30);
+
+        let nextReviewDate = new Date(problem.nextReviewDate);
+        if (nextReviewDate > endLimit) {
+            endLimit = new Date(nextReviewDate);
+            endLimit.setDate(endLimit.getDate() + 7);
+        }
+
+        // --- REPLAY & PAST ANALYSIS ---
+        // Simplified for FSRS: We trust the history dates. 
+        // Detecting "missed" days in the past with FSRS is complex without full state reconstruction.
+        // For now, we only check the gap from the *last* known due date (the stored one) to Today.
+
+        // Sets to track status of specific dates
+        const doneDates = new Set(history.map(h => h.dateStr));
+        const missedDates = new Set();
+
+        // (Replay Loop removed for FSRS stability - can be re-added if we implement full history simulation)
+        // history.forEach(...) 
+
+        // --- CHECK CURRENT PROCRASTINATION GAP ---
+        // Reliably calculate gap from the STORED Next Review Date (Next Due) -> Today
+        const nextDueObj = new Date(problem.nextReviewDate);
+        nextDueObj.setHours(0, 0, 0, 0);
+
+        // Ensure we don't count today as "missed" yet (it's just Due)
+        if (nextDueObj < today) {
+            let curr = new Date(nextDueObj);
+            while (curr < today) {
+                const currStr = toDateStr(curr);
+                if (!doneDates.has(currStr)) {
+                    missedDates.add(currStr);
+                }
+                curr.setDate(curr.getDate() + 1);
+            }
+        }
+
+        // --- FUTURE PROJECTION ---
+        const futureProjectedDates = new Set();
+
+        // 1. Always include the stored Next Review Date if it's in the future
+        if (nextDueObj > today) {
+            futureProjectedDates.add(toDateStr(nextDueObj));
+        }
+
+        // 2. Project subsequent reviews STARTING from the Next Review Date (or Today if overdue)
+        const simulationStartDate = (nextDueObj > today) ? nextDueObj : today;
+
+        if (typeof fsrs !== 'undefined' && fsrs.projectScheduleFSRS) {
+            // Use FSRS Projection
+            const card = {
+                stability: problem.fsrs_stability,
+                difficulty: problem.fsrs_difficulty,
+                state: problem.fsrs_state,
+                last_review: problem.fsrs_last_review || problem.lastSolved
+            };
+
+            const projected = fsrs.projectScheduleFSRS(card, simulationStartDate);
+            projected.forEach(d => futureProjectedDates.add(d));
+
+        } else if (typeof projectSchedule === 'function') {
+            // Fallback to SM-2 if FSRS not loaded
+            const projected = projectSchedule(problem.interval, problem.repetition, problem.easeFactor, simulationStartDate);
+            projected.forEach(d => futureProjectedDates.add(d));
+        }
+
+        // --- RENDER ITERATION ---
         const formatter = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
-        for (let i = 0; i < 60; i++) {
-            const d = new Date(start);
-            d.setDate(start.getDate() + i);
-            const dayStr = d.toISOString().split('T')[0];
+        let currentDate = new Date(startDate);
+        const MAX_DAYS = 90; // Safety cap
+        let count = 0;
 
+        while (currentDate <= endLimit && count < MAX_DAYS) {
+            const dayStr = toDateStr(currentDate);
             const cell = document.createElement('div');
             cell.className = 'cell';
 
-            // JS Tooltip Logic
-            const dateText = formatter.format(d);
-            cell.onmouseenter = (e) => {
+            // Tooltip
+            const dateText = formatter.format(currentDate);
+            cell.setAttribute('title', dateText); // Native tooltip fallback
+
+            let statusLabel = "";
+
+            // Colors
+            if (doneDates.has(dayStr)) {
+                cell.style.background = 'var(--status-done)';
+                cell.style.boxShadow = '0 0 6px var(--status-done)';
+                cell.classList.add('status-done');
+                statusLabel = "Completed";
+            }
+            else if (missedDates.has(dayStr)) {
+                cell.style.background = 'var(--status-missed)';
+                cell.classList.add('status-missed');
+                statusLabel = "Missed";
+            }
+            else if (dayStr === todayStr && nextDueObj <= today) {
+                cell.style.background = 'var(--status-due)';
+                cell.style.boxShadow = '0 0 8px var(--status-due)';
+                cell.classList.add('status-due');
+                statusLabel = "Due Today";
+            }
+            else if (futureProjectedDates.has(dayStr) && currentDate > today) {
+                cell.style.background = 'var(--status-projected)';
+                cell.classList.add('status-projected');
+                statusLabel = "Scheduled";
+            }
+
+            // Interaction
+            cell.onmouseenter = () => {
                 const tooltip = document.getElementById('global-tooltip');
-                if (!tooltip) return;
-
-                tooltip.textContent = dateText;
-                tooltip.classList.add('visible');
-
-                // Position calculation
-                const rect = cell.getBoundingClientRect();
-                // Center horizontally, position above
-                tooltip.style.left = `${rect.left + rect.width / 2}px`;
-                tooltip.style.top = `${rect.top}px`;
+                if (tooltip) {
+                    tooltip.textContent = statusLabel ? `${dateText} (${statusLabel})` : dateText;
+                    tooltip.classList.add('visible');
+                    const rect = cell.getBoundingClientRect();
+                    tooltip.style.left = `${rect.left + rect.width / 2}px`;
+                    tooltip.style.top = `${rect.top}px`;
+                }
             };
-
             cell.onmouseleave = () => {
-                const tooltip = document.getElementById('global-tooltip');
-                if (tooltip) tooltip.classList.remove('visible');
+                const t = document.getElementById('global-tooltip');
+                if (t) t.classList.remove('visible');
             };
-
-            if (dateSet.has(dayStr)) cell.classList.add('v-4'); // High intensity for review
-            else if (i === 0) cell.classList.add('v-3'); // Today
 
             grid.appendChild(cell);
+            currentDate.setDate(currentDate.getDate() + 1);
+            count++;
         }
     }
 
