@@ -105,7 +105,7 @@ async function setupTheme() {
      * This is cleaner than checking: if (storage.theme === undefined) {...}
      */
     const storage = await chrome.storage.local.get({ theme: 'sakura' });
-    currentTheme = storage.theme;
+    currentTheme = storage.theme === 'neural' ? 'typography' : storage.theme; // Migration
     applyTheme(currentTheme);
 
     /**
@@ -115,8 +115,11 @@ async function setupTheme() {
      * addEventListener allows multiple handlers for the same event.
      */
     document.getElementById('btn-theme').onclick = async () => {
-        // TERNARY for toggle: if sakura -> matrix, else -> sakura
-        currentTheme = currentTheme === 'sakura' ? 'matrix' : 'sakura';
+        const themes = Object.keys(THEMES);
+        const currentIndex = themes.indexOf(currentTheme);
+        const nextIndex = (currentIndex + 1) % themes.length;
+        currentTheme = themes[nextIndex];
+
         applyTheme(currentTheme);
         await chrome.storage.local.set({ theme: currentTheme });
     };
@@ -187,9 +190,21 @@ function applyTheme(themeName) {
     root.style.setProperty('--cell-3', theme.cellColors[2]);
     root.style.setProperty('--cell-4', theme.cellColors[3]);
 
+    // Apply structural properties (Modern vs Retro)
+    root.style.setProperty('--font-main', theme.fontMain);
+    root.style.setProperty('--font-data', theme.fontData);
+    root.style.setProperty('--radius', theme.borderRadius);
+    root.style.setProperty('--scanline-opacity', theme.scanlineOpacity);
+    root.style.setProperty('--glass-opacity', theme.glassOpacity);
+    root.style.setProperty('--backdrop-filter', theme.backdropFilter);
+    root.style.setProperty('--bg-main', theme.bgMain);
+
     // Some elements need direct style updates (can't use CSS variables everywhere)
     root.style.setProperty('--hover-bg', theme.hoverBg);
     root.style.setProperty('--glass', theme.glass || 'rgba(20, 10, 15, 0.85)'); // Fallback
+
+    // Apply Body Class for Theme-Specific Overrides (e.g. .theme-typography)
+    document.body.className = `theme-${themeName}`;
 
     const statusBar = document.querySelector('.status-bar');
     if (statusBar) statusBar.style.background = theme.statusBg;

@@ -54,6 +54,12 @@
     /* Deep Magenta (Action Required) */
     --status-projected: rgba(163, 2, 98, 0.3);
     /* Faint Magenta (Future) */
+
+    /* Theme-controlled UI properties */
+    --radius: 0px;
+    --scanline-opacity: 1;
+    --backdrop-filter: blur(5px);
+    --bg-main: #0A0A0A;
 }
 
 * {
@@ -61,6 +67,8 @@
     padding: 0;
     box-sizing: border-box;
     cursor: crosshair;
+    border-radius: var(--radius);
+    /* Global rounded corners */
 }
 
 body {
@@ -103,14 +111,19 @@ body::before {
     z-index: 100;
     background-size: 100% 2px, 3px 100%;
     pointer-events: none;
+    opacity: var(--scanline-opacity);
 }
 
 .extension-container {
     width: 100%;
+    min-height: 100vh;
     height: auto;
-    background: var(--void);
+    background: var(--bg-main);
+    backdrop-filter: var(--backdrop-filter);
     border: 2px solid var(--terminal);
     box-shadow:
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.1),
+        /* GLASS HIGHLIGHT (Rim Light) */
         0 0 20px rgba(255, 154, 86, 0.3),
         /* peach glow */
         0 0 40px rgba(209, 98, 164, 0.15),
@@ -120,7 +133,7 @@ body::before {
     position: relative;
     display: grid;
     grid-template-columns: 50px 1fr;
-    grid-template-rows: 30px auto;
+    grid-template-rows: 35px auto;
     overflow: hidden;
 }
 
@@ -135,6 +148,10 @@ body::before {
     font-size: 0.45rem;
     letter-spacing: 0.5px;
     background: rgba(255, 16, 240, 0.05);
+    height: 100%;
+    /* Ensure it fills the grid cell */
+    line-height: normal;
+    /* usage of specific line-height to fix vertical alignment */
 }
 
 .status-controls {
@@ -233,7 +250,7 @@ body::before {
     border: 1px solid var(--border-dim);
     padding: 10px;
     background: var(--glass);
-    backdrop-filter: blur(5px);
+    backdrop-filter: var(--backdrop-filter);
     flex-shrink: 0;
 }
 
@@ -279,7 +296,6 @@ body::before {
     height: 10px;
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 2px;
     transition: all 0.2s ease;
     position: relative;
     /* For tooltip positioning */
@@ -355,6 +371,9 @@ body::before {
     position: relative;
     transition: all 0.3s ease;
     cursor: pointer;
+    backdrop-filter: var(--backdrop-filter);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+    /* Glass Rim Light */
 }
 
 .vector-card:hover {
@@ -552,7 +571,6 @@ body::before {
     font-weight: bold;
     font-size: 0.7rem;
     cursor: pointer;
-    border-radius: 2px;
     transition: all 0.2s;
     width: 32px;
     /* Fixed width for alignment */
@@ -573,7 +591,6 @@ body::before {
     font-family: var(--font-data);
     font-size: 0.6rem;
     cursor: pointer;
-    border-radius: 2px;
     transition: all 0.2s;
     opacity: 0.7;
     width: 32px;
@@ -656,4 +673,129 @@ body::before {
 
 .notes-content::-webkit-scrollbar-thumb {
     background: var(--border-dim);
+}
+
+/* ==========================================================================
+   THEME OVERRIDES: TYPOGRAPHY (Paper & Ink)
+   ========================================================================== */
+body.theme-typography {
+    background-image: radial-gradient(var(--border-dim) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+body.theme-typography .ai-toggle {
+    background: var(--electric);
+    color: #ffffff;
+    border: 2px solid var(--terminal);
+    border-radius: 4px;
+    font-weight: 700;
+}
+
+body.theme-typography .extension-container {
+    border: 2px solid var(--terminal);
+    box-shadow: none !important;
+}
+
+body.theme-typography .status-bar {
+    border-bottom: 2px solid var(--terminal);
+    background: var(--accent);
+}
+
+body.theme-typography .sidebar {
+    border-right: 2px solid var(--terminal);
+    background: var(--accent);
+}
+
+body.theme-typography .nav-icon {
+    border: 2px solid var(--terminal);
+    background: #ffffff;
+    box-shadow: 2px 2px 0px var(--terminal);
+    color: var(--terminal);
+    /* FIX: Ink color for icons */
+}
+
+/* Fix: Ensure icons utilize the color property for stroke in this theme */
+body.theme-typography .nav-icon svg {
+    stroke: var(--terminal);
+}
+
+body.theme-typography .nav-icon.active {
+    background: var(--terminal);
+    border-color: var(--terminal);
+    color: #ffffff;
+}
+
+body.theme-typography .nav-icon.active svg {
+    stroke: #ffffff;
+}
+
+body.theme-typography .heatmap-container {
+    border: 2px solid var(--terminal);
+    background: var(--accent);
+    box-shadow: 5px 5px 0px var(--border-dim);
+    backdrop-filter: none;
+}
+
+body.theme-typography .vector-card {
+    border: 2px solid var(--terminal);
+    background: #ffffff;
+    box-shadow: 5px 5px 0px rgba(0, 0, 0, 0.1);
+    backdrop-filter: none;
+}
+
+body.theme-typography .vector-card:hover {
+    box-shadow: 8px 8px 0px rgba(0, 0, 0, 0.2);
+    transform: translate(-1px, -1px);
+}
+
+body.theme-typography .go-btn {
+    background: var(--terminal);
+    color: #ffffff;
+    border: none;
+    box-shadow: 3px 3px 0px var(--electric);
+}
+
+body.theme-typography .tactical-btn {
+    background: var(--terminal);
+    color: #ffffff;
+    border: none;
+    font-weight: 700;
+    margin-top: 15px;
+    text-align: center;
+    box-shadow: 3px 3px 0px var(--electric);
+    /* Match go-btn shadow */
+}
+
+body.theme-typography .topic-tag {
+    border: 1px solid var(--terminal);
+    font-style: italic;
+    color: var(--terminal);
+}
+
+body.theme-typography .notes-flashcard {
+    border: 2px solid var(--terminal);
+    background: #ffffff;
+    color: var(--terminal);
+}
+
+body.theme-typography .badge,
+body.theme-typography .status-ready {
+    color: var(--terminal);
+    font-weight: 700;
+}
+
+body.theme-typography .rating-btn {
+    color: var(--terminal);
+    background: #ffffff;
+    border-width: 2px;
+    font-weight: 700;
+    box-shadow: 2px 2px 0px rgba(0, 0, 0, 0.1);
+}
+
+body.theme-typography .rating-btn:hover {
+    background: var(--terminal);
+    color: #ffffff;
+    border-color: var(--terminal) !important;
+    /* Override inline colors on hover for Ink look */
+    box-shadow: 3px 3px 0px var(--border-dim);
 }

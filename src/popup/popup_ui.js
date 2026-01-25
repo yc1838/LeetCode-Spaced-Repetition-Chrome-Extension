@@ -135,6 +135,106 @@
                 };
             }
 
+            // Edit Notes Handler
+            const attachEditListener = () => {
+                const editBtn = card.querySelector('.notes-edit-hint');
+                if (!editBtn) return;
+
+                editBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    const flashcard = card.querySelector('.notes-flashcard');
+                    if (!flashcard) return;
+
+                    const rawNotes = problem.notes || "";
+
+                    // Create Editor Elements
+                    const textarea = document.createElement('textarea');
+                    textarea.value = rawNotes;
+                    textarea.style.cssText = `
+                        width: 100%;
+                        min-height: 80px;
+                        background: rgba(0,0,0,0.3);
+                        border: 1px solid var(--electric);
+                        color: var(--font-main);
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 0.8rem;
+                        padding: 8px;
+                        margin-bottom: 8px;
+                        resize: vertical;
+                        border-radius: 4px;
+                    `;
+                    textarea.onclick = (ev) => ev.stopPropagation();
+                    textarea.onkeydown = (ev) => ev.stopPropagation();
+
+                    const btnRow = document.createElement('div');
+                    btnRow.style.cssText = 'display: flex; gap: 8px; justify-content: flex-end;';
+
+                    const saveBtn = document.createElement('button');
+                    saveBtn.innerText = 'SAVE';
+                    saveBtn.style.cssText = `
+                        background: var(--terminal);
+                        color: #000;
+                        border: none;
+                        padding: 4px 12px;
+                        font-family: inherit;
+                        font-weight: bold;
+                        cursor: pointer;
+                        font-size: 0.7rem;
+                    `;
+
+                    const cancelBtn = document.createElement('button');
+                    cancelBtn.innerText = 'CANCEL';
+                    cancelBtn.style.cssText = `
+                        background: transparent;
+                        color: var(--electric);
+                        border: 1px solid var(--electric);
+                        padding: 4px 12px;
+                        font-family: inherit;
+                        font-weight: bold;
+                        cursor: pointer;
+                        font-size: 0.7rem;
+                    `;
+
+                    // Save Logic
+                    saveBtn.onclick = async (ev) => {
+                        ev.stopPropagation();
+                        saveBtn.innerText = 'SAVING...';
+                        if (typeof saveNotes === 'function') {
+                            await saveNotes(problem.slug, textarea.value);
+                            // Note: popup.js listener will trigger updateDashboard() automatically
+                        } else {
+                            console.error('saveNotes not found');
+                        }
+                    };
+
+                    // Cancel Logic
+                    cancelBtn.onclick = (ev) => {
+                        ev.stopPropagation();
+                        // Restore original view
+                        const formattedNotes = (problem.notes || "").replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                        flashcard.innerHTML = `
+                            <div class="notes-label">USER_NOTES //</div>
+                            <div class="notes-content">${formattedNotes}</div>
+                            <div class="notes-edit-hint" title="Editable notes">
+                                <svg class="notes-edit-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm17.71-10.21a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0L15.12 4.1l3.75 3.75 1.84-1.81z"/>
+                                </svg>
+                                <span>EDIT NOTES</span>
+                            </div>
+                        `;
+                        attachEditListener(); // Re-arm the listener
+                    };
+
+                    // Swap Content
+                    flashcard.innerHTML = '';
+                    flashcard.appendChild(textarea);
+                    btnRow.appendChild(cancelBtn);
+                    btnRow.appendChild(saveBtn);
+                    flashcard.appendChild(btnRow);
+                };
+            };
+            attachEditListener();
+
             // Rating Handlers
             if (isInteractive) {
                 card.querySelectorAll('.rating-btn').forEach(btn => {
