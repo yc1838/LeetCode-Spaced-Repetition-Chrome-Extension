@@ -80,6 +80,27 @@
             scanlineOpacity: '0',
             glassOpacity: '1',             // Solid cards
             backdropFilter: 'none'
+        },
+        brnd: {
+            name: 'BRND.OS',
+            terminal: '#F0F0F0',           // Accent (White/Grey)
+            electric: '#FFFFFF',           // Bold (White)
+            accent: '#A0A0A0',             // Text (Grey)
+            borderGlow: 'transparent',     // No glow
+            borderDim: '#2D2D2D',          // Dark Grey Border
+            statusBg: '#0A0A0A',           // Black
+            hoverBg: '#1A1A1A',            // Dark Surface
+            containerShadow: 'rgba(0, 0, 0, 1)',
+            glass: '#1A1A1A',              // Opaque Surface
+            cellColors: ['#222222', '#555555', '#A0A0A0', '#F0F0F0'], // Mono Scale
+            // Styling Props
+            bgMain: '#0A0A0A',
+            fontMain: "'Inter', sans-serif",
+            fontData: "'Space Mono', monospace",
+            borderRadius: '0px',
+            scanlineOpacity: '0',
+            glassOpacity: '1',
+            backdropFilter: 'none'
         }
     };
 
@@ -113,6 +134,16 @@
             textShadow: 'none',
             electricShadow: 'none',
             electricBorderDash: '#c4c0b5'
+        },
+        brnd: {
+            terminal: '#F0F0F0',
+            electric: '#FFFFFF',
+            borderGlow: '#2D2D2D',
+            shadowMid: 'rgba(0, 0, 0, 0.5)',
+            shadowInner: 'transparent',
+            textShadow: 'none',
+            electricShadow: 'none',
+            electricBorderDash: '#444444'
         }
     };
 

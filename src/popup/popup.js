@@ -214,6 +214,12 @@ function applyTheme(themeName) {
 
     // Re-render heatmap with new colors (cells already use CSS variables)
     renderGlobalHeatmap();
+
+    // Update Title for BRND.OS
+    const brandTitle = document.querySelector('.status-bar div:first-child');
+    if (brandTitle) {
+        brandTitle.innerText = themeName === 'brnd' ? 'BRND.OS' : 'LeetCode EasyRepeat OS';
+    }
 }
 
 /**

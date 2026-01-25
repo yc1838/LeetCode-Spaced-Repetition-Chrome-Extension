@@ -743,6 +743,14 @@ body.theme-typography .vector-card {
     backdrop-filter: none;
 }
 
+body.theme-typography .vector-title {
+    color: var(--void);
+}
+
+body.theme-typography .vector-meta {
+    color: var(--terminal);
+}
+
 body.theme-typography .vector-card:hover {
     box-shadow: 8px 8px 0px rgba(0, 0, 0, 0.2);
     transform: translate(-1px, -1px);
@@ -798,4 +806,169 @@ body.theme-typography .rating-btn:hover {
     border-color: var(--terminal) !important;
     /* Override inline colors on hover for Ink look */
     box-shadow: 3px 3px 0px var(--border-dim);
+}
+
+/* ==========================================================================
+   THEME OVERRIDES: BRND.OS (Minimalist Dark)
+   ========================================================================== */
+body.theme-brnd {
+    background: #0a0a0a;
+}
+
+body.theme-brnd .extension-container {
+    border: none;
+    box-shadow: none;
+}
+
+body.theme-brnd .sidebar {
+    background: #1a1a1a;
+    border-right: 2px solid #2d2d2d;
+    padding-top: 20px;
+}
+
+body.theme-brnd .nav-icon {
+    border: 1px solid #2d2d2d;
+    background: #222;
+    border-radius: 4px;
+    color: #a0a0a0;
+}
+
+body.theme-brnd .nav-icon:hover,
+body.theme-brnd .nav-icon.active {
+    background: #f0f0f0;
+    color: #0a0a0a;
+    border-color: #f0f0f0;
+    transform: scale(0.95);
+}
+
+body.theme-brnd .nav-icon svg {
+    stroke: currentColor;
+}
+
+body.theme-brnd .status-bar {
+    background: #0a0a0a;
+    border-bottom: 2px solid #2d2d2d;
+    font-family: 'Space Mono', monospace;
+}
+
+body.theme-brnd .heatmap-container {
+    background: #1a1a1a;
+    border: 2px solid #2d2d2d;
+    box-shadow: 10px 10px 0px #000;
+}
+
+body.theme-brnd .vector-card {
+    background: #1a1a1a;
+    border: 2px solid #2d2d2d;
+    box-shadow: 12px 12px 0px #000;
+    margin-bottom: 15px;
+}
+
+body.theme-brnd .vector-card:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 14px 14px 0px #000;
+    border-color: #f0f0f0;
+}
+
+body.theme-brnd .vector-title {
+    font-family: 'Inter', sans-serif;
+    font-weight: 800;
+    font-size: 1.2rem;
+    color: #ffffff;
+    letter-spacing: -0.5px;
+}
+
+body.theme-brnd .tactical-btn {
+    background: #f0f0f0;
+    color: #0a0a0a;
+    font-weight: 900;
+    text-transform: uppercase;
+    border: none;
+    text-align: left;
+    display: flex;
+    justify-content: space-between;
+    padding: 18px;
+}
+
+body.theme-brnd .tactical-btn:hover {
+    background: #ffffff;
+    color: #000;
+    box-shadow: 4px 4px 0px #000;
+}
+
+body.theme-brnd .go-btn {
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    background: #f0f0f0;
+    color: #0a0a0a;
+    box-shadow: 4px 4px 0 #000;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+body.theme-brnd .del-btn {
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    background: #ff4444;
+    color: #fff;
+    border: none;
+    box-shadow: 4px 4px 0 #000;
+    opacity: 1;
+}
+
+body.theme-brnd .rating-btn {
+    border: 1px solid #2d2d2d;
+    background: #1a1a1a;
+    color: #a0a0a0;
+    font-weight: bold;
+}
+
+body.theme-brnd .rating-btn:hover {
+    background: #f0f0f0;
+    color: #0a0a0a;
+    border-color: #f0f0f0;
+}
+
+body.theme-brnd .tag-row .tag,
+body.theme-brnd .topic-tag {
+    background: #000;
+    border: 1px solid #2d2d2d;
+    padding: 2px 8px;
+    border-radius: 0;
+    color: #a0a0a0;
+}
+
+body.theme-brnd .status-ready {
+    font-family: 'Space Mono', monospace;
+    color: #a0a0a0;
+}
+
+body.theme-brnd .ai-toggle {
+    background: #222;
+    border: 1px solid #2d2d2d;
+    border-radius: 100px;
+    color: #f0f0f0;
+}
+
+body.theme-brnd .notes-flashcard {
+    background: #000;
+    border: 1px solid #2d2d2d;
+    font-family: 'Space Mono', monospace;
+}
+
+body.theme-brnd .notes-flashcard::before {
+    content: 'USER_NOTES //';
+    display: block;
+    margin-bottom: 8px;
+    color: #f0f0f0;
+    font-size: 10px;
+    background: transparent;
+    width: auto;
+    height: auto;
+    position: static;
+    opacity: 1;
 }
