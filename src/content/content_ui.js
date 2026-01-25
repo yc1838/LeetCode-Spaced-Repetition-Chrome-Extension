@@ -243,6 +243,9 @@
             if (existingContainer.dataset.slug === slug) {
                 return; // Already exists
             } else {
+                if (typeof existingContainer._lcNotesCleanup === 'function') {
+                    existingContainer._lcNotesCleanup();
+                }
                 existingContainer.remove();
             }
         }
@@ -477,6 +480,32 @@
         let isDragging = false;
         let dragTimer = null;
         let hasLoaded = false;
+        let lastSyncedValue = '';
+        let pendingExternalValue = null;
+
+        const applyExternalNotesUpdate = (nextValue) => {
+            const normalized = nextValue || '';
+            const hasUnsavedChanges = textarea.value !== lastSyncedValue;
+
+            if (hasUnsavedChanges) {
+                pendingExternalValue = normalized;
+                if (isOpen) {
+                    status.innerText = 'External update pending';
+                    status.style.color = '#38bdf8';
+                }
+                return;
+            }
+
+            textarea.value = normalized;
+            lastSyncedValue = normalized;
+            pendingExternalValue = null;
+            hasLoaded = true;
+
+            if (isOpen) {
+                status.innerText = 'Synced';
+                status.style.color = '#666';
+            }
+        };
 
         // Toggle Logic
         const togglePanel = async () => {
@@ -488,10 +517,16 @@
                 handle.querySelector('.lc-notes-toggle-icon').innerText = '▲';
 
                 // Load content if not loaded
+                if (pendingExternalValue !== null) {
+                    applyExternalNotesUpdate(pendingExternalValue);
+                }
                 if (!hasLoaded) {
                     textarea.value = "Loading...";
                     const content = await loadContentFn();
-                    textarea.value = content || "";
+                    const normalized = content || "";
+                    textarea.value = normalized;
+                    lastSyncedValue = normalized;
+                    pendingExternalValue = null;
                     hasLoaded = true;
                 }
 
@@ -508,6 +543,8 @@
             status.innerText = 'Saving...';
             status.style.color = '#eab308'; // yellow
             await onSaveFn(textarea.value);
+            lastSyncedValue = textarea.value;
+            pendingExternalValue = null;
             status.innerText = 'Saved via Sync';
             status.style.color = '#22c55e'; // green
             setTimeout(() => { status.innerText = 'Synced'; status.style.color = '#666'; }, 2000);
@@ -525,6 +562,21 @@
                 togglePanel(); // Close
             }
         };
+
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+            const handleStorageChange = (changes, namespace) => {
+                if (namespace !== 'local' || !changes.problems) return;
+                const updated = changes.problems.newValue;
+                if (!updated || !updated[slug]) return;
+
+                const nextNotes = updated[slug].notes || '';
+                if (nextNotes === lastSyncedValue && textarea.value === lastSyncedValue) return;
+                applyExternalNotesUpdate(nextNotes);
+            };
+
+            chrome.storage.onChanged.addListener(handleStorageChange);
+            container._lcNotesCleanup = () => chrome.storage.onChanged.removeListener(handleStorageChange);
+        }
 
         // --- Drag Logic (Applied to Container via Handle) ---
         // Repurposing logic from previous implementation but targeting 'container' and triggering on 'handle'

@@ -631,6 +631,24 @@ body::before {
     overflow-y: auto;
 }
 
+.notes-edit-hint {
+    margin-top: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.55rem;
+    letter-spacing: 1px;
+    color: var(--border-dim);
+    opacity: 0.8;
+    text-transform: uppercase;
+}
+
+.notes-edit-icon {
+    width: 10px;
+    height: 10px;
+    fill: currentColor;
+}
+
 /* Scrollbar for notes */
 .notes-content::-webkit-scrollbar {
     width: 2px;

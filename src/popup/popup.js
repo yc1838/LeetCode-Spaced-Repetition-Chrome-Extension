@@ -32,6 +32,7 @@
 // MODULE-LEVEL STATE:
 // Variables at the top level of a script persist for the popup's lifetime
 let currentTheme = 'sakura';  // Default theme
+let storageListenersReady = false;
 
 /**
  * DOMContentLoaded EVENT:
@@ -62,12 +63,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 1. Fetch data from storage and show the list of problems due for review
     await updateDashboard();
 
+    // 1.5 Live refresh when notes update in storage
+    setupStorageListeners();
+
     // 2. Enable Test Mode logic (simulation date picker)
     await setupTestMode();
 
     // 3. Enable sidebar tools (Purge, Sync buttons)
     setupManualTools();
 });
+
+/**
+ * Listen to storage changes and refresh the dashboard when problems update.
+ */
+function setupStorageListeners() {
+    if (storageListenersReady) return;
+    if (!chrome?.storage?.onChanged) return;
+    storageListenersReady = true;
+
+    chrome.storage.onChanged.addListener((changes, namespace) => {
+        if (namespace !== 'local') return;
+        if (changes.problems) {
+            void updateDashboard();
+        }
+    });
+}
 
 /**
  * ============================================================================
