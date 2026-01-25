@@ -137,9 +137,38 @@ body::before {
     background: rgba(255, 16, 240, 0.05);
 }
 
+.status-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .status-ready {
     color: var(--electric);
     /* No more blinking - it was annoying */
+}
+
+.ai-toggle {
+    background: transparent;
+    border: 1px solid var(--border-dim);
+    color: var(--terminal);
+    font-family: inherit;
+    font-size: 0.45rem;
+    letter-spacing: 0.4px;
+    padding: 3px 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.ai-toggle:hover {
+    border-color: var(--terminal);
+    box-shadow: 0 0 8px var(--border-glow);
+}
+
+.ai-toggle.on {
+    color: var(--void);
+    background: var(--terminal);
+    border-color: var(--terminal);
 }
 
 /* SIDEBAR TACTICAL SWITCHES */

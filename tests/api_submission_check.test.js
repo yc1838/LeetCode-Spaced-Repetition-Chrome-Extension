@@ -254,3 +254,74 @@ describe('Manual API Scan Logic (checkLatestSubmissionViaApi)', () => {
         expect(result.error).toContain("No submissions");
     });
 });
+
+describe('AI Analysis Hook (Wrong Answer path)', () => {
+    beforeEach(() => {
+        fetch.mockReset();
+        jest.clearAllMocks();
+
+        global.window.LLMSidecar = {
+            analyzeMistake: jest.fn().mockResolvedValue('AI analysis')
+        };
+
+        global.showAnalysisModal = jest.fn().mockResolvedValue(true);
+        global.saveNotes = jest.fn().mockResolvedValue({ success: true });
+        global.getNotes = jest.fn().mockResolvedValue('Existing Notes');
+
+        global.chrome.storage.local.get = jest.fn().mockImplementation((keys) => {
+            if (Array.isArray(keys) && keys.includes('alwaysAnalyze')) {
+                return Promise.resolve({ alwaysAnalyze: false });
+            }
+            if (typeof keys === 'object' && keys.aiAnalysisEnabled !== undefined) {
+                return Promise.resolve({ aiAnalysisEnabled: true });
+            }
+            return Promise.resolve({});
+        });
+    });
+
+    test('does not run analysis when AI mode is disabled', async () => {
+        global.chrome.storage.local.get.mockImplementation((keys) => {
+            if (Array.isArray(keys) && keys.includes('alwaysAnalyze')) {
+                return Promise.resolve({ alwaysAnalyze: false });
+            }
+            if (typeof keys === 'object' && keys.aiAnalysisEnabled !== undefined) {
+                return Promise.resolve({ aiAnalysisEnabled: false });
+            }
+            return Promise.resolve({});
+        });
+
+        fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                state: 'SUCCESS',
+                status_msg: 'Wrong Answer'
+            })
+        });
+
+        await checkSubmissionStatus('123', 'Two Sum', 'two-sum', 'Medium');
+        await new Promise((r) => setImmediate(r));
+
+        expect(global.window.LLMSidecar.analyzeMistake).not.toHaveBeenCalled();
+        expect(global.saveNotes).not.toHaveBeenCalled();
+    });
+
+    test('runs analysis and saves notes when AI mode is enabled', async () => {
+        fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                state: 'SUCCESS',
+                status_msg: 'Wrong Answer'
+            })
+        });
+
+        await checkSubmissionStatus('123', 'Two Sum', 'two-sum', 'Medium');
+        await new Promise((r) => setImmediate(r));
+
+        expect(global.window.LLMSidecar.analyzeMistake).toHaveBeenCalledTimes(1);
+        expect(global.saveNotes).toHaveBeenCalledTimes(1);
+
+        const args = global.saveNotes.mock.calls[0];
+        expect(args[0]).toBe('two-sum');
+        expect(args[1]).toContain('AI Analysis');
+    });
+});

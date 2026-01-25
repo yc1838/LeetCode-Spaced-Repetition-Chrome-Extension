@@ -254,10 +254,18 @@
 
                         // --- AI Mistake Analysis Hook ---
                         if (typeof window.LLMSidecar !== 'undefined' &&
-                            window.LLMSidecar.isAnalysisEnabled &&
-                            window.LLMSidecar.isAnalysisEnabled()) {
+                            typeof window.LLMSidecar.analyzeMistake === 'function') {
 
                             (async () => {
+                                // 0. Check global AI toggle
+                                let aiEnabled = false;
+                                try {
+                                    const aiStorage = await chrome.storage.local.get({ aiAnalysisEnabled: false });
+                                    aiEnabled = !!aiStorage.aiAnalysisEnabled;
+                                } catch (e) { }
+
+                                if (!aiEnabled) return;
+
                                 const showAnalysisModal = getDep('showAnalysisModal');
                                 const saveNotes = getDep('saveNotes');
 

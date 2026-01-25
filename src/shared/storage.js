@@ -222,7 +222,7 @@
         if (!chrome.runtime?.id) return;
 
         const result = await chrome.storage.local.get({ activityLog: [] });
-        let log = result.activityLog;
+        let log = Array.isArray(result.activityLog) ? result.activityLog : [];
 
         // Robust conversion to Local YYYY-MM-DD
         // 'en-CA' locale outputs YYYY-MM-DD format

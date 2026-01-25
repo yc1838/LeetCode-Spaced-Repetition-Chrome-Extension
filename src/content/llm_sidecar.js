@@ -121,6 +121,40 @@
         }
     }
 
+    function hasAnyKey() {
+        return Object.values(state.keys || {}).some((k) => !!k);
+    }
+
+    function isAnalysisEnabled() {
+        return hasAnyKey();
+    }
+
+    async function analyzeMistake(code, errorDetails, meta = {}) {
+        const title = meta.title || 'Unknown Problem';
+        const difficulty = meta.difficulty || 'Unknown';
+
+        const systemPrompt = [
+            'You are a LeetCode mentor.',
+            'Analyze the failure, point out the likely bug or misconception, and suggest a fix.',
+            'Be concise and focus on actionable guidance.'
+        ].join(' ');
+
+        const prompt = [
+            `Problem: ${title}`,
+            `Difficulty: ${difficulty}`,
+            `Error: ${errorDetails || 'Unknown Error'}`,
+            'Code:',
+            code || '// No code captured',
+            '',
+            'Respond with:',
+            '1) Root cause',
+            '2) Fix',
+            '3) One small test case that would fail before the fix'
+        ].join('\n');
+
+        return await callLLM(prompt, systemPrompt);
+    }
+
     // --- UI Rendering ---
 
     function createElement(tag, className, innerHTML = '') {
@@ -366,7 +400,9 @@
     // Expose API globally
     window.LLMSidecar = {
         init,
-        callLLM
+        callLLM,
+        analyzeMistake,
+        isAnalysisEnabled
     };
 
 })();

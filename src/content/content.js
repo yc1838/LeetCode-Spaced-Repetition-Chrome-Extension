@@ -176,18 +176,21 @@ if (typeof monitorSubmissionClicks === 'function') {
 
 /* --- Notes Feature Injection --- */
 // Run periodically to handle navigation (mounting/unmounting of React components)
-setInterval(() => {
-    if (typeof insertNotesButton === 'function') {
-        // Collect dependencies from global scope (loaded by manifest)
-        const deps = {
-            getCurrentProblemSlug: (typeof getCurrentProblemSlug !== 'undefined') ? getCurrentProblemSlug : null,
-            getNotes: (typeof getNotes !== 'undefined') ? getNotes : null,
-            saveNotes: (typeof saveNotes !== 'undefined') ? saveNotes : null,
-            extractProblemDetails: (typeof extractProblemDetails !== 'undefined') ? extractProblemDetails : null
-        };
-        insertNotesButton(deps);
-    }
-}, 2000);
+const isTestEnv = (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test');
+if (!isTestEnv) {
+    setInterval(() => {
+        if (typeof insertNotesButton === 'function') {
+            // Collect dependencies from global scope (loaded by manifest)
+            const deps = {
+                getCurrentProblemSlug: (typeof getCurrentProblemSlug !== 'undefined') ? getCurrentProblemSlug : null,
+                getNotes: (typeof getNotes !== 'undefined') ? getNotes : null,
+                saveNotes: (typeof saveNotes !== 'undefined') ? saveNotes : null,
+                extractProblemDetails: (typeof extractProblemDetails !== 'undefined') ? extractProblemDetails : null
+            };
+            insertNotesButton(deps);
+        }
+    }, 2000);
+}
 // Initialize LLM Sidecar
 if (window.LLMSidecar && typeof window.LLMSidecar.init === 'function') {
     window.LLMSidecar.init();
