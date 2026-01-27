@@ -1,8 +1,8 @@
 /**
- * VectorDB - Local Vector Store using IndexedDB
+ * VectorDB - Local Vector Store using Chrome Storage
  * 
  * Stores embeddings and allows for cosine similarity search.
- * Zero-dependency implementation to work without a bundler.
+ * MIGRATED from IndexedDB to Chrome Storage Local for cross-context access.
  */
 (function (root, factory) {
     if (typeof module === 'object' && module.exports) {
@@ -12,56 +12,75 @@
     }
 }(typeof self !== 'undefined' ? self : this, function () {
 
-    const DB_NAME = 'LeetCodeSRSMistakeDB';
-    const DB_VERSION = 1;
-    const STORE_NAME = 'vectors';
+    const STORAGE_KEY = 'LEETCODE_SRS_VECTORS';
+    const IDB_NAME = 'LeetCodeSRSMistakeDB'; // Legacy DB Name
 
-    let dbInstance = null;
+    // --- LEGACY IDB HELPER (For Migration) ---
+    function getLegacyData() {
+        return new Promise((resolve) => {
+            if (typeof indexedDB === 'undefined') return resolve([]);
 
-    /**
-     * Open (or create) the IndexedDB
-     */
-    function open() {
-        return new Promise((resolve, reject) => {
-            if (dbInstance) return resolve(dbInstance);
-
-            const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-            request.onerror = (event) => {
-                console.error("[VectorDB] Database error:", event.target.error);
-                reject(event.target.error);
-            };
-
-            request.onupgradeneeded = (event) => {
-                const db = event.target.result;
-                // Create an objectStore for this database
-                // keyPath is 'id' (autoIncrement)
-                if (!db.objectStoreNames.contains(STORE_NAME)) {
-                    const objectStore = db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
-                    // Create an index to search by timestamp if needed
-                    objectStore.createIndex('timestamp', 'timestamp', { unique: false });
-                }
-            };
-
-            request.onsuccess = (event) => {
-                dbInstance = event.target.result;
-                console.log("[VectorDB] Database opened successfully.");
-                resolve(dbInstance);
+            const request = indexedDB.open(IDB_NAME, 1);
+            request.onerror = () => resolve([]);
+            request.onupgradeneeded = () => resolve([]);
+            request.onsuccess = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('vectors')) return resolve([]);
+                const tx = db.transaction(['vectors'], 'readonly');
+                const store = tx.objectStore('vectors');
+                const req = store.getAll();
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => resolve([]);
             };
         });
     }
 
-    /**
-     * Compute Cosine Similarity between two vectors
-     * @param {number[]} vecA 
-     * @param {number[]} vecB 
-     * @returns {number} Score between -1 and 1
-     */
+    // --- CORE STORAGE ---
+    async function loadVectors() {
+        if (!chrome?.storage?.local) {
+            console.warn("Chrome Storage not available");
+            return [];
+        }
+        return new Promise((resolve) => {
+            chrome.storage.local.get([STORAGE_KEY], (result) => {
+                resolve(result[STORAGE_KEY] || []);
+            });
+        });
+    }
+
+    async function saveVectors(vectors) {
+        if (!chrome?.storage?.local) return;
+        return new Promise((resolve) => {
+            chrome.storage.local.set({ [STORAGE_KEY]: vectors }, () => resolve());
+        });
+    }
+
+    // --- MIGRATION CHECK ---
+    async function checkMigration() {
+        // Migration only runs in a context where IDB is accessible (Pages)
+        // AND where we can write to storage.
+        if (typeof indexedDB === 'undefined' || !chrome.storage) return;
+
+        const current = await loadVectors();
+        if (current.length > 0) return; // Already initialized
+
+        console.log("[VectorDB] Checking for legacy IndexedDB data...");
+        const legacy = await getLegacyData();
+        if (legacy && legacy.length > 0) {
+            console.log(`[VectorDB] Migrating ${legacy.length} records...`);
+            // Clean legacy data if needed? No, just copy.
+            await saveVectors(legacy);
+            console.log("[VectorDB] Migration Done.");
+        }
+    }
+
+    // Auto-run migration check on load
+    checkMigration();
+
+    // --- HELPER ---
     function cosineSimilarity(vecA, vecB) {
         if (vecA.length !== vecB.length) return 0;
-        let dot = 0.0;
-        let normA = 0.0;
-        let normB = 0.0;
+        let dot = 0.0, normA = 0.0, normB = 0.0;
         for (let i = 0; i < vecA.length; i++) {
             dot += vecA[i] * vecB[i];
             normA += vecA[i] * vecA[i];
@@ -71,131 +90,89 @@
         return dot / (Math.sqrt(normA) * Math.sqrt(normB));
     }
 
-    /**
-     * Add an entry to the Vector DB
-     * @param {Object} entry
-     * @param {number[]} entry.vector - Embedding vector
-     * @param {string} entry.text - Original text/error
-     * @param {string} entry.advice - Cached advice/solution
-     * @param {Object} entry.metadata - Extra info (tags, category, problemId)
-     */
+    // --- PUBLIC API ---
+
     async function add(entry) {
-        const db = await open();
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction([STORE_NAME], 'readwrite');
-            const store = transaction.objectStore(STORE_NAME);
-
-            const record = {
-                vector: entry.vector,
-                text: entry.text,
-                advice: entry.advice,
-                metadata: entry.metadata || {},
-                timestamp: Date.now()
-            };
-
-            const request = store.add(record);
-
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
+        const vectors = await loadVectors();
+        const record = {
+            id: Date.now() + Math.random(),
+            vector: entry.vector,
+            text: entry.text,
+            advice: entry.advice,
+            metadata: entry.metadata || {},
+            timestamp: Date.now()
+        };
+        vectors.push(record);
+        await saveVectors(vectors);
+        return record.id;
     }
 
-    /**
-     * Search for similar vectors
-     * @param {number[]} queryVector 
-     * @param {number} limit - Max results
-     * @param {number} threshold - Min similarity (0-1)
-     */
     async function search(queryVector, limit = 3, threshold = 0.7) {
-        const db = await open();
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction([STORE_NAME], 'readonly');
-            const store = transaction.objectStore(STORE_NAME);
-            const request = store.openCursor();
-
-            const results = [];
-
-            request.onsuccess = (event) => {
-                const cursor = event.target.result;
-                if (cursor) {
-                    const record = cursor.value;
-                    const similarity = cosineSimilarity(queryVector, record.vector);
-
-                    if (similarity >= threshold) {
-                        results.push({ ...record, score: similarity });
-                    }
-                    cursor.continue();
-                } else {
-                    // Done iterating
-                    // Sort by score descending
-                    results.sort((a, b) => b.score - a.score);
-                    resolve(results.slice(0, limit));
-                }
-            };
-
-            request.onerror = () => reject(request.error);
-        });
+        const vectors = await loadVectors();
+        const results = vectors
+            .map(record => ({ ...record, score: cosineSimilarity(queryVector, record.vector) }))
+            .filter(r => r.score >= threshold)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, limit);
+        return results;
     }
 
-    /**
-     * Get all tags/stats for visualization
-     */
     async function getStats() {
-        const db = await open();
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction([STORE_NAME], 'readonly');
-            const store = transaction.objectStore(STORE_NAME);
-            const request = store.getAll();
+        const records = await loadVectors();
+        const stats = {
+            totalMistakes: records.length,
+            byCategory: {},
+            byFamily: {},
+            byTag: {},
+            tree: {}
+        };
 
-            request.onsuccess = () => {
-                const records = request.result;
-                const stats = {
-                    totalMistakes: records.length,
-                    byCategory: {}, // Legacy support
-                    byFamily: {},
-                    byTag: {},
-                    tree: {} // New Hierarchical Structure
-                };
+        records.forEach(r => {
+            const meta = r.metadata || {};
+            const family = (meta.family || meta.category || 'Uncategorized').toUpperCase();
+            const tag = (meta.tag) ? meta.tag.toUpperCase() : 'GENERAL';
 
-                records.forEach(r => {
-                    const meta = r.metadata || {};
-                    // Prefer family, fallback to category, then 'Uncategorized'
-                    const family = (meta.family || meta.category || 'Uncategorized').toUpperCase();
+            stats.byFamily[family] = (stats.byFamily[family] || 0) + 1;
+            stats.byCategory[family] = stats.byFamily[family];
+            stats.byTag[tag] = (stats.byTag[tag] || 0) + 1;
 
-                    // IF tag is present, use it. IF NOT, use 'GENERAL' (don't fallback to category name)
-                    // This prevents "LOGIC -> LOGIC" redundancy for legacy data.
-                    const tag = (meta.tag) ? meta.tag.toUpperCase() : 'GENERAL';
-
-                    stats.byFamily[family] = (stats.byFamily[family] || 0) + 1;
-                    stats.byCategory[family] = stats.byFamily[family]; // Sync for UI compatibility
-                    stats.byTag[tag] = (stats.byTag[tag] || 0) + 1;
-
-                    // Build Tree
-                    if (!stats.tree[family]) stats.tree[family] = {};
-                    stats.tree[family][tag] = (stats.tree[family][tag] || 0) + 1;
-                });
-                resolve(stats);
-            };
-            request.onerror = () => reject(request.error);
+            if (!stats.tree[family]) stats.tree[family] = {};
+            stats.tree[family][tag] = (stats.tree[family][tag] || 0) + 1;
         });
+        return stats;
     }
 
-    /**
-     * Prune old records if DB gets too big
-     * (Simple implementation: keep last N records)
-     */
+    async function getAllWithKeys() {
+        return await loadVectors();
+    }
+
+    async function update(id, newData) {
+        const vectors = await loadVectors();
+        const index = vectors.findIndex(v => v.id === id);
+        if (index === -1) throw new Error("Record not found");
+
+        vectors[index] = { ...vectors[index], ...newData };
+        await saveVectors(vectors);
+        return true;
+    }
+
     async function prune(keepCount = 1000) {
-        const db = await open();
-        // This is a bit complex in pure IDB without index cursor dancing, 
-        // sticking to simple logical deletion for now or skip implementation until needed.
-        // For prototype, we mock this.
+        const vectors = await loadVectors();
+        if (vectors.length > keepCount) {
+            // Keep last N
+            const newVecs = vectors.slice(vectors.length - keepCount);
+            await saveVectors(newVecs);
+        }
         return true;
     }
 
     return {
         add,
         search,
-        getStats
+        getStats,
+        getAllWithKeys,
+        update,
+        prune // Export prune just in case
     };
 
 }));

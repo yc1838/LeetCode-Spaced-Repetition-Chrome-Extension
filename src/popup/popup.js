@@ -410,44 +410,26 @@ function toggleViews(view) {
 
 async function loadStats() {
     const container = document.getElementById('stats-content');
-    container.innerHTML = '<div class="stat-loading">Connecting to LeetCode Neural Link...</div>';
+    container.innerHTML = '<div class="stat-loading">Accessing Neural Database...</div>';
 
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab || !tab.url.includes('leetcode.com/problems/')) {
-        container.innerHTML = `
-            <div style="opacity:0.7; padding:20px; text-align:center;">
-                <p>⚠️ LINK NOT ESTABLISHED</p>
-                <p style="font-size:0.8em; margin-top:10px">Please open a LeetCode problem page to access the Neural Database.</p>
-            </div>`;
+    // Direct Local DB Access (No Content Script needed)
+    if (!window.VectorDB) {
+        container.innerHTML = `<div style="color:var(--accent)">Error: Database module not loaded.</div>`;
         return;
     }
 
-    chrome.tabs.sendMessage(tab.id, { action: "getStats" }, (response) => {
-        if (chrome.runtime.lastError) {
-            const err = chrome.runtime.lastError.message;
-            if (err.includes("Receiving end does not exist") || err.includes("Could not establish connection")) {
-                container.innerHTML = `
-                    <div style="opacity:0.8; padding:20px; text-align:center;">
-                        <div style="font-size:2em; margin-bottom:10px;">🔌</div>
-                        <p style="color:var(--accent);">CONNECTION LOST</p>
-                        <p style="font-size:0.8em; margin:10px 0;">The extension was updated, but the page is running old code.</p>
-                        <button class="llm-action-btn" onclick="chrome.tabs.reload(${tab.id}); window.close();" style="margin-top:10px; width:auto; padding:5px 15px;">
-                           REFRESH PAGE
-                        </button>
-                    </div>`;
-            } else {
-                container.innerHTML = `<div style="color:var(--accent)">Error: ${err}</div>`;
-            }
+    try {
+        const stats = await window.VectorDB.getStats();
+        // If DB is empty or just initialized
+        if (!stats) {
+            container.innerHTML = `<div style="opacity:0.7; padding:20px; text-align:center;">No Data Found</div>`;
             return;
         }
-
-        if (!response || !response.success) {
-            container.innerHTML = `<div style="color:var(--accent)">Data Error: ${response?.error || 'Unknown'}</div>`;
-            return;
-        }
-
-        renderStatsChart(container, response.stats);
-    });
+        renderStatsChart(container, stats);
+    } catch (e) {
+        console.error(e);
+        container.innerHTML = `<div style="color:var(--accent)">DB Error: ${e.message}</div>`;
+    }
 }
 
 function renderStatsChart(container, stats) {
@@ -456,10 +438,15 @@ function renderStatsChart(container, stats) {
         return;
     }
 
-    let html = '<div style="display:flex; flex-direction:column; gap:15px;">';
-    html += '<div style="font-size:0.7em; opacity:0.7; letter-spacing:1px; margin-bottom:5px;">WEAKNESS_TOPOLOGY // HIERARCHY</div>';
-
     // 1. Group Tags by Family
+    let html = '<div style="display:flex; flex-direction:column; gap:15px;">';
+
+    // Add Fix Button if legacy data detected (determined by 'UNSPECIFIED' presence usually, but let's just add it at bottom or top)
+    html += `<div style="display:flex; justify-content:flex-end;">
+       <button id="btn-fix-stats" style="background:none; border:1px solid rgba(255,255,255,0.2); color:rgba(255,255,255,0.6); font-size:0.6em; padding:2px 5px; cursor:pointer;">⚡ REPAIR DATA</button>
+    </div>`;
+
+    html += '<div style="font-size:0.7em; opacity:0.7; letter-spacing:1px; margin-bottom:5px;">WEAKNESS_TOPOLOGY // HIERARCHY</div>';
     // We already have stats.byFamily (counts) and stats.byTag (counts). 
     // But we need to know WHICH tag belongs to WHICH family. 
     // Since we don't store that mapping explicitly in the 'stats' object returned by getStats(),
@@ -496,7 +483,20 @@ function renderStatsChart(container, stats) {
                     <span style="font-family:var(--font-mono); font-size:0.8em; color:var(--electric);">${family}</span>
                     <span style="font-size:0.8em; font-weight:bold;">${familyTotal}</span>
                 </div>
-                <div style="padding-left:10px; margin-top:5px; border-left:2px solid rgba(255,255,255,0.05);">`;
+                </div>`;
+
+            // Check if we only have 'GENERAL' tag
+            const tagKeys = Object.keys(tags);
+            const onlyGeneral = (tagKeys.length === 1 && tagKeys[0] === 'GENERAL');
+
+            if (onlyGeneral) {
+                // Just close the header div and continue (no sub-list)
+                html += `</div>`;
+                return;
+            }
+
+            // If we have specific tags, render the container
+            html += `<div style="padding-left:10px; margin-top:5px; border-left:2px solid rgba(255,255,255,0.05);">`;
 
             // Tags
             const sortedTags = Object.entries(tags).sort((a, b) => b[1] - a[1]);
@@ -522,6 +522,12 @@ function renderStatsChart(container, stats) {
     html += '</div>';
 
     container.innerHTML = html;
+
+    // Bind Repair Button
+    const repairBtn = document.getElementById('btn-fix-stats');
+    if (repairBtn) {
+        repairBtn.onclick = () => runMigrationInPopup(repairBtn);
+    }
 }
 
 // renderVectors moved to popup_ui.js
@@ -641,13 +647,13 @@ function setupManualTools() {
             if (chrome.runtime.lastError) {
                 const err = chrome.runtime.lastError.message || "Unknown runtime error";
                 console.error("[Popup] Connection failed:", err);
-                showNotification('error', 'CONNECTION_LOST', `Extension context lost (${err}). Please refresh the LeetCode page.`);
+                showNotification('error', 'CONNECTION_LOST', `Extension context lost(${err}).Please refresh the LeetCode page.`);
             } else if (response && response.success) {
                 window.close(); // Close popup
             } else if (response && response.duplicate) {
                 showNotification('warning', 'DUPLICATE_DETECTED', `"${response.problemTitle}" was already logged today.`);
             } else if (response && response.error) {
-                showNotification('error', 'SCAN_ERROR', `Scan failed: ${response.error}`);
+                showNotification('error', 'SCAN_ERROR', `Scan failed: ${response.error} `);
             } else {
                 showNotification('error', 'SCAN_FAILED', 'No "Accepted" submission found on this page.');
             }
@@ -807,7 +813,7 @@ async function updateProblemSRS(slug, ease) {
  * @param {string} slug - The problem unique identifier
  */
 async function deleteProblem(slug) {
-    if (!confirm(`Are you sure you want to delete "${slug}" from your SRS history? This cannot be undone.`)) {
+    if (!confirm(`Are you sure you want to delete "${slug}" from your SRS history ? This cannot be undone.`)) {
         return;
     }
 

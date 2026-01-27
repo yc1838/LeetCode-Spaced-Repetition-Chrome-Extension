@@ -337,6 +337,78 @@
         }
 
         return displayAdvice;
+        return displayAdvice;
+    }
+
+    async function reclassifyMistakes(onProgress) {
+        if (!window.VectorDB || !hasAnyKey()) return;
+
+        try {
+            const records = await window.VectorDB.getAllWithKeys();
+            // multiple legacy formats: no tag, or tag is GENERAL
+            const legacy = records.filter(r => !r.metadata.tag || r.metadata.tag === 'GENERAL');
+
+            if (legacy.length === 0) {
+                if (onProgress) onProgress("No legacy records found.");
+                return;
+            }
+
+            let completed = 0;
+            if (onProgress) onProgress(`Found ${legacy.length} legacy records. Starting...`);
+
+            for (const r of legacy) {
+                // Extract original context
+                // Format was: "Error: ...\nCode Snippet: ..."
+                const parts = r.text.split('\nCode Snippet:');
+                const errorDetails = parts[0].replace('Error: ', '').trim();
+                const code = parts[1] ? parts[1].trim() : '';
+
+                // Re-use the SAME prompt structure as analyzeMistake to get granular tags
+                // We create a minimal version of the prompt here for the specific classification task
+                const prompt = [
+                    `Problem: ${r.metadata.title || 'Unknown'}`,
+                    `Error: ${errorDetails}`,
+                    `Code: ${code.substring(0, 500)}`, // truncated
+                    '',
+                    'Classify this OLD mistake into a specific tag from this list (JSON only):',
+                    '--- PYTHON SPECIFIC ---',
+                    '- PY_LIST_INDEX, PY_DICT_KEY, PY_STR_IMMUTABLE, PY_SCOPE_UNBOUND',
+                    '--- LOGIC ---',
+                    '- OFF_BY_ONE, VISITED_MISSING, BASE_CASE_MISSING, INFINITE_LOOP, EDGE_CASE_EMPTY',
+                    '--- DATA ---',
+                    '- INT_OVERFLOW, TYPE_MISMATCH',
+                    '',
+                    'Respond {"family": "...", "specific_tag": "..."} only.'
+                ].join('\n');
+
+                try {
+                    const advice = await callLLM(prompt, "You are a code classifier. output JSON.");
+
+                    // Parse
+                    const cleanJson = advice.replace(/```json/g, '').replace(/```/g, '').trim();
+                    const parsed = JSON.parse(cleanJson);
+
+                    if (parsed.specific_tag && parsed.family) {
+                        // Update DB
+                        const newMeta = { ...r.metadata, family: parsed.family, tag: parsed.specific_tag };
+                        // Update display text too to reflect new tag? Maybe just metadata is enough for stats.
+                        // Let's keep advice as is or append a note? Users requested "fix data", primarily for stats.
+                        // We will just update metadata for the stats to be correct.
+                        await window.VectorDB.update(r.id, { metadata: newMeta });
+                    }
+                } catch (e) {
+                    console.warn(`[Reclassify] Failed for ${r.id}`, e);
+                }
+
+                completed++;
+                if (onProgress) onProgress(`Processed ${completed}/${legacy.length}...`);
+            }
+            if (onProgress) onProgress("Done! Refresh Stats.");
+
+        } catch (e) {
+            console.error(e);
+            if (onProgress) onProgress("Error: " + e.message);
+        }
     }
 
     // --- UI Rendering ---
@@ -461,6 +533,25 @@
             group.appendChild(input);
             area.appendChild(group);
         });
+
+        // Migration Tool
+        area.appendChild(createElement('div', 'llm-spacer', ''));
+        const fixBtn = createElement('button', 'llm-action-btn', '⚡ FIX LEGACY DATA');
+        fixBtn.style.width = '100%';
+        fixBtn.style.marginTop = '15px';
+        fixBtn.style.justifyContent = 'center';
+        fixBtn.onclick = async () => {
+            fixBtn.disabled = true;
+            fixBtn.innerText = "Scanning...";
+            await reclassifyMistakes((status) => {
+                fixBtn.innerText = status;
+            });
+            setTimeout(() => {
+                fixBtn.disabled = false;
+                fixBtn.innerText = "⚡ FIX LEGACY DATA";
+            }, 3000);
+        };
+        area.appendChild(fixBtn);
 
         parent.appendChild(area);
     }
@@ -587,6 +678,7 @@
         callLLM,
         embed,
         analyzeMistake,
+        reclassifyMistakes,
         isAnalysisEnabled
     };
 

@@ -46,18 +46,27 @@ function renderStatsHTMLMock(stats) {
     sortedFamilies.forEach(([family, tags]) => {
         const familyTotal = Object.values(tags).reduce((sum, v) => sum + v, 0);
 
-        html += `FAMILY:${family}(${familyTotal})[`;
+        html += `FAMILY:${family}(${familyTotal})`;
 
         // Tags
         const sortedTags = Object.entries(tags).sort((a, b) => b[1] - a[1]);
-        let renderedTags = 0;
-        sortedTags.forEach(([tag, count]) => {
-            if (tag === 'GENERAL') return; // SKIP GENERAL
-            html += `${tag}:${count},`;
-            renderedTags++;
-        });
 
-        html += `]`;
+        // New Logic: Check if only GENERAL
+        const tagKeys = Object.keys(tags);
+        const onlyGeneral = (tagKeys.length === 1 && tagKeys[0] === 'GENERAL');
+
+        if (onlyGeneral) {
+            // Collapsed view (no tags shown)
+            html += ``;
+        } else {
+            // Expanded view
+            html += `[`;
+            sortedTags.forEach(([tag, count]) => {
+                if (tag === 'GENERAL') return;
+                html += `${tag}:${count},`;
+            });
+            html += `]`;
+        }
     });
     return html;
 }
