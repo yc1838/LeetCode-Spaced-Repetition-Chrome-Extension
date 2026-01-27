@@ -215,6 +215,10 @@ graph TD
     PopupJS -- Manual scan / difficulty sync --> Orchestrator
 ```
 
+### AI Mistake Analysis Architecture
+
+![AI Mistake Analysis Architecture](assets/architecture_diagram.png)
+
 ### Storage
 Uses Chrome's `chrome.storage.local` API to persist:
 - Problem data (title, slug, difficulty, interval, repetition, ease factor)

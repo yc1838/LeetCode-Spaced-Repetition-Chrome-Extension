@@ -60,6 +60,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 0.5 Load and apply AI analysis toggle from storage
     await setupAiModeToggle();
 
+    // 0.6 Options/setup button
+    setupOptionsButton();
+
     // 1. Fetch data from storage and show the list of problems due for review
     await updateDashboard();
 
@@ -146,6 +149,23 @@ async function setupAiModeToggle() {
         enabled = !enabled;
         render();
         await chrome.storage.local.set({ aiAnalysisEnabled: enabled });
+    };
+}
+
+/**
+ * Open the Options / Setup page.
+ */
+function setupOptionsButton() {
+    const btn = document.getElementById('btn-setup');
+    if (!btn) return;
+
+    btn.onclick = () => {
+        if (chrome?.runtime?.openOptionsPage) {
+            chrome.runtime.openOptionsPage();
+        } else {
+            const url = chrome.runtime.getURL('src/options/options.html');
+            window.open(url, '_blank');
+        }
     };
 }
 

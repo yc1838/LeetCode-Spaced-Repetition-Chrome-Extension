@@ -213,6 +213,7 @@
                         // 3. Decision Gate
                         if (topMatch.score > 0.92) {
                             // High Confidence -> Return Cached Advice
+                            console.log(`%c[AI Service] 🟢 LOCAL HIT (RAG) | Similarity: ${(topMatch.score * 100).toFixed(1)}%`, "color: #4ade80; font-weight: bold;");
                             return `💡 **Recurring Mistake Detected**\n\nIt seems you've made a very similar mistake before (${(topMatch.score * 100).toFixed(0)}% match).\n\n**Previous Advice:**\n${topMatch.advice}`;
                         }
 
@@ -240,7 +241,9 @@
             code || '// No code captured',
             contextMsg,
             '',
-            'Classify the error into one of these SPECIFIC TAGS if possible (Prioritize Python quirks):',
+            'Classify the error into one of these SPECIFIC TAGS.',
+            'CRITICAL: Do NOT invent new tags. You MUST choose exactly one from the list below.',
+            'If the error fits multiple, choose the most specific one.',
             '',
             '--- PYTHON SPECIFIC ---',
             '- PY_LIST_INDEX (IndexError: list index out of range)',
@@ -279,15 +282,26 @@
             '- EDGE_CASE_EMPTY (Failed on [] or 0)',
             '- RETURN_MISSING (Function returns None)',
             '',
+            '--- STACK & QUEUE ---',
+            '- STACK_UNDERFLOW (Pop from empty)',
+            '- ORDER_MISMATCH (LIFO/FIFO confusion)',
+            '',
+            '--- BIT MANIPULATION ---',
+            '- NEGATIVE_SHIFT (ValueError: negative shift count)',
+            '- BITWISE_PRECEDENCE (Forgot parentheses around & |)',
+            '',
             'Respond with this JSON format only:',
             '{',
             '  "root_cause": "1 sentence explanation",',
             '  "fix": "Code fix or strategy",',
-            '  "family": "PYTHON" or "LOGIC" or "ALGO" or "MATH",',
+            '  "family": "PYTHON" or "LOGIC" or "ALGO" or "STACK" or "BIT_MANIPULATION",',
             '  "specific_tag": "TAG_FROM_LIST (or NEW_TAG if distinct)",',
             '  "is_recurring": false',
             '}'
         ].join('\n');
+
+        const activeModel = ALL_MODELS.find(m => m.id === state.selectedModelId);
+        console.log(`%c[AI Service] ☁️ CLOUD REQUEST | Model: ${activeModel?.name || state.selectedModelId} (${activeModel?.provider})`, "color: #38bdf8; font-weight: bold;");
 
         let advice = await callLLM(prompt, systemPrompt, signal);
 

@@ -800,6 +800,180 @@ POST   /api/subscription/create - Create Stripe checkout
 POST   /api/webhooks/stripe     - Stripe webhook handler
 ```
 
+---
+
+## 12. Action Era Migration Plan (Agentic Orchestration)
+
+This plan upgrades the project from "analysis on demand" to an **autonomous, multi-step orchestrator** that plans, executes, verifies, and adapts over time. It stays compatible with a Chrome Extension first, and leaves a clean path to a backend agent later.
+
+### 12.1 Action Era Goals (Mapping to Hackathon Guidance)
+
+- **Not just a prompt wrapper**: multi-step flows with tool usage, persistence, and verification loops.
+- **Long-running tasks**: the agent maintains a plan across days using stored state.
+- **Evidence and verification**: the agent produces artifacts (tests, metrics, logs) and updates decisions based on results.
+- **Multimodal readiness**: can ingest code, error logs, and (optionally) screenshots or UI states.
+
+### 12.2 Constraints (Chrome Extension Reality Check)
+
+- MV3 service worker is ephemeral; long-running work must be **scheduled** and **stateful**.
+- Content scripts run only on matching pages; they cannot arbitrarily operate in the background.
+- Chrome Web Store forbids remote executable code; all logic must ship in the extension.
+- Heavy compute should be offloaded to a **local model server** or **remote API** (user-provided key).
+
+### 12.3 Core Agent Architecture (Extension-First)
+
+Add these modules (names are illustrative):
+
+```
+src/agent/
+├── action_orchestrator.js    # Core planner/executor
+├── action_queue.js           # Persistent queue (chrome.storage)
+├── action_policy.js          # Safety + gating rules
+├── action_tools.js           # Tool adapters (LLM, DOM, API, storage)
+├── action_memory.js          # Long-term memory + summaries
+└── action_metrics.js         # Evidence + evaluation
+```
+
+**Key runtime loops:**
+- **Planner**: builds a plan from recent mistakes, weak topics, and recency.
+- **Executor**: runs tools to generate drills, tests, and summaries.
+- **Verifier**: re-checks results against expected outcomes and updates confidence.
+- **Scheduler**: uses `chrome.alarms` to trigger daily/weekly tasks.
+
+### 12.4 Thought Signatures + Thinking Levels (Action Era Alignment)
+
+Do NOT expose chain-of-thought. Instead, store **structured artifacts**:
+
+```
+thought_signature = {
+  taskId,
+  thinkingLevel: "quick" | "deep" | "verify",
+  evidence: [ "test-case-1", "error-log-1", "pass-rate-0.67" ],
+  decision: "classify: off-by-one",
+  confidence: 0.82
+}
+```
+
+- **quick** = heuristic or small local model
+- **deep** = large model or multi-step reasoning
+- **verify** = test results or rule-based validation
+
+### 12.5 Action Flows (Concrete, Multi-Step)
+
+#### Flow A: Wrong Submission -> Self-Improving Diagnosis
+1. Capture submission metadata and minimal code snippet.
+2. Check dedupe fingerprint (skip if known).
+3. Run **local heuristic classifier** first.
+4. If low confidence, call LLM for classification.
+5. Generate **test case** that exposes the bug.
+6. Store a **mistake profile** (global, deduped).
+7. Add to weekly plan with higher priority if repeated.
+
+#### Flow B: Weekly Weakness Autopilot
+1. Read all mistake profiles + topic stats.
+2. Rank top 3 weaknesses by weight.
+3. Generate a drill plan: 2-3 mini tasks per weakness.
+4. Schedule reminders + create UI prompts.
+5. After user solves new problems, recompute and adjust.
+
+#### Flow C: Strength Graph + Reinforcement
+1. Compute strength by topic (SRS interval + accuracy).
+2. Highlight top strengths and suggested next topics.
+3. Use strengths to reduce redundant drills.
+
+### 12.6 Tooling and Data Contracts
+
+**Tools the agent can call (extension):**
+- `leetcode_api.fetchQuestionDetails(slug)`
+- `storage.saveSubmission(...)`
+- `storage.saveNotes(...)`
+- `analysis.classifyMistake(...)`
+- `analysis.buildDrillPlan(...)`
+- `analytics.computeWeakTopics(...)`
+- `analytics.computeStrengthTopics(...)`
+
+**Artifacts (persisted in storage):**
+- `mistakeProfiles` (deduped, weighted)
+- `mistakeEvents` (raw, optional)
+- `agentPlans` (current and historical)
+- `actionLogs` (for transparency)
+
+### 12.7 Verification Loop (No Hand-Waving)
+
+Add a strict loop so the agent "proves" value:
+
+```
+diagnose -> propose fix -> generate test -> store -> observe future success rate
+```
+
+Tracking:
+- Before/after error rate per mistake type.
+- Time-to-fix per mistake type.
+- Drill completion ratio.
+
+### 12.8 UX Surfaces (Action Era Presentation)
+
+- **Action Feed**: recent agent actions with evidence (tests created, drills scheduled).
+- **Plan View**: weekly plan with progress and auto-adjustments.
+- **Strength/Weakness Graphs**: topic radar + mistake priority list.
+- **Settings**: provider selection, local model endpoint, cost budgets.
+
+### 12.9 Token/Cost Control Strategy
+
+- Fingerprint dedupe first (zero-cost repeats).
+- Heuristic classifier before LLM.
+- Local model for classification + summarization.
+- Large model only for low-confidence or complex cases.
+- Strict response formats with word limits.
+
+### 12.10 Phased Delivery (Detailed)
+
+**Phase A: Instrumentation + Data Foundations**
+- Add `mistakeProfiles` + `mistakeEvents` schema.
+- Add `actionLogs` + `agentPlans` schema.
+- Add dedupe fingerprints and weighting rules.
+
+**Phase B: Agent Core (Extension-Only)**
+- Implement `action_orchestrator.js` with queue + alarms.
+- Implement `action_policy.js` for user consent and safety.
+- Add analytics for strength/weakness ranking.
+
+**Phase C: Verification + Evidence**
+- Generate small test cases for each diagnosis.
+- Track success rate by mistake type.
+- Add action feed UI.
+
+**Phase D: Local Model Option**
+- Add "local-http" provider (Ollama/LM Studio).
+- Settings UI for endpoint + test connection.
+- Fallback to cloud provider.
+
+**Phase E: Optional Backend Agent**
+- Sync plans and mistake profiles.
+- Server-side orchestration for longer tasks.
+- Advanced analytics and evaluation dashboards.
+
+### 12.11 Chrome Web Store Feasibility (Can It Run?)
+
+**Yes, but with constraints:**
+- All code must be packaged (no remote JS).
+- Host permissions must be declared for any API endpoints.
+- Background work is limited; use `chrome.alarms` + storage-based queues.
+- Large local models cannot be bundled; use a local HTTP server or cloud APIs.
+- Be transparent about data collection and user consent in the UI and privacy policy.
+
+If you keep it **extension-first**, avoid remote code, and follow Chrome policies, it can be published. The "Action Era" goals do not conflict with Chrome Store rules; they just require careful engineering and user transparency.
+
+### 12.12 Onboarding + Local Model Setup UX
+
+Make local model usage self-serve and low-friction for SDE users:
+
+- Add an **Options / Setup** page with a short 3-step guide.
+- Provide a **Local HTTP** section with endpoint + server type + model name.
+- Include a **Test connection** button that reports model list and latency.
+- Link to a more detailed setup page from the popup (opens in a new tab).
+- Show clear troubleshooting hints for CORS or server not running.
+
 ### 11.4 Extension-Backend Sync Flow
 
 ```mermaid

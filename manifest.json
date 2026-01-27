@@ -7,8 +7,14 @@
         "storage"
     ],
     "host_permissions": [
-        "https://leetcode.com/*"
+        "https://leetcode.com/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
     ],
+    "options_ui": {
+        "page": "src/options/options.html",
+        "open_in_tab": true
+    },
     "action": {
         "default_popup": "src/popup/popup.html",
         "default_title": "LeetCode EasyRepeat"
