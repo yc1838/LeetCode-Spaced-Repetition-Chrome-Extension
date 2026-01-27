@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LeetCode EasyRepeat - AI Setup</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;600&family=JetBrains+Mono:wght@300;400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="options.css">
+</head>
+<body>
+    <div class="page">
+        <header class="hero">
+            <div class="hero-title">LeetCode EasyRepeat</div>
+            <div class="hero-subtitle">AI Setup</div>
+            <div class="hero-note">Configure local or cloud AI providers and verify connections.</div>
+        </header>
+
+        <section class="card">
+            <h2>Provider</h2>
+            <div class="row">
+                <label class="radio">
+                    <input type="radio" name="provider" value="cloud" id="provider-cloud">
+                    <span>Cloud (Gemini / OpenAI)</span>
+                </label>
+                <label class="radio">
+                    <input type="radio" name="provider" value="local" id="provider-local">
+                    <span>Local HTTP (Ollama / LM Studio)</span>
+                </label>
+            </div>
+        </section>
+
+        <section class="card" id="local-settings">
+            <h2>Local Model</h2>
+            <div class="grid">
+                <div class="field">
+                    <label for="local-endpoint">Endpoint</label>
+                    <input id="local-endpoint" type="text" placeholder="http://localhost:11434">
+                </div>
+                <div class="field">
+                    <label for="local-server-type">Server Type</label>
+                    <select id="local-server-type">
+                        <option value="auto">Auto-detect</option>
+                        <option value="ollama">Ollama</option>
+                        <option value="openai">OpenAI-compatible</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="local-model">Model (optional)</label>
+                    <input id="local-model" type="text" placeholder="llama3.1">
+                </div>
+            </div>
+            <div class="actions">
+                <button id="test-local" class="btn">Test connection</button>
+                <button id="save-settings" class="btn secondary">Save settings</button>
+                <span id="save-status" class="status-text"></span>
+            </div>
+            <div id="test-status" class="status"></div>
+        </section>
+
+        <section class="card">
+            <h2>Quick Setup (Local HTTP)</h2>
+            <ol class="steps">
+                <li>Install a local model server.</li>
+                <li>Start the server and keep it running.</li>
+                <li>Enter the endpoint and click Test connection.</li>
+            </ol>
+            <div class="subhead">Ollama (example)</div>
+            <pre><code>ollama serve
+ollama pull llama3.1
+ollama run llama3.1</code></pre>
+            <div class="subhead">LM Studio (OpenAI-compatible)</div>
+            <pre><code>Start the local server in LM Studio
+Use the server URL shown in the UI (usually http://localhost:1234)</code></pre>
+            <div class="subhead">Troubleshooting</div>
+            <ul class="notes">
+                <li>If the test fails with a network error, the server is likely not running.</li>
+                <li>If you see a CORS error, enable CORS on the local server.</li>
+            </ul>
+        </section>
+    </div>
+
+    <script src="../shared/config.js"></script>
+    <script src="options.js"></script>
+</body>
+</html>
