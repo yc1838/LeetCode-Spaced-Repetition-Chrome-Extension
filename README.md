@@ -154,35 +154,65 @@ The extension implements a modified SM-2 spaced repetition algorithm:
 ```mermaid
 graph TD
     User((User))
-    subgraph Browser Extension
-        Popup[Popup UI]
-        Content[Content Script]
-        LLM[LLM Sidecar]
-    end
-    subgraph External Services
-        LeetCode[LeetCode API]
-        AI[AI Providers <br/> Gemini/OpenAI]
-    end
-    subgraph Storage Layer
-        CS[(Chrome Storage Local)]
+    LCPage[LeetCode Problem Page]
+
+    User -- Solve/Submit --> LCPage
+
+    subgraph Extension["Chrome Extension (Manifest V3)"]
+        subgraph Content["Content Scripts (leetcode.com)"]
+            Orchestrator[content.js<br/>orchestrator]
+            DOM[leetcode_dom.js<br/>DOM parsing + difficulty cache]
+            API[leetcode_api.js<br/>GraphQL + submission polling]
+            UI[content_ui.js<br/>toasts / rating / notes / AI modals]
+            LLM[LLM Sidecar<br/>llm_sidecar.js]
+        end
+
+        subgraph Shared["Shared Modules"]
+            StorageMod[storage.js<br/>save submissions + notes]
+            SRS[SRS/FSRS Engine<br/>srs_logic.js + fsrs_logic.js]
+            VDB[VectorDB<br/>vector_db.js]
+        end
+
+        subgraph Popup["Popup UI"]
+            PopupJS[popup.js + popup_ui.js<br/>dashboard / stats / tools]
+        end
     end
 
-    User -- Solves Problem --> Content
-    Content -- 1. Detect Submission --> LeetCode
-    LeetCode -- 2. Result (Success/Fail) --> Content
-    
-    %% Success Flow
-    Content -- 3a. Success: <br/> Save SRS Data --> CS
-    
-    %% Failure Flow with AI
-    Content -- 3b. Failure: <br/> Trigger Analysis --> LLM
-    LLM -- 4. Send Code + Error --> AI
-    AI -- 5. Smart Explanation --> LLM
-    LLM -- 6. Display & Save Note --> Content
-    Content -- 7. Persist Note --> CS
+    subgraph Local["Local Persistence"]
+        CS[(chrome.storage.local<br/>problems, notes, settings, activityLog, vectors)]
+        LS[(localStorage<br/>LLM keys + UI state)]
+    end
 
-    User -- Views Dashboard --> Popup
-    Popup -- Read Due Problems --> CS
+    subgraph External["External Services"]
+        LCAPI[LeetCode APIs<br/>GraphQL + submissions]
+        AI[AI Providers<br/>Gemini / OpenAI / Anthropic]
+        Embed[Embedding APIs<br/>Gemini / OpenAI]
+    end
+
+    LCPage --> Orchestrator
+    Orchestrator --> DOM
+    Orchestrator --> API
+    Orchestrator --> UI
+
+    API <--> LCAPI
+    API -- Accepted --> StorageMod
+    API -- Wrong Answer + AI enabled --> LLM
+
+    StorageMod --> SRS
+    StorageMod --> CS
+    UI --> StorageMod
+
+    LLM --> AI
+    LLM --> Embed
+    LLM <--> VDB
+    VDB --> CS
+    LLM --> LS
+
+    User -- Opens Popup --> PopupJS
+    PopupJS --> StorageMod
+    PopupJS --> VDB
+    PopupJS --> SRS
+    PopupJS -- Manual scan / difficulty sync --> Orchestrator
 ```
 
 ### Storage
