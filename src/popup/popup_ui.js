@@ -61,7 +61,12 @@
                     <span>RETENTION: ${Math.min(100, Math.round(problem.easeFactor * 40))}%</span>
                 </div>
                 <div class="vector-title">${problem.title.toUpperCase()}</div>
-                <div class="vector-stats">
+                ${(problem.topics && problem.topics.length > 0) ? `
+                    <div class="topic-row" style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:6px;">
+                        ${problem.topics.slice(0, 3).map(t => `<span class="stat-tag topic-tag">${t.toUpperCase()}</span>`).join('')}
+                    </div>
+                ` : ''}
+                <div class="vector-stats" style="flex-wrap: wrap;">
                     <span class="stat-tag ${diffStyle}">${(problem.difficulty || 'MEDIUM').toUpperCase()}</span>
                     <span class="stat-tag">INT: ${interval}D</span>
                     <span class="stat-tag">DUE: ${nextReview}</span>
@@ -80,6 +85,12 @@
                         <div class="notes-flashcard">
                             <div class="notes-label">USER_NOTES //</div>
                             <div class="notes-content">${problem.notes.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>
+                            <div class="notes-edit-hint" title="Editable notes">
+                                <svg class="notes-edit-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm17.71-10.21a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0L15.12 4.1l3.75 3.75 1.84-1.81z"/>
+                                </svg>
+                                <span>EDIT NOTES</span>
+                            </div>
                         </div>
                     ` : ''}
                 </div>
@@ -124,6 +135,106 @@
                 };
             }
 
+            // Edit Notes Handler
+            const attachEditListener = () => {
+                const editBtn = card.querySelector('.notes-edit-hint');
+                if (!editBtn) return;
+
+                editBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    const flashcard = card.querySelector('.notes-flashcard');
+                    if (!flashcard) return;
+
+                    const rawNotes = problem.notes || "";
+
+                    // Create Editor Elements
+                    const textarea = document.createElement('textarea');
+                    textarea.value = rawNotes;
+                    textarea.style.cssText = `
+                        width: 100%;
+                        min-height: 80px;
+                        background: rgba(0,0,0,0.3);
+                        border: 1px solid var(--electric);
+                        color: var(--font-main);
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 0.8rem;
+                        padding: 8px;
+                        margin-bottom: 8px;
+                        resize: vertical;
+                        border-radius: 4px;
+                    `;
+                    textarea.onclick = (ev) => ev.stopPropagation();
+                    textarea.onkeydown = (ev) => ev.stopPropagation();
+
+                    const btnRow = document.createElement('div');
+                    btnRow.style.cssText = 'display: flex; gap: 8px; justify-content: flex-end;';
+
+                    const saveBtn = document.createElement('button');
+                    saveBtn.innerText = 'SAVE';
+                    saveBtn.style.cssText = `
+                        background: var(--terminal);
+                        color: #000;
+                        border: none;
+                        padding: 4px 12px;
+                        font-family: inherit;
+                        font-weight: bold;
+                        cursor: pointer;
+                        font-size: 0.7rem;
+                    `;
+
+                    const cancelBtn = document.createElement('button');
+                    cancelBtn.innerText = 'CANCEL';
+                    cancelBtn.style.cssText = `
+                        background: transparent;
+                        color: var(--electric);
+                        border: 1px solid var(--electric);
+                        padding: 4px 12px;
+                        font-family: inherit;
+                        font-weight: bold;
+                        cursor: pointer;
+                        font-size: 0.7rem;
+                    `;
+
+                    // Save Logic
+                    saveBtn.onclick = async (ev) => {
+                        ev.stopPropagation();
+                        saveBtn.innerText = 'SAVING...';
+                        if (typeof saveNotes === 'function') {
+                            await saveNotes(problem.slug, textarea.value);
+                            // Note: popup.js listener will trigger updateDashboard() automatically
+                        } else {
+                            console.error('saveNotes not found');
+                        }
+                    };
+
+                    // Cancel Logic
+                    cancelBtn.onclick = (ev) => {
+                        ev.stopPropagation();
+                        // Restore original view
+                        const formattedNotes = (problem.notes || "").replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                        flashcard.innerHTML = `
+                            <div class="notes-label">USER_NOTES //</div>
+                            <div class="notes-content">${formattedNotes}</div>
+                            <div class="notes-edit-hint" title="Editable notes">
+                                <svg class="notes-edit-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm17.71-10.21a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0L15.12 4.1l3.75 3.75 1.84-1.81z"/>
+                                </svg>
+                                <span>EDIT NOTES</span>
+                            </div>
+                        `;
+                        attachEditListener(); // Re-arm the listener
+                    };
+
+                    // Swap Content
+                    flashcard.innerHTML = '';
+                    flashcard.appendChild(textarea);
+                    btnRow.appendChild(cancelBtn);
+                    btnRow.appendChild(saveBtn);
+                    flashcard.appendChild(btnRow);
+                };
+            };
+            attachEditListener();
+
             // Rating Handlers
             if (isInteractive) {
                 card.querySelectorAll('.rating-btn').forEach(btn => {
@@ -145,59 +256,159 @@
         });
     }
 
-    // Renders the mini projection grid inside a card
+    // Renders the rich timeline (History + Procrastination + Future)
     function renderMiniHeatmap(problem, gridId) {
         const grid = document.getElementById(gridId);
         if (!grid) return;
         grid.innerHTML = '';
 
-        // Expect getCurrentDate and projectSchedule to be global
-        const today = (typeof getCurrentDate === 'function') ? getCurrentDate() : new Date();
-        const projectedDates = (typeof projectSchedule === 'function')
-            ? projectSchedule(problem.interval, problem.repetition, problem.easeFactor, today)
-            : [];
+        // Helper for consistent YYYY-MM-DD formatting
+        const toDateStr = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 
-        const dateSet = new Set(projectedDates);
+        // 1. Prepare History & Replay State
+        const history = (problem.history || []).map(h => ({
+            date: new Date(h.date),
+            dateStr: toDateStr(new Date(h.date)), // YYYY-MM-DD
+            rating: h.rating || 3 // Default 'Good' if legacy
+        })).sort((a, b) => a.date - b.date);
 
-        // Generate ~60 days
-        const start = new Date(today);
+        const today = typeof window.getCurrentDate === 'function' ? window.getCurrentDate() : new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayStr = toDateStr(today);
 
-        // Date formatter for tooltips: "Mon, Jan 15"
+        // Determine Timeline Start: First history date or Today
+        let startDate = history.length > 0 ? new Date(history[0].date) : new Date(today);
+        startDate.setHours(0, 0, 0, 0); // Normalize to midnight
+
+        // Determine Timeline End: max(Today + 30d, NextReview + 7d)
+        let endLimit = new Date(today);
+        endLimit.setDate(today.getDate() + 30);
+
+        let nextReviewDate = new Date(problem.nextReviewDate);
+        if (nextReviewDate > endLimit) {
+            endLimit = new Date(nextReviewDate);
+            endLimit.setDate(endLimit.getDate() + 7);
+        }
+
+        // --- REPLAY & PAST ANALYSIS ---
+        // Simplified for FSRS: We trust the history dates. 
+        // Detecting "missed" days in the past with FSRS is complex without full state reconstruction.
+        // For now, we only check the gap from the *last* known due date (the stored one) to Today.
+
+        // Sets to track status of specific dates
+        const doneDates = new Set(history.map(h => h.dateStr));
+        const missedDates = new Set();
+
+        // (Replay Loop removed for FSRS stability - can be re-added if we implement full history simulation)
+        // history.forEach(...) 
+
+        // --- CHECK CURRENT PROCRASTINATION GAP ---
+        // Reliably calculate gap from the STORED Next Review Date (Next Due) -> Today
+        const nextDueObj = new Date(problem.nextReviewDate);
+        nextDueObj.setHours(0, 0, 0, 0);
+
+        // Ensure we don't count today as "missed" yet (it's just Due)
+        if (nextDueObj < today) {
+            let curr = new Date(nextDueObj);
+            while (curr < today) {
+                const currStr = toDateStr(curr);
+                if (!doneDates.has(currStr)) {
+                    missedDates.add(currStr);
+                }
+                curr.setDate(curr.getDate() + 1);
+            }
+        }
+
+        // --- FUTURE PROJECTION ---
+        const futureProjectedDates = new Set();
+
+        // 1. Always include the stored Next Review Date if it's in the future
+        if (nextDueObj > today) {
+            futureProjectedDates.add(toDateStr(nextDueObj));
+        }
+
+        // 2. Project subsequent reviews STARTING from the Next Review Date (or Today if overdue)
+        const simulationStartDate = (nextDueObj > today) ? nextDueObj : today;
+
+        if (typeof fsrs !== 'undefined' && fsrs.projectScheduleFSRS) {
+            // Use FSRS Projection
+            const card = {
+                stability: problem.fsrs_stability,
+                difficulty: problem.fsrs_difficulty,
+                state: problem.fsrs_state,
+                last_review: problem.fsrs_last_review || problem.lastSolved
+            };
+
+            const projected = fsrs.projectScheduleFSRS(card, simulationStartDate);
+            projected.forEach(d => futureProjectedDates.add(d));
+
+        } else if (typeof projectSchedule === 'function') {
+            // Fallback to SM-2 if FSRS not loaded
+            const projected = projectSchedule(problem.interval, problem.repetition, problem.easeFactor, simulationStartDate);
+            projected.forEach(d => futureProjectedDates.add(d));
+        }
+
+        // --- RENDER ITERATION ---
         const formatter = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
-        for (let i = 0; i < 60; i++) {
-            const d = new Date(start);
-            d.setDate(start.getDate() + i);
-            const dayStr = d.toISOString().split('T')[0];
+        let currentDate = new Date(startDate);
+        const MAX_DAYS = 90; // Safety cap
+        let count = 0;
 
+        while (currentDate <= endLimit && count < MAX_DAYS) {
+            const dayStr = toDateStr(currentDate);
             const cell = document.createElement('div');
             cell.className = 'cell';
 
-            // JS Tooltip Logic
-            const dateText = formatter.format(d);
-            cell.onmouseenter = (e) => {
+            // Tooltip
+            const dateText = formatter.format(currentDate);
+            cell.setAttribute('title', dateText); // Native tooltip fallback
+
+            let statusLabel = "";
+
+            // Colors
+            if (doneDates.has(dayStr)) {
+                cell.style.background = 'var(--status-done)';
+                cell.style.boxShadow = '0 0 6px var(--status-done)';
+                cell.classList.add('status-done');
+                statusLabel = "Completed";
+            }
+            else if (missedDates.has(dayStr)) {
+                cell.style.background = 'var(--status-missed)';
+                cell.classList.add('status-missed');
+                statusLabel = "Missed";
+            }
+            else if (dayStr === todayStr && nextDueObj <= today) {
+                cell.style.background = 'var(--status-due)';
+                cell.style.boxShadow = '0 0 8px var(--status-due)';
+                cell.classList.add('status-due');
+                statusLabel = "Due Today";
+            }
+            else if (futureProjectedDates.has(dayStr) && currentDate > today) {
+                cell.style.background = 'var(--status-projected)';
+                cell.classList.add('status-projected');
+                statusLabel = "Scheduled";
+            }
+
+            // Interaction
+            cell.onmouseenter = () => {
                 const tooltip = document.getElementById('global-tooltip');
-                if (!tooltip) return;
-
-                tooltip.textContent = dateText;
-                tooltip.classList.add('visible');
-
-                // Position calculation
-                const rect = cell.getBoundingClientRect();
-                // Center horizontally, position above
-                tooltip.style.left = `${rect.left + rect.width / 2}px`;
-                tooltip.style.top = `${rect.top}px`;
+                if (tooltip) {
+                    tooltip.textContent = statusLabel ? `${dateText} (${statusLabel})` : dateText;
+                    tooltip.classList.add('visible');
+                    const rect = cell.getBoundingClientRect();
+                    tooltip.style.left = `${rect.left + rect.width / 2}px`;
+                    tooltip.style.top = `${rect.top}px`;
+                }
             };
-
             cell.onmouseleave = () => {
-                const tooltip = document.getElementById('global-tooltip');
-                if (tooltip) tooltip.classList.remove('visible');
+                const t = document.getElementById('global-tooltip');
+                if (t) t.classList.remove('visible');
             };
-
-            if (dateSet.has(dayStr)) cell.classList.add('v-4'); // High intensity for review
-            else if (i === 0) cell.classList.add('v-3'); // Today
 
             grid.appendChild(cell);
+            currentDate.setDate(currentDate.getDate() + 1);
+            count++;
         }
     }
 

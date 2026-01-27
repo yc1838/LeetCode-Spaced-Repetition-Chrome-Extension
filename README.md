@@ -27,7 +27,14 @@ A Chrome Extension that helps you master LeetCode problems using a **Spaced Repe
   - Problem title and difficulty
   - Current interval and repetition count
   - Easy/Medium/Hard rating buttons
+  - Easy/Medium/Hard rating buttons
   - Direct link to the problem
+
+### 📝 Contextual Notes
+- **Floating Notes Button**: Quickly jot down your thoughts, algorithms, or key insights for any problem without leaving the page.
+- **Draggable Interface**: Long-press (0.4s) the "Notes" button to drag and reposition it anywhere on your screen.
+- **Smart Helpers**: Helpful tooltips guide you on valid interactions (like how to drag).
+- **Auto-Sync**: Notes are automatically saved to Chrome Storage and synced with the problem.
 
 ### ⚙️ Advanced Tools
 - **Manual Scan**: Force-scan the current page for accepted submissions
@@ -147,19 +154,65 @@ The extension implements a modified SM-2 spaced repetition algorithm:
 ```mermaid
 graph TD
     User((User))
-    subgraph Browser Context
-        Popup[Popup UI]
-        Content[Content Script]
+    LCPage[LeetCode Problem Page]
+
+    User -- Solve/Submit --> LCPage
+
+    subgraph Extension["Chrome Extension (Manifest V3)"]
+        subgraph Content["Content Scripts (leetcode.com)"]
+            Orchestrator[content.js<br/>orchestrator]
+            DOM[leetcode_dom.js<br/>DOM parsing + difficulty cache]
+            API[leetcode_api.js<br/>GraphQL + submission polling]
+            UI[content_ui.js<br/>toasts / rating / notes / AI modals]
+            LLM[LLM Sidecar<br/>llm_sidecar.js]
+        end
+
+        subgraph Shared["Shared Modules"]
+            StorageMod[storage.js<br/>save submissions + notes]
+            SRS[SRS/FSRS Engine<br/>srs_logic.js + fsrs_logic.js]
+            VDB[VectorDB<br/>vector_db.js]
+        end
+
+        subgraph Popup["Popup UI"]
+            PopupJS[popup.js + popup_ui.js<br/>dashboard / stats / tools]
+        end
     end
-    subgraph Storage Layer
-        CS[(Chrome Storage Local)]
+
+    subgraph Local["Local Persistence"]
+        CS[(chrome.storage.local<br/>problems, notes, settings, activityLog, vectors)]
+        LS[(localStorage<br/>LLM keys + UI state)]
     end
-    
-    User -- Reads/Writes Notes --> Content
-    User -- Views SRS Status --> Popup
-    
-    Content -- Save Submission/Notes --> CS
-    Popup -- Read Due Problems --> CS
+
+    subgraph External["External Services"]
+        LCAPI[LeetCode APIs<br/>GraphQL + submissions]
+        AI[AI Providers<br/>Gemini / OpenAI / Anthropic]
+        Embed[Embedding APIs<br/>Gemini / OpenAI]
+    end
+
+    LCPage --> Orchestrator
+    Orchestrator --> DOM
+    Orchestrator --> API
+    Orchestrator --> UI
+
+    API <--> LCAPI
+    API -- Accepted --> StorageMod
+    API -- Wrong Answer + AI enabled --> LLM
+
+    StorageMod --> SRS
+    StorageMod --> CS
+    UI --> StorageMod
+
+    LLM --> AI
+    LLM --> Embed
+    LLM <--> VDB
+    VDB --> CS
+    LLM --> LS
+
+    User -- Opens Popup --> PopupJS
+    PopupJS --> StorageMod
+    PopupJS --> VDB
+    PopupJS --> SRS
+    PopupJS -- Manual scan / difficulty sync --> Orchestrator
 ```
 
 ### Storage

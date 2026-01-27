@@ -25,8 +25,9 @@
      * @param {string} difficulty   - "Easy", "Medium", "Hard"
      * @param {string} difficultySource - Debug info about where difficulty came from
      * @param {number|null} rating  - User rating (1-4) or null for legacy SM-2
+     * @param {Array<string>} topics - List of topic names (e.g. ["Array", "DP"])
      */
-    async function saveSubmission(problemTitle, problemSlug, difficulty, difficultySource = 'unknown', rating = null) {
+    async function saveSubmission(problemTitle, problemSlug, difficulty, difficultySource = 'unknown', rating = null, topics = []) {
         if (!chrome.runtime?.id) {
             console.warn("[LeetCode EasyRepeat] Extension context invalidated. Please refresh the page.");
             return;
@@ -88,6 +89,7 @@
             interval: 0,
             repetition: 0,
             easeFactor: 2.5,
+            topics: topics || [],
             history: []
         };
 
@@ -153,10 +155,14 @@
             fsrs_difficulty: nextStep.fsrs_difficulty !== undefined ? nextStep.fsrs_difficulty : currentProblem.fsrs_difficulty,
             fsrs_state: nextStep.fsrs_state !== undefined ? nextStep.fsrs_state : currentProblem.fsrs_state,
             fsrs_last_review: nextStep.fsrs_last_review !== undefined ? nextStep.fsrs_last_review : currentProblem.fsrs_last_review,
+            topics: (topics && topics.length > 0) ? topics : (currentProblem.topics || []),
             history: [...currentProblem.history, { date: nowISO, status: 'Accepted', rating: rating }]
         };
 
         await chrome.storage.local.set({ problems });
+        // Log activity for streak (independent of problem existence)
+        await logActivity(nowISO);
+
         console.log(`[LeetCode EasyRepeat] ✅ Saved to Chrome Storage!`);
 
         if (typeof showCompletionToast === 'function') {
@@ -207,9 +213,54 @@
         return (result.problems[slug] && result.problems[slug].notes) || '';
     }
 
+    /**
+     * Log daily activity (independent of specific problem).
+     * Used for streak tracking.
+     * @param {string} dateStr - ISO Date string or YYYY-MM-DD
+     */
+    async function logActivity(dateStr) {
+        if (!chrome.runtime?.id) return;
+
+        const result = await chrome.storage.local.get({ activityLog: [] });
+        let log = Array.isArray(result.activityLog) ? result.activityLog : [];
+
+        // Robust conversion to Local YYYY-MM-DD
+        // 'en-CA' locale outputs YYYY-MM-DD format
+        let dateObj = new Date(dateStr);
+        let yyyyMmDd;
+
+        // Trust explicit YYYY-MM-DD input (from repair tool)
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            yyyyMmDd = dateStr;
+        } else {
+            // It's likely ISO or Date object from saveSubmission
+            // Use local date part
+            yyyyMmDd = dateObj.toLocaleDateString('en-CA');
+        }
+
+        if (!log.includes(yyyyMmDd)) {
+            log.push(yyyyMmDd);
+            // Sort just in case
+            log.sort();
+            await chrome.storage.local.set({ activityLog: log });
+            console.log(`[LeetCode EasyRepeat] Activity logged for: ${yyyyMmDd}`);
+        }
+    }
+
+    /**
+     * Get the full activity log.
+     * @returns {Promise<Array<string>>}
+     */
+    async function getActivityLog() {
+        const result = await chrome.storage.local.get({ activityLog: [] });
+        return result.activityLog;
+    }
+
     return {
         saveSubmission,
         saveNotes,
-        getNotes
+        getNotes,
+        logActivity,
+        getActivityLog
     };
 }));

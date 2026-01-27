@@ -92,7 +92,7 @@ describe('API Submission Check Logic', () => {
         global.getCurrentProblemSlug = getCurrentProblemSlug;
 
         // Make saveSubmission global for leetcode_api.js
-        global.saveSubmission = saveSubmission;
+        global.saveSubmission = jest.fn().mockResolvedValue({ success: true });
 
         // Reset document body
         jest.useFakeTimers();
@@ -142,8 +142,22 @@ describe('API Submission Check Logic', () => {
 });
 
 describe('Manual API Scan Logic (checkLatestSubmissionViaApi)', () => {
+    let mockSaveSubmission;
+
     beforeEach(() => {
         fetch.mockReset();
+        mockSaveSubmission = jest.fn().mockResolvedValue({ success: true });
+        global.saveSubmission = mockSaveSubmission;
+
+        // Ensure legacy deps are there if needed
+        global.showRatingModal = jest.fn().mockResolvedValue(null);
+        global.extractProblemDetails = jest.fn().mockReturnValue({ title: "Two Sum", slug: "two-sum", difficulty: "Medium" });
+
+        // Fix for fetchQuestionDetails
+        Object.defineProperty(document, 'cookie', {
+            writable: true,
+            value: 'csrftoken=test-token',
+        });
     });
 
     test('returns success if latest submission is Accepted', async () => {
@@ -158,6 +172,44 @@ describe('Manual API Scan Logic (checkLatestSubmissionViaApi)', () => {
 
         const result = await checkLatestSubmissionViaApi("two-sum");
         expect(result).toEqual({ success: true });
+    });
+
+    test('should pass topics to saveSubmission', async () => {
+        // Mock finding the submission
+        fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                submission_list: [
+                    { id: "999", status_display: "Accepted", timestamp: 1234567890 }
+                ]
+            })
+        });
+
+        // Mock GraphQL details fetch
+        fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                data: {
+                    question: {
+                        difficulty: "Hard",
+                        title: "Two Sum",
+                        questionFrontendId: "1",
+                        topicTags: [{ name: "Array", slug: "array" }, { name: "Hash Table", slug: "hash-table" }]
+                    }
+                }
+            })
+        });
+
+        await checkLatestSubmissionViaApi("two-sum");
+
+        expect(mockSaveSubmission).toHaveBeenCalledWith(
+            "1. Two Sum",
+            "two-sum",
+            "Hard",
+            "manual_api_scan",
+            null, // rating (mocked to null)
+            ["Array", "Hash Table"] // topics
+        );
     });
 
     test('returns success if latest submission is Accepted (Legacy Format)', async () => {
@@ -200,5 +252,76 @@ describe('Manual API Scan Logic (checkLatestSubmissionViaApi)', () => {
         const result = await checkLatestSubmissionViaApi("two-sum");
         expect(result.success).toBe(false);
         expect(result.error).toContain("No submissions");
+    });
+});
+
+describe('AI Analysis Hook (Wrong Answer path)', () => {
+    beforeEach(() => {
+        fetch.mockReset();
+        jest.clearAllMocks();
+
+        global.window.LLMSidecar = {
+            analyzeMistake: jest.fn().mockResolvedValue('AI analysis')
+        };
+
+        global.showAnalysisModal = jest.fn().mockResolvedValue(true);
+        global.saveNotes = jest.fn().mockResolvedValue({ success: true });
+        global.getNotes = jest.fn().mockResolvedValue('Existing Notes');
+
+        global.chrome.storage.local.get = jest.fn().mockImplementation((keys) => {
+            if (Array.isArray(keys) && keys.includes('alwaysAnalyze')) {
+                return Promise.resolve({ alwaysAnalyze: false });
+            }
+            if (typeof keys === 'object' && keys.aiAnalysisEnabled !== undefined) {
+                return Promise.resolve({ aiAnalysisEnabled: true });
+            }
+            return Promise.resolve({});
+        });
+    });
+
+    test('does not run analysis when AI mode is disabled', async () => {
+        global.chrome.storage.local.get.mockImplementation((keys) => {
+            if (Array.isArray(keys) && keys.includes('alwaysAnalyze')) {
+                return Promise.resolve({ alwaysAnalyze: false });
+            }
+            if (typeof keys === 'object' && keys.aiAnalysisEnabled !== undefined) {
+                return Promise.resolve({ aiAnalysisEnabled: false });
+            }
+            return Promise.resolve({});
+        });
+
+        fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                state: 'SUCCESS',
+                status_msg: 'Wrong Answer'
+            })
+        });
+
+        await checkSubmissionStatus('123', 'Two Sum', 'two-sum', 'Medium');
+        await new Promise((r) => setImmediate(r));
+
+        expect(global.window.LLMSidecar.analyzeMistake).not.toHaveBeenCalled();
+        expect(global.saveNotes).not.toHaveBeenCalled();
+    });
+
+    test('runs analysis and saves notes when AI mode is enabled', async () => {
+        fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                state: 'SUCCESS',
+                status_msg: 'Wrong Answer'
+            })
+        });
+
+        await checkSubmissionStatus('123', 'Two Sum', 'two-sum', 'Medium');
+        await new Promise((r) => setImmediate(r));
+
+        expect(global.window.LLMSidecar.analyzeMistake).toHaveBeenCalledTimes(1);
+        expect(global.saveNotes).toHaveBeenCalledTimes(1);
+
+        const args = global.saveNotes.mock.calls[0];
+        expect(args[0]).toBe('two-sum');
+        expect(args[1]).toContain('AI Analysis');
     });
 });

@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;600&family=JetBrains+Mono:wght@100;400;700&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;600&family=JetBrains+Mono:wght@100;400;700&family=Courier+Prime:wght@400;700&family=Inter:wght@400;600;800&family=Space+Mono:wght@400;700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="popup.css">
 </head>
@@ -19,7 +19,10 @@
         <!-- STATUS BAR -->
         <header class="status-bar">
             <div>LeetCode EasyRepeat OS</div>
-            <div class="status-ready">[SYS_READY] <span id="clock">00:00:00</span></div>
+            <div class="status-controls">
+                <button id="ai-mode-toggle" class="ai-toggle" title="Toggle AI analysis">AI_MODE: OFF</button>
+                <div class="status-ready">[SYS_READY] <span id="clock">00:00:00</span></div>
+            </div>
         </header>
 
         <!-- SIDEBAR -->
@@ -37,6 +40,12 @@
                     <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                 </svg>
             </div>
+            <div class="nav-icon" id="tab-stats" title="Weakness Stats">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" />
+                    <path d="M12 6v6l4 2" />
+                </svg>
+            </div>
             <!-- Manual Scan / Sync -->
             <div class="nav-icon" id="btn-sync" title="Initiate Scan">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
@@ -48,10 +57,13 @@
                     <line x1="4" y1="12" x2="20" y2="12" opacity="0.5" stroke-dasharray="2 2" />
                 </svg>
             </div>
-            <!-- Settings / Purge -->
-            <div class="nav-icon" id="btn-purge" title="Purge Memory">
-                <svg viewBox="0 0 24 24">
-                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+            <!-- Streak Repair -->
+            <div class="nav-icon" id="btn-repair" title="Repair Streak">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path
+                        d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z">
+                    </path>
                 </svg>
             </div>
             <!-- Theme Toggle -->
@@ -104,12 +116,22 @@
             </section>
 
 
+            <!-- STATS VIEW (Hidden by default) -->
+            <section id="stats-container" style="display:none; padding:15px;">
+                <div class="heatmap-header">WEAKNESS_RADAR</div>
+                <div id="stats-content" style="margin-top:20px; color: var(--electric);">
+                    <div class="stat-loading">Connecting to LeetCode Neural Link...</div>
+                </div>
+            </section>
+
         </main>
     </div>
 
     <div id="global-tooltip" class="srs-tooltip"></div>
     <script src="../shared/config.js"></script>
-    <script src="../algorithms/srs_logic.js"></script>
+    <script src="../algorithms/fsrs_logic.js"></script>
+    <script src="../shared/storage.js"></script>
+    <script src="../algorithms/vector_db.js"></script>
     <script src="popup_ui.js"></script>
     <script src="popup.js"></script>
 </body>

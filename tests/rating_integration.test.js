@@ -149,6 +149,20 @@ describe('Rating Integration Flow', () => {
             ok: true,
             json: async () => ({ state: "SUCCESS", status_msg: "Accepted", status_code: 10 })
         });
+        // Mock GraphQL question details
+        fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                data: {
+                    question: {
+                        difficulty: "Medium",
+                        title: "Two Sum",
+                        questionFrontendId: "1",
+                        topicTags: []
+                    }
+                }
+            })
+        });
 
         // Since checkSubmissionStatus awaits the user input, we run it without await first
         // Since checkSubmissionStatus awaits the user input, we run it without await first
@@ -161,7 +175,7 @@ describe('Rating Integration Flow', () => {
         // We look for a div that was appended to body
         const appended = document.body.appendChild.mock.calls;
         // The function appends user backdrop to body
-        const backdrop = appended.find(call => call[0].className.includes('lc-srs-rating-backdrop'));
+        const backdrop = appended.find(call => call[0].className.includes('lc-rating-backdrop'));
 
         expect(backdrop).toBeDefined();
 
@@ -173,6 +187,20 @@ describe('Rating Integration Flow', () => {
         fetch.mockResolvedValueOnce({
             ok: true,
             json: async () => ({ state: "SUCCESS", status_msg: "Accepted", status_code: 10 })
+        });
+        // Mock GraphQL question details
+        fetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                data: {
+                    question: {
+                        difficulty: "Medium",
+                        title: "Two Sum",
+                        questionFrontendId: "1",
+                        topicTags: []
+                    }
+                }
+            })
         });
 
         // Setup: Spy on saveSubmission (it's internal to contentScript, but we can spy on storage.local.set)

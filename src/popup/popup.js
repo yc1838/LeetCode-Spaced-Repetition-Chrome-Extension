@@ -32,6 +32,7 @@
 // MODULE-LEVEL STATE:
 // Variables at the top level of a script persist for the popup's lifetime
 let currentTheme = 'sakura';  // Default theme
+let storageListenersReady = false;
 
 /**
  * DOMContentLoaded EVENT:
@@ -56,8 +57,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 0. Load and apply theme from storage
     await setupTheme();
 
+    // 0.5 Load and apply AI analysis toggle from storage
+    await setupAiModeToggle();
+
     // 1. Fetch data from storage and show the list of problems due for review
     await updateDashboard();
+
+    // 1.5 Live refresh when notes update in storage
+    setupStorageListeners();
 
     // 2. Enable Test Mode logic (simulation date picker)
     await setupTestMode();
@@ -65,6 +72,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 3. Enable sidebar tools (Purge, Sync buttons)
     setupManualTools();
 });
+
+/**
+ * Listen to storage changes and refresh the dashboard when problems update.
+ */
+function setupStorageListeners() {
+    if (storageListenersReady) return;
+    if (!chrome?.storage?.onChanged) return;
+    storageListenersReady = true;
+
+    chrome.storage.onChanged.addListener((changes, namespace) => {
+        if (namespace !== 'local') return;
+        if (changes.problems) {
+            void updateDashboard();
+        }
+    });
+}
 
 /**
  * ============================================================================
@@ -82,7 +105,7 @@ async function setupTheme() {
      * This is cleaner than checking: if (storage.theme === undefined) {...}
      */
     const storage = await chrome.storage.local.get({ theme: 'sakura' });
-    currentTheme = storage.theme;
+    currentTheme = storage.theme === 'neural' ? 'typography' : storage.theme; // Migration
     applyTheme(currentTheme);
 
     /**
@@ -92,10 +115,37 @@ async function setupTheme() {
      * addEventListener allows multiple handlers for the same event.
      */
     document.getElementById('btn-theme').onclick = async () => {
-        // TERNARY for toggle: if sakura -> matrix, else -> sakura
-        currentTheme = currentTheme === 'sakura' ? 'matrix' : 'sakura';
+        const themes = Object.keys(THEMES);
+        const currentIndex = themes.indexOf(currentTheme);
+        const nextIndex = (currentIndex + 1) % themes.length;
+        currentTheme = themes[nextIndex];
+
         applyTheme(currentTheme);
         await chrome.storage.local.set({ theme: currentTheme });
+    };
+}
+
+/**
+ * Load AI analysis toggle state from storage and wire the button.
+ */
+async function setupAiModeToggle() {
+    const btn = document.getElementById('ai-mode-toggle');
+    if (!btn) return;
+
+    const storage = await chrome.storage.local.get({ aiAnalysisEnabled: false });
+    let enabled = !!storage.aiAnalysisEnabled;
+
+    const render = () => {
+        btn.textContent = enabled ? 'AI_MODE: ON' : 'AI_MODE: OFF';
+        btn.classList.toggle('on', enabled);
+    };
+
+    render();
+
+    btn.onclick = async () => {
+        enabled = !enabled;
+        render();
+        await chrome.storage.local.set({ aiAnalysisEnabled: enabled });
     };
 }
 
@@ -140,9 +190,21 @@ function applyTheme(themeName) {
     root.style.setProperty('--cell-3', theme.cellColors[2]);
     root.style.setProperty('--cell-4', theme.cellColors[3]);
 
+    // Apply structural properties (Modern vs Retro)
+    root.style.setProperty('--font-main', theme.fontMain);
+    root.style.setProperty('--font-data', theme.fontData);
+    root.style.setProperty('--radius', theme.borderRadius);
+    root.style.setProperty('--scanline-opacity', theme.scanlineOpacity);
+    root.style.setProperty('--glass-opacity', theme.glassOpacity);
+    root.style.setProperty('--backdrop-filter', theme.backdropFilter);
+    root.style.setProperty('--bg-main', theme.bgMain);
+
     // Some elements need direct style updates (can't use CSS variables everywhere)
     root.style.setProperty('--hover-bg', theme.hoverBg);
     root.style.setProperty('--glass', theme.glass || 'rgba(20, 10, 15, 0.85)'); // Fallback
+
+    // Apply Body Class for Theme-Specific Overrides (e.g. .theme-typography)
+    document.body.className = `theme-${themeName}`;
 
     const statusBar = document.querySelector('.status-bar');
     if (statusBar) statusBar.style.background = theme.statusBg;
@@ -152,6 +214,12 @@ function applyTheme(themeName) {
 
     // Re-render heatmap with new colors (cells already use CSS variables)
     renderGlobalHeatmap();
+
+    // Update Title for BRND.OS
+    const brandTitle = document.querySelector('.status-bar div:first-child');
+    if (brandTitle) {
+        brandTitle.innerText = themeName === 'brnd' ? 'BRND.OS' : 'LeetCode EasyRepeat OS';
+    }
 }
 
 /**
@@ -218,7 +286,10 @@ async function updateDashboard() {
 
     // Update stats
     const streakEl = document.getElementById('streak-display');
-    if (streakEl) streakEl.innerText = `STREAK: ${calculateStreak(problems)}`;
+    if (streakEl) {
+        const count = await calculateStreakFn();
+        streakEl.innerText = `STREAK: ${count}`;
+    }
 
     // Initial Render
     // 'dashboard' view = Due Problems
@@ -242,7 +313,7 @@ async function updateDashboard() {
 async function syncCurrentProblemDifficulty() {
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab || !tab.url.includes('leetcode.com/problems/')) return;
+        if (!tab || !tab.url || !tab.url.includes('leetcode.com/problems/')) return;
 
         // Extract slug from URL
         const match = tab.url.match(/\/problems\/([^\/]+)/);
@@ -292,18 +363,171 @@ function setupSidebar(dueProblems, allProblems) {
     tabDash.classList.add('active'); // Default
 
     tabDash.onclick = () => {
-        tabDash.classList.add('active');
-        tabAll.classList.remove('active');
+        updateTabUI(tabDash, [tabAll, tabStats]);
         title.innerText = "ACTIVE_PROBLEM_VECTORS";
+        toggleViews('dashboard');
         renderVectors(dueProblems, 'vector-list', true);
     };
 
+    const tabStats = document.getElementById('tab-stats');
+    if (tabStats) {
+        tabStats.onclick = () => {
+            updateTabUI(tabStats, [tabDash, tabAll]);
+            title.innerText = "NEURAL_WEAKNESS_ANALYSIS";
+            toggleViews('stats');
+            loadStats();
+        };
+    }
+
     tabAll.onclick = () => {
-        tabAll.classList.add('active');
-        tabDash.classList.remove('active');
+        updateTabUI(tabAll, [tabDash, tabStats]);
         title.innerText = "ALL_ARCHIVED_VECTORS";
+        toggleViews('dashboard');
         renderVectors(allProblems, 'vector-list', false);
     };
+}
+
+function updateTabUI(active, others) {
+    active.classList.add('active');
+    others.forEach(t => t?.classList.remove('active'));
+}
+
+function toggleViews(view) {
+    const dash = document.querySelector('.heatmap-container'); // Global heatmap
+    const list = document.querySelector('#vector-list').parentElement; // List section
+    const stats = document.getElementById('stats-container');
+
+    if (view === 'stats') {
+        if (dash) dash.style.display = 'none';
+        if (list) list.style.display = 'none';
+        if (stats) stats.style.display = 'block';
+    } else {
+        if (dash) dash.style.display = 'block';
+        if (list) list.style.display = 'block';
+        if (stats) stats.style.display = 'none';
+    }
+}
+
+async function loadStats() {
+    const container = document.getElementById('stats-content');
+    container.innerHTML = '<div class="stat-loading">Accessing Neural Database...</div>';
+
+    // Direct Local DB Access (No Content Script needed)
+    if (!window.VectorDB) {
+        container.innerHTML = `<div style="color:var(--accent)">Error: Database module not loaded.</div>`;
+        return;
+    }
+
+    try {
+        const stats = await window.VectorDB.getStats();
+        // If DB is empty or just initialized
+        if (!stats) {
+            container.innerHTML = `<div style="opacity:0.7; padding:20px; text-align:center;">No Data Found</div>`;
+            return;
+        }
+        renderStatsChart(container, stats);
+    } catch (e) {
+        console.error(e);
+        container.innerHTML = `<div style="color:var(--accent)">DB Error: ${e.message}</div>`;
+    }
+}
+
+function renderStatsChart(container, stats) {
+    if (!stats || !stats.byFamily || Object.keys(stats.byFamily).length === 0) {
+        container.innerHTML = '<div style="opacity:0.5; padding:20px;">No anomalies detected yet. Keep coding.</div>';
+        return;
+    }
+
+    // 1. Group Tags by Family
+    let html = '<div style="display:flex; flex-direction:column; gap:15px;">';
+
+    // Add Fix Button if legacy data detected (determined by 'UNSPECIFIED' presence usually, but let's just add it at bottom or top)
+    html += `<div style="display:flex; justify-content:flex-end;">
+       <button id="btn-fix-stats" style="background:none; border:1px solid rgba(255,255,255,0.2); color:rgba(255,255,255,0.6); font-size:0.6em; padding:2px 5px; cursor:pointer;">⚡ REPAIR DATA</button>
+    </div>`;
+
+    html += '<div style="font-size:0.7em; opacity:0.7; letter-spacing:1px; margin-bottom:5px;">WEAKNESS_TOPOLOGY // HIERARCHY</div>';
+    // We already have stats.byFamily (counts) and stats.byTag (counts). 
+    // But we need to know WHICH tag belongs to WHICH family. 
+    // Since we don't store that mapping explicitly in the 'stats' object returned by getStats(),
+    // we need to slightly update getStats() OR (easier) simply iterate the raw records if possible.
+    // However, getStats() aggregates them. 
+
+    // WAIT: VectorDB.getStats() in vector_db.js returns aggregated counts but loses the link between specific tag & family.
+    // We should probably update vector_db.js first to return a tree structure, OR
+    // we can just iterate the records in `getStats` more smartly.
+
+    // For now, let's assume we update vector_db.js to return `stats.tree = { "LOGIC": { "OFF_BY_ONE": 1 } }`
+    // If we only have flat maps, we can't perfectly reconstruct the tree without knowing the mapping.
+    // Let's UPDATE vector_db.js FIRST.
+
+    // Fallback if tree is missing (to avoid breaking while we update vector_db.js):
+    const families = Object.entries(stats.byFamily).sort((a, b) => b[1] - a[1]);
+
+    // If we have the tree structure (which we will add next)
+    if (stats.tree) {
+        const sortedFamilies = Object.entries(stats.tree).sort((a, b) => {
+            // Sort by total count in that family
+            const countA = Object.values(a[1]).reduce((sum, v) => sum + v, 0);
+            const countB = Object.values(b[1]).reduce((sum, v) => sum + v, 0);
+            return countB - countA;
+        });
+
+        sortedFamilies.forEach(([family, tags]) => {
+            const familyTotal = Object.values(tags).reduce((sum, v) => sum + v, 0);
+
+            // Family Header
+            html += `
+            <div style="margin-top:5px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.05); padding:6px 10px; border-radius:4px;">
+                    <span style="font-family:var(--font-mono); font-size:0.8em; color:var(--electric);">${family}</span>
+                    <span style="font-size:0.8em; font-weight:bold;">${familyTotal}</span>
+                </div>
+                </div>`;
+
+            // Check if we only have 'GENERAL' tag
+            const tagKeys = Object.keys(tags);
+            const onlyGeneral = (tagKeys.length === 1 && tagKeys[0] === 'GENERAL');
+
+            if (onlyGeneral) {
+                // Just close the header div and continue (no sub-list)
+                html += `</div>`;
+                return;
+            }
+
+            // If we have specific tags, render the container
+            html += `<div style="padding-left:10px; margin-top:5px; border-left:2px solid rgba(255,255,255,0.05);">`;
+
+            // Tags
+            const sortedTags = Object.entries(tags).sort((a, b) => b[1] - a[1]);
+            sortedTags.forEach(([tag, count]) => {
+                // Determine display name for fallback
+                const displayTag = (tag === 'GENERAL') ? 'UNSPECIFIED' : tag;
+                const isGeneral = (tag === 'GENERAL');
+
+                html += `
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75em; padding:3px 10px; color:${isGeneral ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.8)'};">
+                    <span>${displayTag}</span>
+                    <span style="opacity:0.6;">x${count}</span>
+                </div>`;
+            });
+
+            html += `</div></div>`;
+        });
+    } else {
+        // Legacy View (if tree not ready)
+        html += '<div style="color:yellow; font-size:0.7em;">Restart Extension to enable Tree View</div>';
+    }
+
+    html += '</div>';
+
+    container.innerHTML = html;
+
+    // Bind Repair Button
+    const repairBtn = document.getElementById('btn-fix-stats');
+    if (repairBtn) {
+        repairBtn.onclick = () => runMigrationInPopup(repairBtn);
+    }
 }
 
 // renderVectors moved to popup_ui.js
@@ -315,18 +539,98 @@ function setupSidebar(dueProblems, allProblems) {
 
 
 // --- Manual Tools Logic ---
-function setupManualTools() {
-    // "Purge Memory" button
-    document.getElementById('btn-purge').onclick = async () => {
-        if (confirm("This will erase all your SRS progress. Are you sure?")) {
-            // Preserve theme preference before clearing
-            const savedTheme = currentTheme;
-            await chrome.storage.local.clear();
-            // Restore theme preference
-            await chrome.storage.local.set({ theme: savedTheme });
-            location.reload();
+/**
+ * Calculate Streak using Activity Log (Decoupled from Problems)
+ * 
+ * Logic:
+ * 1. Load `activityLog` (Array of YYYY-MM-DD).
+ * 2. If missing, auto-migrate from `problems` history.
+ * 3. Calculate streak of consecutive days ending Today or Yesterday.
+ */
+async function calculateStreakFn() {
+    const res = await chrome.storage.local.get({ problems: {}, activityLog: null });
+    let log = res.activityLog;
+    const problems = res.problems;
+
+    // --- MIGRATION: Populate Activity Log from History if missing ---
+    if (!log) {
+        log = [];
+        Object.values(problems).forEach(p => {
+            if (p.history) {
+                p.history.forEach(h => {
+                    const dateObj = new Date(h.date);
+                    const dateStr = dateObj.getFullYear() + '-' +
+                        (dateObj.getMonth() + 1).toString().padStart(2, '0') + '-' +
+                        dateObj.getDate().toString().padStart(2, '0');
+                    if (!log.includes(dateStr)) log.push(dateStr);
+                });
+            }
+        });
+        log.sort();
+        console.log("[Streak] Migrated history to Activity Log:", log);
+        await chrome.storage.local.set({ activityLog: log });
+    }
+
+    console.log("[LeetCode EasyRepeat] DEBUG - Full Activity Log:", log);
+
+    // --- CALCULATION ---
+    let streak = 0;
+    let checkDate = getCurrentDate(); // Handles Test Mode logic
+
+    // Check backwards
+    for (let i = 0; i < 3650; i++) {
+        const checkStr = checkDate.getFullYear() + '-' +
+            (checkDate.getMonth() + 1).toString().padStart(2, '0') + '-' +
+            checkDate.getDate().toString().padStart(2, '0');
+
+        if (log.includes(checkStr)) {
+            streak++;
+            // Move back 1 day
+            checkDate.setDate(checkDate.getDate() - 1);
+        } else {
+            // Grace Period: If "Today" is missing, check Yesterday
+            if (i === 0) {
+                checkDate.setDate(checkDate.getDate() - 1);
+                continue;
+            } else {
+                break; // Streak broken
+            }
         }
-    };
+    }
+    return streak;
+}
+
+// ... existing deleteProblem ...
+
+// --- Manual Tools Logic ---
+function setupManualTools() {
+    // "Repair Streak" button
+    const btnRepair = document.getElementById('btn-repair');
+    if (btnRepair) {
+        btnRepair.onclick = async () => {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const defaultDate = yesterday.toISOString().split('T')[0];
+
+            const input = prompt("Streak broken? Enter a date (YYYY-MM-DD) to mark as 'Active':", defaultDate);
+            if (input) {
+                // Basic Validation
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+                    showNotification('error', 'INVALID_DATE', 'Format must be YYYY-MM-DD');
+                    return;
+                }
+
+                // Call storage.js function
+                if (typeof logActivity === 'function') {
+                    await logActivity(input);
+                    showNotification('success', 'STREAK_REPAIRED', `Activity logged for ${input}.`);
+                    await updateDashboard(); // Refund UI
+                } else {
+                    showNotification('error', 'ERROR', 'Storage module not loaded.');
+                }
+            }
+        };
+    }
 
     // "Sync" button (Manual Scan)
     document.getElementById('btn-sync').onclick = async () => {
@@ -341,19 +645,17 @@ function setupManualTools() {
 
         chrome.tabs.sendMessage(tab.id, { action: "scanPage" }, (response) => {
             if (chrome.runtime.lastError) {
-                // If we get here, the URL was correct but the content script isn't responding.
-                // likely the user just navigated or the extension was reloaded.
                 const err = chrome.runtime.lastError.message || "Unknown runtime error";
                 console.error("[Popup] Connection failed:", err);
-                showNotification('error', 'CONNECTION_LOST', `Extension context lost (${err}). Please refresh the LeetCode page.`);
+                showNotification('error', 'CONNECTION_LOST', `Extension context lost(${err}).Please refresh the LeetCode page.`);
             } else if (response && response.success) {
-                window.close(); // Close popup, user will see toast on page
+                window.close(); // Close popup
             } else if (response && response.duplicate) {
-                showNotification('warning', 'DUPLICATE_DETECTED', `"${response.problemTitle}" was already logged today. Wait for its next review date.`);
+                showNotification('warning', 'DUPLICATE_DETECTED', `"${response.problemTitle}" was already logged today.`);
             } else if (response && response.error) {
-                showNotification('error', 'SCAN_ERROR', `Scan failed: ${response.error}`);
+                showNotification('error', 'SCAN_ERROR', `Scan failed: ${response.error} `);
             } else {
-                showNotification('error', 'SCAN_FAILED', 'No "Accepted" submission found on this page. Make sure you have solved the problem.');
+                showNotification('error', 'SCAN_FAILED', 'No "Accepted" submission found on this page.');
             }
         });
     };
@@ -376,36 +678,40 @@ async function setupTestMode() {
     testDate = storage.testDate;
 
     // Set initial UI state
-    toggle.checked = isTestMode;
-    dateInput.value = testDate || new Date().toISOString().split('T')[0];
+    if (toggle) toggle.checked = isTestMode;
+    if (dateInput) dateInput.value = testDate || new Date().toISOString().split('T')[0];
 
     // Show/Hide controls based on mode
-    controls.style.display = isTestMode ? 'block' : 'none';
+    if (controls) controls.style.display = isTestMode ? 'block' : 'none';
 
     // Toggle Change Listener
-    toggle.onchange = async () => {
-        isTestMode = toggle.checked;
-        controls.style.display = isTestMode ? 'block' : 'none'; // UI Update
+    if (toggle) {
+        toggle.onchange = async () => {
+            isTestMode = toggle.checked;
+            if (controls) controls.style.display = isTestMode ? 'block' : 'none'; // UI Update
 
-        // If enabling and no date set, default to today
-        if (isTestMode && !dateInput.value) {
-            dateInput.value = new Date().toISOString().split('T')[0];
-            testDate = dateInput.value;
-        }
+            // If enabling and no date set, default to today
+            if (isTestMode && dateInput && !dateInput.value) {
+                dateInput.value = new Date().toISOString().split('T')[0];
+                testDate = dateInput.value;
+            }
 
-        await chrome.storage.local.set({ testMode: isTestMode, testDate: dateInput.value });
-        await updateDashboard();
-    };
+            await chrome.storage.local.set({ testMode: isTestMode, testDate: dateInput ? dateInput.value : null });
+            await updateDashboard();
+        };
+    }
 
     // Date Change Listener
-    dateInput.onchange = async () => {
-        testDate = dateInput.value;
-        await chrome.storage.local.set({ testDate: testDate });
-        // Only refresh if test mode is actually on
-        if (isTestMode) {
-            await updateDashboard();
-        }
-    };
+    if (dateInput) {
+        dateInput.onchange = async () => {
+            testDate = dateInput.value;
+            await chrome.storage.local.set({ testDate: testDate });
+            // Only refresh if test mode is actually on
+            if (isTestMode) {
+                await updateDashboard();
+            }
+        };
+    }
 }
 
 function getCurrentDate() {
@@ -431,9 +737,56 @@ async function updateProblemSRS(slug, ease) {
 
     if (!p) return;
 
-    // Calculate next review based on the button clicked (ease)
-    // Pass getCurrentDate() to handle Test Mode
-    const nextStep = calculateNextReview(p.interval, p.repetition, ease, getCurrentDate());
+    let nextStep;
+    const now = getCurrentDate(); // Handles Test Mode
+    const nowISO = now.toISOString();
+
+    // Determine FSRS Rating from legacy "ease" param
+    // UI sends: Again (1.0), Hard (~1.3), Med (~2.5), Easy (~3.5)
+    let rating = 3; // Default Good
+    if (ease <= 1.1) rating = 1; // Again
+    else if (ease < 2.0) rating = 2; // Hard
+    else if (ease > 3.0) rating = 4; // Easy
+
+    // Check if FSRS is available
+    if (typeof fsrs !== 'undefined' && fsrs.calculateFSRS) {
+        // Calculate elapsed days
+        const lastReview = p.fsrs_last_review ? new Date(p.fsrs_last_review) : (p.lastSolved ? new Date(p.lastSolved) : new Date());
+        let elapsed = Math.max(0, (now - lastReview) / (1000 * 60 * 60 * 24)); // Fractional days allowed in FSRS logic? Standard is integers usually, but float is fine for math.
+
+        // FSRS Input Card
+        const card = {
+            state: p.fsrs_state || (p.repetition > 0 ? 'Review' : 'New'),
+            stability: p.fsrs_stability || 0,
+            difficulty: p.fsrs_difficulty || 0,
+            last_review: lastReview
+        };
+
+        const res = fsrs.calculateFSRS(card, rating, elapsed);
+
+        nextStep = {
+            nextInterval: res.nextInterval,
+            nextRepetition: p.repetition + 1,
+            nextEaseFactor: p.easeFactor, // Legacy field upkeep
+            nextReviewDate: (() => {
+                const d = new Date(now);
+                d.setDate(d.getDate() + res.nextInterval);
+                return d.toISOString();
+            })(),
+            fsrs_stability: res.newStability,
+            fsrs_difficulty: res.newDifficulty,
+            fsrs_state: res.nextState,
+            fsrs_last_review: nowISO
+        };
+
+    } else {
+        // Fallback to SM-2
+        if (typeof calculateNextReview !== 'function') {
+            console.error("SRS Logic not loaded");
+            return;
+        }
+        nextStep = calculateNextReview(p.interval, p.repetition, ease, now);
+    }
 
     // Save update
     problems[slug] = {
@@ -442,8 +795,12 @@ async function updateProblemSRS(slug, ease) {
         repetition: nextStep.nextRepetition,
         easeFactor: nextStep.nextEaseFactor,
         nextReviewDate: nextStep.nextReviewDate,
-        // Log this review in history, using the (potentially mocked) current date
-        history: [...p.history, { date: getCurrentDate().toISOString(), status: 'Reviewed' }]
+        fsrs_stability: nextStep.fsrs_stability,
+        fsrs_difficulty: nextStep.fsrs_difficulty,
+        fsrs_state: nextStep.fsrs_state,
+        fsrs_last_review: nextStep.fsrs_last_review,
+        // Log this review in history
+        history: [...p.history, { date: nowISO, status: 'Reviewed', rating: rating }]
     };
 
     await chrome.storage.local.set({ problems });
@@ -452,65 +809,11 @@ async function updateProblemSRS(slug, ease) {
 }
 
 /**
- * Calculate Streak
- * 
- * Logic:
- * - Collect all unique dates from history (converted to Local YYYY-MM-DD)
- * - Start from "Today" (getCurrentDate())
- * - If Today is present, add to streak, move to Yesterday
- * - If Today is MISSING, don't break yet (grace period), just move to Yesterday
- * - Continue backwards until a date is missing
- */
-function calculateStreak(problems) {
-    const activeDates = new Set();
-
-    problems.forEach(p => {
-        if (!p.history) return;
-        p.history.forEach(h => {
-            // Convert stored ISO string back to Local Date for consistency
-            const dateObj = new Date(h.date);
-            const dateStr = dateObj.getFullYear() + '-' +
-                (dateObj.getMonth() + 1).toString().padStart(2, '0') + '-' +
-                dateObj.getDate().toString().padStart(2, '0');
-            activeDates.add(dateStr);
-        });
-    });
-
-    let streak = 0;
-    let checkDate = getCurrentDate();
-
-    // Check backwards for up to 10 years (safety limit)
-    for (let i = 0; i < 3650; i++) {
-        const checkStr = checkDate.getFullYear() + '-' +
-            (checkDate.getMonth() + 1).toString().padStart(2, '0') + '-' +
-            checkDate.getDate().toString().padStart(2, '0');
-
-        if (activeDates.has(checkStr)) {
-            streak++;
-            // Move back 1 day
-            checkDate.setDate(checkDate.getDate() - 1);
-        } else {
-            // Grace Period: If we are checking "Today" (i===0) and it's missing, 
-            // we assume the user just hasn't started YET. This doesn't break the streak.
-            // We just check yesterday.
-            if (i === 0) {
-                checkDate.setDate(checkDate.getDate() - 1);
-                continue;
-            } else {
-                break; // Streak broken
-            }
-        }
-    }
-
-    return streak;
-}
-
-/**
  * Delete a problem from storage.
  * @param {string} slug - The problem unique identifier
  */
 async function deleteProblem(slug) {
-    if (!confirm(`Are you sure you want to delete "${slug}" from your SRS history? This cannot be undone.`)) {
+    if (!confirm(`Are you sure you want to delete "${slug}" from your SRS history ? This cannot be undone.`)) {
         return;
     }
 
@@ -529,6 +832,7 @@ if (typeof window !== 'undefined') {
     window.deleteProblem = deleteProblem;
     // Also attach updateProblemSRS if not already
     window.updateProblemSRS = updateProblemSRS;
+    window.getCurrentDate = getCurrentDate;
 }
 
 // Export for testing
@@ -536,7 +840,8 @@ if (typeof window !== 'undefined') {
 if (typeof module !== 'undefined') {
     module.exports = {
         updateDashboard,
-        calculateStreak,
-        setupSidebar
+        calculateStreak: calculateStreakFn,
+        setupSidebar,
+        setupAiModeToggle
     };
 }

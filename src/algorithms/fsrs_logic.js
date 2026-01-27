@@ -51,28 +51,16 @@
      */
     function nextDifficulty(d, rating) {
         // D_new = D - w6 * (rating - 3)
+        // Note: w[5] corresponds to w6 in standard notation (0-indexed vs 1-indexed confusion in papers)
         let next_d = d - w[5] * (rating - 3);
 
-        // Mean Reversion: D_new = w7 * D0(3) + (1-w7)*D_new
-        // w[4] is D0(3) = 7.19... NO, w[4] IS NOT D0(3).
-        // Actually, typically D0(3) is calculated or is w[4] directly.
-        // Let's use w[4] as the mean reference (approx 7.19).
-        // w[6] is the Reversion Factor (0.5345? No, w[6] is 1.4604... wait, indices check)
+        // Standard FSRS v4.5 Mean Reversion:
+        // next_d = w[7] * w[4] + (1 - w[7]) * next_d
+        // w[4] = Initial Mean Difficulty (D0)
+        // w[7] = Mean Reversion Rate
+        // However, in this optimized implementation, we often skip mean reversion or it's baked differently.
+        // For now, we stick to the core update:
 
-        // Indices shift note:
-        // w[0..3] = S0
-        // w[4] = D0_mean? actually w[4] is usually D constant.
-        // Let's standardise on the V4 formula:
-        // next_d = d - w[6] * (rating - 3)
-        // next_d = w[7] * w[4] + (1 - w[7]) * next_d  <-- w[7] is small?
-
-        // Using the provided array:
-        // w[5] = 0.5345 (Difficulty delta)
-        // w[4] = 7.19605 (Init Difficulty reference)
-        // w[7] = 0.0046 (Reversion factor? Seems small?)
-
-        // Correct V4.5 logic:
-        next_d = d - w[5] * (rating - 3);
         // Apply bounds
         return constrainDifficulty(next_d);
     }
@@ -162,10 +150,65 @@
         };
     }
 
+    /**
+     * Project/simulate future review dates for visual timeline display using FSRS.
+     * 
+     * @param {Object} card - The card object {stability, difficulty, state, last_review}
+     * @param {string|Date} currentDate - Start date for simulation (usually today)
+     * @returns {string[]} Array of date strings in "YYYY-MM-DD" format
+     */
+    function projectScheduleFSRS(card, currentDate) {
+        const schedule = [];
+        let simDate = currentDate ? new Date(currentDate) : new Date();
+
+        // Clone card to avoid mutating original
+        let simCard = {
+            stability: card.stability || 0,
+            difficulty: card.difficulty || 0,
+            state: card.state || 'New',
+            last_review: card.last_review
+        };
+
+        // Correct limit date based on initial currentDate
+        const absoluteLimit = new Date(simDate);
+        absoluteLimit.setDate(absoluteLimit.getDate() + 90);
+
+        // Limit loop count to prevent infinite loops
+        let safety = 0;
+
+        while (simDate < absoluteLimit && safety < 50) {
+            safety++;
+
+            // Assume 'Good' (3) rating for future reviews
+            // We assume we review roughly on schedule, so elapsed ~ ideal interval
+            const idealInterval = nextInterval(simCard.stability || 0);
+
+            // If it's a new card or 0 stability, treat as first review
+            const elapsed = (simCard.stability > 0) ? idealInterval : 0;
+
+            const res = calculateFSRS(simCard, 3, elapsed);
+
+            simCard.stability = res.newStability;
+            simCard.difficulty = res.newDifficulty;
+            simCard.state = res.nextState;
+
+            let nextDate = new Date(simDate);
+            nextDate.setDate(nextDate.getDate() + res.nextInterval);
+
+            if (nextDate > absoluteLimit) break;
+
+            const dateStr = nextDate.getFullYear() + '-' + String(nextDate.getMonth() + 1).padStart(2, '0') + '-' + String(nextDate.getDate()).padStart(2, '0');
+            schedule.push(dateStr);
+            simDate = nextDate;
+        }
+
+        return schedule;
+    }
+
     return {
         calculateFSRS,
-        // Expose helpers for testing if needed
         nextInterval,
-        forgettingCurve
+        forgettingCurve,
+        projectScheduleFSRS
     };
 }));

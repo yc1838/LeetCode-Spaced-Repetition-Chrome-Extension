@@ -69,13 +69,14 @@ describe('Storage Logic', () => {
         // ACT: Save the same problem again, but with "Easy" difficulty
         const result = await saveSubmission('1. Two Sum', problemKey, 'Easy');
 
-        // ASSERT: 
-        // 1. chrome.storage.local.set SHOULD be called
-        expect(global.chrome.storage.local.set).toHaveBeenCalledTimes(1);
+        // ASSERT:
+        // 1. chrome.storage.local.set SHOULD be called (problems update + activity log)
+        expect(global.chrome.storage.local.set).toHaveBeenCalled();
 
         // 2. The saved data should have "Easy" difficulty
-        const setCall = global.chrome.storage.local.set.mock.calls[0][0];
-        expect(setCall.problems[problemKey].difficulty).toBe('Easy');
+        const setCall = global.chrome.storage.local.set.mock.calls.find(call => call[0].problems);
+        expect(setCall).toBeDefined();
+        expect(setCall[0].problems[problemKey].difficulty).toBe('Easy');
 
         // 3. Result should be success (not duplicate/skipped)
         expect(result).toEqual(expect.objectContaining({ success: true }));

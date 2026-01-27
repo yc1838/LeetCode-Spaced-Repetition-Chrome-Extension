@@ -39,6 +39,10 @@
                     difficulty
                     title
                     questionFrontendId
+                    topicTags {
+                      name
+                      slug
+                    }
                   }
                 }
             `;
@@ -64,7 +68,8 @@
                 return {
                     difficulty: q.difficulty,
                     title: q.title,
-                    questionId: q.questionFrontendId
+                    questionId: q.questionFrontendId,
+                    topics: q.topicTags ? q.topicTags.map(t => t.name) : []
                 };
             }
             return null;
@@ -117,11 +122,12 @@
                     if (apiData.title && apiData.questionId) {
                         details.title = `${apiData.questionId}. ${apiData.title}`;
                     }
+                    details.topics = apiData.topics || [];
                 }
 
                 // Prompt for rating manually too? Yes.
                 const rating = await showRatingModal(details.title);
-                const result = await saveSubmission(details.title, details.slug, details.difficulty, 'manual_api_scan', rating);
+                const result = await saveSubmission(details.title, details.slug, details.difficulty, 'manual_api_scan', rating, details.topics);
                 return result || { success: true };
             }
 
@@ -225,13 +231,19 @@
 
                             const finalDifficulty = apiData ? apiData.difficulty : difficulty;
                             let finalTitle = title;
+                            let finalTopics = [];
 
-                            if (apiData && apiData.title && apiData.questionId) {
-                                finalTitle = `${apiData.questionId}. ${apiData.title}`;
+                            if (apiData) {
+                                if (apiData.title && apiData.questionId) {
+                                    finalTitle = `${apiData.questionId}. ${apiData.title}`;
+                                }
+                                if (apiData.topics) {
+                                    finalTopics = apiData.topics;
+                                }
                             }
 
                             const rating = await showRatingModal(finalTitle);
-                            await saveSubmission(finalTitle, slug, finalDifficulty, 'api_poll', rating);
+                            await saveSubmission(finalTitle, slug, finalDifficulty, 'api_poll', rating, finalTopics);
                             return true;
                         } else {
                             console.warn("[LeetCode EasyRepeat] Dependencies missing. Cannot save.");
@@ -239,6 +251,112 @@
                         }
                     } else {
                         console.log(`[LeetCode EasyRepeat] Submission ${submissionId} finished but NOT Accepted (${data.status_msg}).`);
+
+                        // --- AI Mistake Analysis Hook ---
+                        if (typeof window.LLMSidecar !== 'undefined' &&
+                            typeof window.LLMSidecar.analyzeMistake === 'function') {
+
+                            (async () => {
+                                // 0. Check global AI toggle
+                                let aiEnabled = false;
+                                try {
+                                    const aiStorage = await chrome.storage.local.get({ aiAnalysisEnabled: false });
+                                    aiEnabled = !!aiStorage.aiAnalysisEnabled;
+                                } catch (e) { }
+
+                                if (!aiEnabled) return;
+
+                                const showAnalysisModal = getDep('showAnalysisModal');
+                                const saveNotes = getDep('saveNotes');
+
+                                // 1. Check Preference
+                                let shouldAnalyze = false;
+                                try {
+                                    const storage = await chrome.storage.local.get(['alwaysAnalyze']);
+                                    shouldAnalyze = !!storage.alwaysAnalyze;
+                                } catch (e) { }
+
+                                // 2. Ask User if not set
+                                if (!shouldAnalyze && showAnalysisModal) {
+                                    shouldAnalyze = await showAnalysisModal(data.status_msg); // 'Wrong Answer', etc.
+                                }
+
+                                if (shouldAnalyze) {
+                                    // 3. Get Code (Scrape from DOM)
+                                    // Try to find Monaco lines
+                                    let code = "";
+                                    const lines = document.querySelectorAll('.view-lines .view-line');
+                                    if (lines && lines.length > 0) {
+                                        code = Array.from(lines).map(l => l.innerText).join('\n');
+                                    } else {
+                                        code = "// Code could not be scraped. Please check permissions.";
+                                    }
+
+                                    // 4. Retrieve Question Info
+                                    const apiData = await fetchQuestionDetails(slug);
+                                    let finalTitle = title;
+                                    if (apiData && apiData.title) finalTitle = apiData.title;
+
+                                    // 5. Run Analysis with Progress & Cancellation
+                                    const showAnalysisProgress = getDep('showAnalysisProgress');
+                                    const controller = new AbortController();
+
+                                    let progressUI = null;
+                                    if (showAnalysisProgress) {
+                                        progressUI = showAnalysisProgress(() => {
+                                            console.log("[LeetCode EasyRepeat] User cancelled analysis.");
+                                            controller.abort();
+                                        });
+                                    }
+
+                                    try {
+                                        const errorDetails = data.runtime_error || data.compile_error || data.full_runtime_error || data.status_msg;
+                                        const analysis = await window.LLMSidecar.analyzeMistake(
+                                            code,
+                                            errorDetails,
+                                            { title: finalTitle, difficulty: difficulty },
+                                            controller.signal
+                                        );
+
+                                        // 6. Save to Notes
+                                        if (analysis && saveNotes) {
+                                            const now = new Date().toLocaleString();
+                                            const noteEntry = `\n\n### 🤖 AI Analysis (${now})\n**Mistake:** ${data.status_msg}\n\n${analysis}`;
+
+                                            // Append to existing
+                                            const getNotes = getDep('getNotes');
+                                            const existing = await getNotes(slug);
+                                            await saveNotes(slug, existing + noteEntry);
+
+                                            // Optional: Open notes widget to show result
+                                            const widget = document.querySelector(`.lc-notes-container[data-slug="${slug}"]`);
+                                            if (widget && !widget.classList.contains('expanded')) {
+                                                const handle = widget.querySelector('.lc-notes-handle');
+                                                if (handle) handle.click();
+                                            }
+                                        }
+
+                                        if (progressUI) {
+                                            progressUI.update("Analysis Complete", 100);
+                                            setTimeout(() => progressUI.close(), 1000);
+                                        }
+
+                                    } catch (e) {
+                                        if (e.name === 'AbortError') {
+                                            // Handled by UI close usually, but ensure cleanup
+                                            if (progressUI) progressUI.close();
+                                        } else {
+                                            console.error("[LeetCode EasyRepeat] Analysis failed:", e);
+                                            if (progressUI) {
+                                                progressUI.update("Error: " + e.message, 0);
+                                                setTimeout(() => progressUI.close(), 3000);
+                                            }
+                                        }
+                                    }
+                                }
+                            })();
+                        }
+
                         return false;
                     }
                 }
