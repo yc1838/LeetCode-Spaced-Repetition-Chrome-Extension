@@ -101,6 +101,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
             return true; // Keep channel open for async response
         }
+
+        if (request.action === "getStats") {
+            if (window.VectorDB) {
+                window.VectorDB.getStats().then(stats => {
+                    sendResponse({ success: true, stats });
+                }).catch(e => {
+                    sendResponse({ success: false, error: e.message });
+                });
+            } else {
+                sendResponse({ success: false, error: "VectorDB not initialized" });
+            }
+            return true;
+        }
     } catch (e) {
         console.error("[LeetCode EasyRepeat] [LEETCODE-DEBUG] Error in message listener:", e);
         sendResponse({ success: false, error: e.message });

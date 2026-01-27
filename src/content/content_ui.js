@@ -689,10 +689,127 @@
         tooltip.querySelector('.lc-tooltip-close').onclick = close;
     }
 
+    /**
+     * Show a progress toast for AI Analysis with Cancel button.
+     * @param {Function} onCancel - Callback when cancel is clicked
+     * @returns {Object} - { close: Function, update: Function }
+     */
+    function showAnalysisProgress(onCancel) {
+        // Remove existing
+        const existing = document.querySelector('.lc-analysis-progress');
+        if (existing) existing.remove();
+
+        // Ensure styles
+        if (!document.getElementById('lc-analysis-progress-style')) {
+            const style = document.createElement('style');
+            style.id = 'lc-analysis-progress-style';
+            style.textContent = `
+                .lc-analysis-progress {
+                    position: fixed; bottom: 30px; right: 30px;
+                    z-index: 999999;
+                    background: rgba(10, 10, 10, 0.95);
+                    border: 1px solid #333;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+                    padding: 16px;
+                    width: 300px;
+                    font-family: 'JetBrains Mono', monospace;
+                    display: flex; flex-direction: column; gap: 12px;
+                    transform: translateY(100px); opacity: 0;
+                    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                }
+                .lc-analysis-progress.show { transform: translateY(0); opacity: 1; }
+                .lc-analysis-header {
+                    display: flex; justify-content: space-between; align-items: center;
+                    color: #fff; font-size: 13px; font-weight: 600;
+                }
+                .lc-analysis-status { display: flex; align-items: center; gap: 8px; }
+                .lc-spinner {
+                    width: 14px; height: 14px; border: 2px solid #333;
+                    border-top-color: #22d3ee; border-radius: 50%;
+                    animation: lc-spin 1s linear infinite;
+                }
+                @keyframes lc-spin { to { transform: rotate(360deg); } }
+                
+                .lc-progress-track {
+                    height: 4px; background: #333; border-radius: 2px; overflow: hidden;
+                    position: relative;
+                }
+                .lc-progress-bar {
+                    height: 100%; background: #22d3ee; width: 0%;
+                    transition: width 0.3s linear;
+                    position: absolute; left: 0; top: 0;
+                }
+                /* Indeterminate animation */
+                .lc-progress-bar.indeterminate {
+                    width: 30%;
+                    animation: lc-indeterminate 1.5s infinite ease-in-out;
+                }
+                @keyframes lc-indeterminate {
+                    0% { left: -30%; }
+                    100% { left: 100%; }
+                }
+
+                .lc-analysis-cancel-btn {
+                    background: transparent; border: 1px solid #ef4444;
+                    color: #ef4444; border-radius: 4px; padding: 4px 8px;
+                    font-size: 11px; cursor: pointer; transition: all 0.2s;
+                    align-self: flex-end;
+                }
+                .lc-analysis-cancel-btn:hover { background: #ef4444; color: #fff; }
+            `;
+            document.head.appendChild(style);
+        }
+
+        const container = document.createElement('div');
+        container.className = 'lc-analysis-progress';
+        container.innerHTML = `
+            <div class="lc-analysis-header">
+                <div class="lc-analysis-status">
+                    <div class="lc-spinner"></div>
+                    <span>Analyzing Request...</span>
+                </div>
+            </div>
+            <div class="lc-progress-track">
+                <div class="lc-progress-bar indeterminate"></div>
+            </div>
+            <button class="lc-analysis-cancel-btn">Cancel Analysis</button>
+        `;
+
+        document.body.appendChild(container); // Fix: Append to body immediately
+
+        // Animate in
+        requestAnimationFrame(() => container.classList.add('show'));
+
+        const cancelBtn = container.querySelector('.lc-analysis-cancel-btn');
+        cancelBtn.onclick = () => {
+            if (onCancel) onCancel();
+            close();
+        };
+
+        function close() {
+            container.classList.remove('show');
+            setTimeout(() => container.remove(), 300);
+        }
+
+        function update(text, percent) {
+            const statusText = container.querySelector('.lc-analysis-status span');
+            if (statusText) statusText.innerText = text;
+
+            // If we ever want real progress
+            // const bar = container.querySelector('.lc-progress-bar');
+            // bar.classList.remove('indeterminate');
+            // bar.style.width = percent + '%';
+        }
+
+        return { close, update };
+    }
+
     return {
         showCompletionToast,
         showRatingModal,
-        showAnalysisModal, // New Export
+        showAnalysisModal,
+        showAnalysisProgress, // New Export
         createNotesWidget,
         insertNotesButton
     };

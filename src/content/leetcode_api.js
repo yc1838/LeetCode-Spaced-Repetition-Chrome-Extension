@@ -297,25 +297,60 @@
                                     let finalTitle = title;
                                     if (apiData && apiData.title) finalTitle = apiData.title;
 
-                                    // 5. Run Analysis
-                                    const errorDetails = data.runtime_error || data.compile_error || data.full_runtime_error || data.status_msg;
-                                    const analysis = await window.LLMSidecar.analyzeMistake(code, errorDetails, { title: finalTitle, difficulty: difficulty });
+                                    // 5. Run Analysis with Progress & Cancellation
+                                    const showAnalysisProgress = getDep('showAnalysisProgress');
+                                    const controller = new AbortController();
 
-                                    // 6. Save to Notes
-                                    if (analysis && saveNotes) {
-                                        const now = new Date().toLocaleString();
-                                        const noteEntry = `\n\n### 🤖 AI Analysis (${now})\n**Mistake:** ${data.status_msg}\n\n${analysis}`;
+                                    let progressUI = null;
+                                    if (showAnalysisProgress) {
+                                        progressUI = showAnalysisProgress(() => {
+                                            console.log("[LeetCode EasyRepeat] User cancelled analysis.");
+                                            controller.abort();
+                                        });
+                                    }
 
-                                        // Append to existing
-                                        const getNotes = getDep('getNotes');
-                                        const existing = await getNotes(slug);
-                                        await saveNotes(slug, existing + noteEntry);
+                                    try {
+                                        const errorDetails = data.runtime_error || data.compile_error || data.full_runtime_error || data.status_msg;
+                                        const analysis = await window.LLMSidecar.analyzeMistake(
+                                            code,
+                                            errorDetails,
+                                            { title: finalTitle, difficulty: difficulty },
+                                            controller.signal
+                                        );
 
-                                        // Optional: Open notes widget to show result
-                                        const widget = document.querySelector(`.lc-notes-container[data-slug="${slug}"]`);
-                                        if (widget && !widget.classList.contains('expanded')) {
-                                            const handle = widget.querySelector('.lc-notes-handle');
-                                            if (handle) handle.click();
+                                        // 6. Save to Notes
+                                        if (analysis && saveNotes) {
+                                            const now = new Date().toLocaleString();
+                                            const noteEntry = `\n\n### 🤖 AI Analysis (${now})\n**Mistake:** ${data.status_msg}\n\n${analysis}`;
+
+                                            // Append to existing
+                                            const getNotes = getDep('getNotes');
+                                            const existing = await getNotes(slug);
+                                            await saveNotes(slug, existing + noteEntry);
+
+                                            // Optional: Open notes widget to show result
+                                            const widget = document.querySelector(`.lc-notes-container[data-slug="${slug}"]`);
+                                            if (widget && !widget.classList.contains('expanded')) {
+                                                const handle = widget.querySelector('.lc-notes-handle');
+                                                if (handle) handle.click();
+                                            }
+                                        }
+
+                                        if (progressUI) {
+                                            progressUI.update("Analysis Complete", 100);
+                                            setTimeout(() => progressUI.close(), 1000);
+                                        }
+
+                                    } catch (e) {
+                                        if (e.name === 'AbortError') {
+                                            // Handled by UI close usually, but ensure cleanup
+                                            if (progressUI) progressUI.close();
+                                        } else {
+                                            console.error("[LeetCode EasyRepeat] Analysis failed:", e);
+                                            if (progressUI) {
+                                                progressUI.update("Error: " + e.message, 0);
+                                                setTimeout(() => progressUI.close(), 3000);
+                                            }
                                         }
                                     }
                                 }

@@ -154,18 +154,34 @@ The extension implements a modified SM-2 spaced repetition algorithm:
 ```mermaid
 graph TD
     User((User))
-    subgraph Browser Context
+    subgraph Browser Extension
         Popup[Popup UI]
         Content[Content Script]
+        LLM[LLM Sidecar]
+    end
+    subgraph External Services
+        LeetCode[LeetCode API]
+        AI[AI Providers <br/> Gemini/OpenAI]
     end
     subgraph Storage Layer
         CS[(Chrome Storage Local)]
     end
+
+    User -- Solves Problem --> Content
+    Content -- 1. Detect Submission --> LeetCode
+    LeetCode -- 2. Result (Success/Fail) --> Content
     
-    User -- Reads/Writes Notes --> Content
-    User -- Views SRS Status --> Popup
+    %% Success Flow
+    Content -- 3a. Success: <br/> Save SRS Data --> CS
     
-    Content -- Save Submission/Notes --> CS
+    %% Failure Flow with AI
+    Content -- 3b. Failure: <br/> Trigger Analysis --> LLM
+    LLM -- 4. Send Code + Error --> AI
+    AI -- 5. Smart Explanation --> LLM
+    LLM -- 6. Display & Save Note --> Content
+    Content -- 7. Persist Note --> CS
+
+    User -- Views Dashboard --> Popup
     Popup -- Read Due Problems --> CS
 ```
 

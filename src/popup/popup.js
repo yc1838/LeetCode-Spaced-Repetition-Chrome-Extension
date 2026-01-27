@@ -363,18 +363,165 @@ function setupSidebar(dueProblems, allProblems) {
     tabDash.classList.add('active'); // Default
 
     tabDash.onclick = () => {
-        tabDash.classList.add('active');
-        tabAll.classList.remove('active');
+        updateTabUI(tabDash, [tabAll, tabStats]);
         title.innerText = "ACTIVE_PROBLEM_VECTORS";
+        toggleViews('dashboard');
         renderVectors(dueProblems, 'vector-list', true);
     };
 
+    const tabStats = document.getElementById('tab-stats');
+    if (tabStats) {
+        tabStats.onclick = () => {
+            updateTabUI(tabStats, [tabDash, tabAll]);
+            title.innerText = "NEURAL_WEAKNESS_ANALYSIS";
+            toggleViews('stats');
+            loadStats();
+        };
+    }
+
     tabAll.onclick = () => {
-        tabAll.classList.add('active');
-        tabDash.classList.remove('active');
+        updateTabUI(tabAll, [tabDash, tabStats]);
         title.innerText = "ALL_ARCHIVED_VECTORS";
+        toggleViews('dashboard');
         renderVectors(allProblems, 'vector-list', false);
     };
+}
+
+function updateTabUI(active, others) {
+    active.classList.add('active');
+    others.forEach(t => t?.classList.remove('active'));
+}
+
+function toggleViews(view) {
+    const dash = document.querySelector('.heatmap-container'); // Global heatmap
+    const list = document.querySelector('#vector-list').parentElement; // List section
+    const stats = document.getElementById('stats-container');
+
+    if (view === 'stats') {
+        if (dash) dash.style.display = 'none';
+        if (list) list.style.display = 'none';
+        if (stats) stats.style.display = 'block';
+    } else {
+        if (dash) dash.style.display = 'block';
+        if (list) list.style.display = 'block';
+        if (stats) stats.style.display = 'none';
+    }
+}
+
+async function loadStats() {
+    const container = document.getElementById('stats-content');
+    container.innerHTML = '<div class="stat-loading">Connecting to LeetCode Neural Link...</div>';
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.url.includes('leetcode.com/problems/')) {
+        container.innerHTML = `
+            <div style="opacity:0.7; padding:20px; text-align:center;">
+                <p>⚠️ LINK NOT ESTABLISHED</p>
+                <p style="font-size:0.8em; margin-top:10px">Please open a LeetCode problem page to access the Neural Database.</p>
+            </div>`;
+        return;
+    }
+
+    chrome.tabs.sendMessage(tab.id, { action: "getStats" }, (response) => {
+        if (chrome.runtime.lastError) {
+            const err = chrome.runtime.lastError.message;
+            if (err.includes("Receiving end does not exist") || err.includes("Could not establish connection")) {
+                container.innerHTML = `
+                    <div style="opacity:0.8; padding:20px; text-align:center;">
+                        <div style="font-size:2em; margin-bottom:10px;">🔌</div>
+                        <p style="color:var(--accent);">CONNECTION LOST</p>
+                        <p style="font-size:0.8em; margin:10px 0;">The extension was updated, but the page is running old code.</p>
+                        <button class="llm-action-btn" onclick="chrome.tabs.reload(${tab.id}); window.close();" style="margin-top:10px; width:auto; padding:5px 15px;">
+                           REFRESH PAGE
+                        </button>
+                    </div>`;
+            } else {
+                container.innerHTML = `<div style="color:var(--accent)">Error: ${err}</div>`;
+            }
+            return;
+        }
+
+        if (!response || !response.success) {
+            container.innerHTML = `<div style="color:var(--accent)">Data Error: ${response?.error || 'Unknown'}</div>`;
+            return;
+        }
+
+        renderStatsChart(container, response.stats);
+    });
+}
+
+function renderStatsChart(container, stats) {
+    if (!stats || !stats.byFamily || Object.keys(stats.byFamily).length === 0) {
+        container.innerHTML = '<div style="opacity:0.5; padding:20px;">No anomalies detected yet. Keep coding.</div>';
+        return;
+    }
+
+    let html = '<div style="display:flex; flex-direction:column; gap:15px;">';
+    html += '<div style="font-size:0.7em; opacity:0.7; letter-spacing:1px; margin-bottom:5px;">WEAKNESS_TOPOLOGY // HIERARCHY</div>';
+
+    // 1. Group Tags by Family
+    // We already have stats.byFamily (counts) and stats.byTag (counts). 
+    // But we need to know WHICH tag belongs to WHICH family. 
+    // Since we don't store that mapping explicitly in the 'stats' object returned by getStats(),
+    // we need to slightly update getStats() OR (easier) simply iterate the raw records if possible.
+    // However, getStats() aggregates them. 
+
+    // WAIT: VectorDB.getStats() in vector_db.js returns aggregated counts but loses the link between specific tag & family.
+    // We should probably update vector_db.js first to return a tree structure, OR
+    // we can just iterate the records in `getStats` more smartly.
+
+    // For now, let's assume we update vector_db.js to return `stats.tree = { "LOGIC": { "OFF_BY_ONE": 1 } }`
+    // If we only have flat maps, we can't perfectly reconstruct the tree without knowing the mapping.
+    // Let's UPDATE vector_db.js FIRST.
+
+    // Fallback if tree is missing (to avoid breaking while we update vector_db.js):
+    const families = Object.entries(stats.byFamily).sort((a, b) => b[1] - a[1]);
+
+    // If we have the tree structure (which we will add next)
+    if (stats.tree) {
+        const sortedFamilies = Object.entries(stats.tree).sort((a, b) => {
+            // Sort by total count in that family
+            const countA = Object.values(a[1]).reduce((sum, v) => sum + v, 0);
+            const countB = Object.values(b[1]).reduce((sum, v) => sum + v, 0);
+            return countB - countA;
+        });
+
+        sortedFamilies.forEach(([family, tags]) => {
+            const familyTotal = Object.values(tags).reduce((sum, v) => sum + v, 0);
+
+            // Family Header
+            html += `
+            <div style="margin-top:5px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.05); padding:6px 10px; border-radius:4px;">
+                    <span style="font-family:var(--font-mono); font-size:0.8em; color:var(--electric);">${family}</span>
+                    <span style="font-size:0.8em; font-weight:bold;">${familyTotal}</span>
+                </div>
+                <div style="padding-left:10px; margin-top:5px; border-left:2px solid rgba(255,255,255,0.05);">`;
+
+            // Tags
+            const sortedTags = Object.entries(tags).sort((a, b) => b[1] - a[1]);
+            sortedTags.forEach(([tag, count]) => {
+                // Determine display name for fallback
+                const displayTag = (tag === 'GENERAL') ? 'UNSPECIFIED' : tag;
+                const isGeneral = (tag === 'GENERAL');
+
+                html += `
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75em; padding:3px 10px; color:${isGeneral ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.8)'};">
+                    <span>${displayTag}</span>
+                    <span style="opacity:0.6;">x${count}</span>
+                </div>`;
+            });
+
+            html += `</div></div>`;
+        });
+    } else {
+        // Legacy View (if tree not ready)
+        html += '<div style="color:yellow; font-size:0.7em;">Restart Extension to enable Tree View</div>';
+    }
+
+    html += '</div>';
+
+    container.innerHTML = html;
 }
 
 // renderVectors moved to popup_ui.js

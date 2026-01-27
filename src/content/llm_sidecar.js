@@ -5,6 +5,7 @@
 
 (function () {
     // --- Constants ---
+
     const MODELS = {
         gemini: [
             { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview', meta: 'NEXT-GEN', provider: 'google' },
@@ -15,10 +16,14 @@
             { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', meta: 'LEGACY // FAST', provider: 'google' },
             { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', meta: 'STABLE', provider: 'google' },
             { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', meta: 'FREE // OLD', provider: 'google' },
+            // Embedding models (hidden from standard selection but used internally)
+            { id: 'text-embedding-004', name: 'Gemini Embedding', meta: 'EMBED', provider: 'google', type: 'embedding' }
         ],
         openai: [
             { id: 'gpt-4o-mini', name: 'GPT-4o Mini', meta: 'EFFICIENT', provider: 'openai' },
             { id: 'gpt-4o', name: 'GPT-4o', meta: 'SOTA', provider: 'openai' },
+            // Embedding models
+            { id: 'text-embedding-3-small', name: 'OpenAI Embedding Small', meta: 'EMBED', provider: 'openai', type: 'embedding' }
         ],
         anthropic: [
             { id: 'claude-3-5-sonnet-20240620', name: 'Claude 3.5 Sonnet', meta: 'BALANCED', provider: 'anthropic' },
@@ -27,6 +32,7 @@
     };
 
     const ALL_MODELS = [...MODELS.gemini, ...MODELS.openai, ...MODELS.anthropic];
+    const CHAT_MODELS = ALL_MODELS.filter(m => m.type !== 'embedding');
 
     // --- Icons (SVG Strings) ---
     const ICONS = {
@@ -76,18 +82,23 @@
     }
 
     // --- API Logic ---
-    async function callLLM(prompt, systemPrompt = '') {
+    async function callLLM(prompt, systemPrompt = '', signal = null) {
         const model = ALL_MODELS.find(m => m.id === state.selectedModelId);
         const provider = model?.provider || 'google';
         const apiKey = state.keys[provider];
 
         if (!apiKey) throw new Error(`Missing API Key for ${provider}`);
 
+        const fetchOptions = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: signal
+        };
+
         if (provider === 'google') {
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${state.selectedModelId}:generateContent?key=${apiKey}`;
             const res = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                ...fetchOptions,
                 body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt ? `${systemPrompt}\n${prompt}` : prompt }] }] })
             });
             const data = await res.json();
@@ -97,8 +108,8 @@
 
         if (provider === 'openai') {
             const res = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                ...fetchOptions,
+                headers: { ...fetchOptions.headers, 'Authorization': `Bearer ${apiKey}` },
                 body: JSON.stringify({
                     model: state.selectedModelId,
                     messages: [...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []), { role: 'user', content: prompt }]
@@ -111,7 +122,7 @@
 
         if (provider === 'anthropic') {
             const res = await fetch('https://api.anthropic.com/v1/messages', {
-                method: 'POST',
+                ...fetchOptions,
                 headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-direct-browser-access': 'true' },
                 body: JSON.stringify({ model: state.selectedModelId, max_tokens: 1024, system: systemPrompt, messages: [{ role: 'user', content: prompt }] })
             });
@@ -119,6 +130,53 @@
             if (data.error) throw new Error(data.error.message);
             return data.content?.[0]?.text;
         }
+    }
+
+    async function embed(text) {
+        // Determine provider based on selected model's provider
+        const currentModel = ALL_MODELS.find(m => m.id === state.selectedModelId);
+        const provider = currentModel?.provider || 'google';
+        const apiKey = state.keys[provider];
+
+        if (!apiKey) throw new Error(`Missing API Key for ${provider} to generate embeddings`);
+
+        if (provider === 'google') {
+            const modelId = 'text-embedding-004';
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:embedContent?key=${apiKey}`;
+
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: { parts: [{ text: text }] },
+                    model: `models/${modelId}`
+                })
+            });
+            const data = await res.json();
+            if (data.error) throw new Error("Embedding Error: " + data.error.message);
+            return data.embedding.values;
+        }
+
+        if (provider === 'openai') {
+            const res = await fetch('https://api.openai.com/v1/embeddings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    input: text,
+                    model: 'text-embedding-3-small'
+                })
+            });
+            const data = await res.json();
+            if (data.error) throw new Error("Embedding Error: " + data.error.message);
+            return data.data[0].embedding;
+        }
+
+        // Fallback or error for Anthropic (no embedding API yet publicly strictly standard)
+        // Or mock it with local hashing if needed, but for now throw.
+        throw new Error("Embeddings not supported for this provider yet.");
     }
 
     function hasAnyKey() {
@@ -129,14 +187,49 @@
         return hasAnyKey();
     }
 
-    async function analyzeMistake(code, errorDetails, meta = {}) {
+    async function analyzeMistake(code, errorDetails, meta = {}, signal = null) {
         const title = meta.title || 'Unknown Problem';
         const difficulty = meta.difficulty || 'Unknown';
+        const queryText = `Error: ${errorDetails}\nCode Snippet: ${code.substring(0, 300)}`; // Truncate for embedding
+
+        let contextMsg = "";
+        let isRecurrence = false;
+
+        // --- RAG: Retrieval Step ---
+        if (window.VectorDB) {
+            try {
+                // 1. Embed
+                // Only embed if we have an API key for the provider
+                if (hasAnyKey()) { // Simple check, embed() has more specific checks
+                    const vector = await embed(queryText);
+
+                    // 2. Search
+                    const matches = await window.VectorDB.search(vector, 3, 0.75); // Threshold 0.75
+
+                    if (matches && matches.length > 0) {
+                        const topMatch = matches[0];
+                        console.log(`[LLMSidecar] RAG Match Found! Score: ${topMatch.score.toFixed(2)}`);
+
+                        // 3. Decision Gate
+                        if (topMatch.score > 0.92) {
+                            // High Confidence -> Return Cached Advice
+                            return `💡 **Recurring Mistake Detected**\n\nIt seems you've made a very similar mistake before (${(topMatch.score * 100).toFixed(0)}% match).\n\n**Previous Advice:**\n${topMatch.advice}`;
+                        }
+
+                        // Medium Confidence -> Add Context
+                        contextMsg = `\n\nCONTEXT: The user previously made a similar mistake (Similarity: ${topMatch.score.toFixed(2)}). Their previous advice was: "${topMatch.advice}". If this is the same issue, be brief and reference this.`;
+                        isRecurrence = true;
+                    }
+                }
+            } catch (e) {
+                console.warn("[LLMSidecar] RAG step failed (continuing with standard analysis):", e);
+            }
+        }
 
         const systemPrompt = [
             'You are a LeetCode mentor.',
             'Analyze the failure, point out the likely bug or misconception, and suggest a fix.',
-            'Be concise and focus on actionable guidance.'
+            isRecurrence ? 'Be VERY CONCISE. The user has seen this before.' : 'Be concise and focus on actionable guidance.'
         ].join(' ');
 
         const prompt = [
@@ -145,14 +238,105 @@
             `Error: ${errorDetails || 'Unknown Error'}`,
             'Code:',
             code || '// No code captured',
+            contextMsg,
             '',
-            'Respond with:',
-            '1) Root cause',
-            '2) Fix',
-            '3) One small test case that would fail before the fix'
+            'Classify the error into one of these SPECIFIC TAGS if possible (Prioritize Python quirks):',
+            '',
+            '--- PYTHON SPECIFIC ---',
+            '- PY_LIST_INDEX (IndexError: list index out of range)',
+            '- PY_DICT_KEY (KeyError: key not found)',
+            '- PY_STR_IMMUTABLE (TypeError: object does not support item assignment)',
+            '- PY_SCOPE_UNBOUND (UnboundLocalError)',
+            '- PY_SHALLOW_COPY (Modifying copy affected original)',
+            '- PY_INDENTATION (IndentationError)',
+            '',
+            '--- ITERATION & POINTERS ---',
+            '- OFF_BY_ONE (Loop range error or index alignment)',
+            '- TWO_POINTER_COLLISION (Pointers crossed incorrectly)',
+            '- SLIDING_WINDOW_INVALID (Window constraint violation)',
+            '- INFINITE_LOOP (While condition never false)',
+            '',
+            '--- GRAPH & TREES ---',
+            '- VISITED_MISSING (Forgot to track visited nodes)',
+            '- NULL_NODE_ACCESS (Accessing val/left on None)',
+            '- DISCONNECTED_GRAPH (Handling only one component)',
+            '- CYCLE_DETECTION_FAIL (Failed to detect cycle)',
+            '',
+            '--- RECURSION & DP ---',
+            '- BASE_CASE_MISSING (No recursion stop condition)',
+            '- MEMOIZATION_MISSING (Brute force without cache)',
+            '- DP_INIT_ERROR (Table init size/value wrong)',
+            '- OVERLAPPING_LOGIC (Recomputing subproblems)',
+            '',
+            '--- MATH & DATA ---',
+            '- MODULO_MISSING (Forgot mod 10^9+7)',
+            '- INT_OVERFLOW (Exceeded integer limits)',
+            '- FLOAT_PRECISION (Comparing floats with ==)',
+            '- TYPE_MISMATCH (Comparing int vs str)',
+            '',
+            '--- SETUP ---',
+            '- STATE_RESET_MISSING (Global vars not cleared)',
+            '- EDGE_CASE_EMPTY (Failed on [] or 0)',
+            '- RETURN_MISSING (Function returns None)',
+            '',
+            'Respond with this JSON format only:',
+            '{',
+            '  "root_cause": "1 sentence explanation",',
+            '  "fix": "Code fix or strategy",',
+            '  "family": "PYTHON" or "LOGIC" or "ALGO" or "MATH",',
+            '  "specific_tag": "TAG_FROM_LIST (or NEW_TAG if distinct)",',
+            '  "is_recurring": false',
+            '}'
         ].join('\n');
 
-        return await callLLM(prompt, systemPrompt);
+        let advice = await callLLM(prompt, systemPrompt, signal);
+
+        // 1. Parse JSON Response
+        let parsed = null;
+        try {
+            // Remove markdown code blocks if present
+            const cleanJson = advice.replace(/```json/g, '').replace(/```/g, '').trim();
+            parsed = JSON.parse(cleanJson);
+        } catch (e) {
+            console.warn("[LLMSidecar] JSON Parse Failed. Fallback to raw text.", e);
+            // Attempt fallback extraction for legacy/malformed responses
+            const catMatch = advice.match(/Category:?\s*([A-Z_]+)/i);
+            parsed = {
+                root_cause: advice,
+                fix: "See explanation.",
+                family: catMatch ? catMatch[1].toUpperCase() : 'UNCATEGORIZED',
+                specific_tag: 'GENERAL',
+                is_recurring: false
+            };
+        }
+
+        // 2. Format for Display (Markdown)
+        const displayAdvice = `### 🤖 Analysis: ${parsed.specific_tag}\n\n**Cause:** ${parsed.root_cause}\n\n**Fix:** ${parsed.fix}\n\n*(Family: ${parsed.family})*`;
+
+        // 3. RAG Indexing
+        if (window.VectorDB) {
+            try {
+                const vector = await embed(queryText);
+                await window.VectorDB.add({
+                    vector,
+                    text: queryText,
+                    advice: displayAdvice, // Save the readble version
+                    metadata: {
+                        title,
+                        difficulty,
+                        category: parsed.family,   // Legacy support
+                        family: parsed.family,
+                        tag: parsed.specific_tag,
+                        timestamp: Date.now()
+                    }
+                });
+                console.log(`[LLMSidecar] Saved mistake: ${parsed.family}/${parsed.specific_tag}`);
+            } catch (e) {
+                console.warn("[LLMSidecar] Failed to index mistake:", e);
+            }
+        }
+
+        return displayAdvice;
     }
 
     // --- UI Rendering ---
@@ -255,7 +439,7 @@
         // Selector
         area.appendChild(createElement('span', 'llm-section-label', 'SELECT SUBSTRATE (MODEL)'));
         const list = createElement('div', 'llm-model-list');
-        ALL_MODELS.forEach(m => {
+        ALL_MODELS.filter(m => m.type !== 'embedding').forEach(m => {
             const item = createElement('div', `llm-model-item ${state.selectedModelId === m.id ? 'selected' : ''}`);
             item.onclick = () => { state.selectedModelId = m.id; saveState(); render(); };
             item.innerHTML = `<span class="llm-model-item-name">${m.name}</span><span class="llm-model-item-meta">${m.meta}</span>`;
@@ -401,6 +585,7 @@
     window.LLMSidecar = {
         init,
         callLLM,
+        embed,
         analyzeMistake,
         isAnalysisEnabled
     };

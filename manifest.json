@@ -26,6 +26,7 @@
                 "src/content/leetcode_dom.js",
                 "src/shared/storage.js",
                 "src/content/leetcode_api.js",
+                "src/algorithms/vector_db.js",
                 "src/content/llm_sidecar.js",
                 "src/content/content.js"
             ],
