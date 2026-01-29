@@ -124,6 +124,8 @@
             byCategory: {},
             byFamily: {},
             byTag: {},
+            byMicroSkill: {}, // NEW
+            byAntiPattern: {}, // NEW
             tree: {}
         };
 
@@ -131,10 +133,16 @@
             const meta = r.metadata || {};
             const family = (meta.family || meta.category || 'Uncategorized').toUpperCase();
             const tag = (meta.tag) ? meta.tag.toUpperCase() : 'GENERAL';
+            const microSkill = (meta.micro_skill || 'Unknown');
+            const antiPattern = (meta.anti_pattern || 'Unknown');
 
             stats.byFamily[family] = (stats.byFamily[family] || 0) + 1;
             stats.byCategory[family] = stats.byFamily[family];
             stats.byTag[tag] = (stats.byTag[tag] || 0) + 1;
+
+            // New aggregations
+            stats.byMicroSkill[microSkill] = (stats.byMicroSkill[microSkill] || 0) + 1;
+            stats.byAntiPattern[antiPattern] = (stats.byAntiPattern[antiPattern] || 0) + 1;
 
             if (!stats.tree[family]) stats.tree[family] = {};
             stats.tree[family][tag] = (stats.tree[family][tag] || 0) + 1;

@@ -788,9 +788,41 @@ POST   /api/problems/sync       - Bulk sync from extension
 GET    /api/problems/:slug      - Get single problem
 PUT    /api/problems/:slug      - Update problem
 
-POST   /api/mistakes            - Record a mistake
-GET    /api/mistakes            - List all mistakes
-POST   /api/analyze             - AI analysis (backend handles API key)
+## 3. **The "Safe Observer" Layer (New - SOTA)**
+To prevent AI hallucinations (like the "Operand Swap" error), we will implement a **Runtime Verification Layer**.
+
+### Technology Stack
+*   **Protocol:** [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)
+    *   Standardizes how the AI Agent communicates with the execution environment.
+*   **Sandbox:** [E2B](https://e2b.dev/) (Code Interpreter SDK)
+    *   **Why:** Uses Firecracker microVMs for millisecond-startup, hardware-level isolation. Safer than local Docker for running untrusted AI-generated code.
+    *   **Alternative (Local):** `docker` or `gvisor` if cloud connectivity is restricted.
+
+### Workflow
+1.  **Capture:** Extension captures User Code + Failing Test Case.
+2.  **Delegate:** AI Agent calls the `verify_solution` tool on the MCP Server.
+3.  **Execute:**
+    *   MCP Server spins up an E2B Sandbox.
+    *   Injects a "Probe Script" (wraps user code with print statements/logging).
+    *   Runs the code against the specific test input.
+4.  **Observe:**
+    *   Sandbox returns `stdout`, `stderr`, and return values.
+    *   **Example Log:** `Step 1: stack=['4'], token='13'. Step 2: Op '/' -> 13/5 = 2`.
+5.  **Critique:** AI compares *actual logs* vs. *expected logic*.
+
+## 4. UI/UX Flow
+1.  **User fails a problem.**
+2.  **"Analyze Mistake" button appears.**
+3.  **Status Indicator:** "Verifying execution path..." (shows progress bar).
+4.  **Result:**
+    *   **Mistake Type:** "Runtime Error" / "Logic Error".
+    *   **Evidence:** "Your code calculated `2`, but expected `4`."
+    *   **Fix:** Suggested code change.
+
+## 5. Implementation Roadmap
+1.  **Phase 1 (Frontend):** Build the "Mistake Analysis" UI in the Sidecar (React).
+2.  **Phase 2 (MCP Server):** Build a simple Python MCP server with `fastmcp`.
+3.  **Phase 3 (Integration):** Connect the Extension's Sidecar to the MCP Server.
 
 GET    /api/analytics           - Get computed analytics
 POST   /api/analytics/refresh   - Recompute analytics

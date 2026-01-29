@@ -1,187 +1,199 @@
 (function () {
+    // Shared Model Definitions (Should ideally be in a shared file, but duplicating for now to avoid module issues)
+    const MODELS = {
+        gemini: [
+            { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview (NEXT-GEN)', provider: 'google' },
+            { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview (HYPER-SPEED)', provider: 'google' },
+            { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (REASONING)', provider: 'google' },
+            { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (BALANCED)', provider: 'google' },
+            { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite (EFFICIENT)', provider: 'google' },
+            { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (FAST)', provider: 'google' },
+            { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (STABLE)', provider: 'google' },
+            { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (FREE)', provider: 'google' }
+        ],
+        openai: [
+            { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai' },
+            { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai' }
+        ],
+        anthropic: [
+            { id: 'claude-3-5-sonnet-20240620', name: 'Claude 3.5 Sonnet', provider: 'anthropic' }
+        ],
+        local: [
+            { id: 'llama3', name: 'Llama 3 (Local)', provider: 'local' },
+            { id: 'deepseek-coder', name: 'DeepSeek Coder (Local)', provider: 'local' },
+            { id: 'mistral', name: 'Mistral (Local)', provider: 'local' }
+        ]
+    };
+
     const DEFAULTS = {
-        aiProvider: 'cloud',
-        localEndpoint: 'http://localhost:11434',
-        localServerType: 'auto',
-        localModel: ''
+        keys: { google: '', openai: '', anthropic: '' },
+        localEndpoint: 'http://127.0.0.1:11434',
+        selectedModelId: 'gemini-1.5-flash'
     };
 
     const els = {};
 
-    function getEl(id) {
-        return document.getElementById(id);
+    function getEl(id) { return document.getElementById(id); }
+
+    function populateModelSelect(mode) {
+        const select = els.modelSelect;
+        select.innerHTML = '';
+
+        const createGroup = (label, models) => {
+            const group = document.createElement('optgroup');
+            group.label = label;
+            models.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.id;
+                opt.textContent = m.name;
+                group.appendChild(opt);
+            });
+            select.appendChild(group);
+        };
+
+        // Filter based on mode
+        if (mode === 'local') {
+            createGroup('Local (Ollama)', MODELS.local);
+        } else {
+            createGroup('Google Gemini', MODELS.gemini);
+            createGroup('OpenAI', MODELS.openai);
+            createGroup('Anthropic', MODELS.anthropic);
+        }
     }
 
-    function normalizeBaseUrl(url) {
-        if (!url) return '';
-        return url.replace(/\/+$/, '');
-    }
+    function setModeUI(mode) {
+        // Toggle Sections
+        els.sectionLocal.style.display = mode === 'local' ? 'block' : 'none';
+        els.sectionCloud.style.display = mode === 'cloud' ? 'block' : 'none';
 
-    function applyTheme(themeName) {
-        if (typeof THEMES === 'undefined') return;
-        const theme = THEMES[themeName] || THEMES.sakura;
-        const root = document.documentElement;
-        root.style.setProperty('--terminal', theme.terminal);
-        root.style.setProperty('--electric', theme.electric);
-        root.style.setProperty('--accent', theme.accent);
-        root.style.setProperty('--border-glow', theme.borderGlow);
-        root.style.setProperty('--border-dim', theme.borderDim);
-        root.style.setProperty('--bg-main', theme.bgMain);
-        root.style.setProperty('--font-main', theme.fontMain);
-    }
-
-    async function loadTheme() {
-        const storage = await chrome.storage.local.get({ theme: 'sakura' });
-        applyTheme(storage.theme === 'neural' ? 'typography' : storage.theme);
-    }
-
-    function setProviderUI(provider) {
-        const localSection = els.localSettings;
-        if (!localSection) return;
-        localSection.classList.toggle('hidden', provider !== 'local');
+        // Update Selector
+        populateModelSelect(mode);
     }
 
     async function loadSettings() {
         const settings = await chrome.storage.local.get(DEFAULTS);
-        const provider = settings.aiProvider || DEFAULTS.aiProvider;
-        els.providerCloud.checked = provider === 'cloud';
-        els.providerLocal.checked = provider === 'local';
+
+        // Mode (Infer from saved provider or default)
+        // If save has "aiProvider", use it. defaults to cloud in our DEFAULTS const? No, let's default to local if recommended.
+        let mode = settings.aiProvider || 'local';
+
+        if (mode === 'local') els.modeLocal.checked = true;
+        else els.modeCloud.checked = true;
+
+        setModeUI(mode);
+
+        // Keys
+        if (settings.keys) {
+            els.keyGoogle.value = settings.keys.google || '';
+            els.keyOpenai.value = settings.keys.openai || '';
+            els.keyAnthropic.value = settings.keys.anthropic || '';
+        }
+
+        // Local
         els.localEndpoint.value = settings.localEndpoint || DEFAULTS.localEndpoint;
-        els.localServerType.value = settings.localServerType || DEFAULTS.localServerType;
-        els.localModel.value = settings.localModel || DEFAULTS.localModel;
-        setProviderUI(provider);
+
+        // Model
+        // We need to make sure the selected model is actually valid for the current mode.
+        // If not, select the first available one.
+        const currentModel = settings.selectedModelId || '';
+        // Check if current model exists in the populated list (which is filtered by mode)
+        // Wait, populate is synchronous.
+        const options = Array.from(els.modelSelect.options).map(o => o.value);
+        if (options.includes(currentModel)) {
+            els.modelSelect.value = currentModel;
+        } else if (options.length > 0) {
+            els.modelSelect.value = options[0]; // Default to first available
+        }
     }
 
     async function saveSettings() {
-        const provider = els.providerLocal.checked ? 'local' : 'cloud';
+        // Determine mode
+        const mode = els.modeLocal.checked ? 'local' : 'cloud';
+
         const payload = {
-            aiProvider: provider,
+            aiProvider: mode,
+            keys: {
+                google: els.keyGoogle.value.trim(),
+                openai: els.keyOpenai.value.trim(),
+                anthropic: els.keyAnthropic.value.trim()
+            },
             localEndpoint: els.localEndpoint.value.trim(),
-            localServerType: els.localServerType.value,
-            localModel: els.localModel.value.trim()
+            selectedModelId: els.modelSelect.value
         };
+
         await chrome.storage.local.set(payload);
-        showSaveStatus('Saved');
+        showStatus(els.saveStatus, 'Settings Saved!', 'ok');
+
+        // Also update legacy Sidecar storage if needed? 
+        // No, Sidecar will be updated to read from chrome.storage directly.
     }
 
-    function showSaveStatus(text) {
-        if (!els.saveStatus) return;
-        els.saveStatus.textContent = text;
-        setTimeout(() => {
-            els.saveStatus.textContent = '';
-        }, 1500);
+    function showStatus(el, text, type) {
+        el.textContent = text;
+        el.className = 'status-text ' + (type || '');
+        setTimeout(() => el.textContent = '', 2000);
     }
 
-    function showTestStatus(text, type) {
-        if (!els.testStatus) return;
-        els.testStatus.textContent = text;
-        els.testStatus.classList.remove('ok', 'error');
-        if (type) els.testStatus.classList.add(type);
+    function normalizeEndpoint(input) {
+        let url = input.trim();
+
+        // Remove trailing slash
+        url = url.replace(/\/$/, '');
+
+        // If it starts with an IP or localhost without protocol, add http://
+        if (!/^https?:\/\//i.test(url)) {
+            url = 'http://' + url;
+        }
+
+        // If it's just http://127.0.0.1 or http://localhost without port, suggest port?
+        // For now, let's just assume if they made that specific typo they wanted the default port.
+
+        return url;
     }
 
-    async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    async function testLocalConnection() {
+        const endpoint = normalizeEndpoint(els.localEndpoint.value);
+        const url = `${endpoint}/api/tags`; // Ollama specific check
+        showStatus(els.testStatus, `Testing ${url}...`, '');
+
         try {
-            const res = await fetch(url, { ...options, signal: controller.signal });
-            return res;
-        } finally {
-            clearTimeout(timeout);
-        }
-    }
-
-    function buildOllamaUrl(base) {
-        if (/\/api$/.test(base)) return `${base}/tags`;
-        return `${base}/api/tags`;
-    }
-
-    function buildOpenAiUrl(base) {
-        if (/\/v1$/.test(base)) return `${base}/models`;
-        return `${base}/v1/models`;
-    }
-
-    async function tryOllama(base) {
-        const url = buildOllamaUrl(base);
-        const res = await fetchWithTimeout(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const models = Array.isArray(data.models) ? data.models : [];
-        return {
-            type: 'ollama',
-            modelCount: models.length,
-            sample: models[0]?.name || ''
-        };
-    }
-
-    async function tryOpenAi(base) {
-        const url = buildOpenAiUrl(base);
-        const res = await fetchWithTimeout(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const models = Array.isArray(data.data) ? data.data : [];
-        return {
-            type: 'openai',
-            modelCount: models.length,
-            sample: models[0]?.id || ''
-        };
-    }
-
-    async function testConnection() {
-        const base = normalizeBaseUrl(els.localEndpoint.value.trim());
-        if (!base) {
-            showTestStatus('Please enter a local endpoint.', 'error');
-            return;
-        }
-
-        showTestStatus('Testing connection...', null);
-
-        const serverType = els.localServerType.value;
-        const attempts = [];
-
-        if (serverType === 'ollama') attempts.push(() => tryOllama(base));
-        if (serverType === 'openai') attempts.push(() => tryOpenAi(base));
-        if (serverType === 'auto') {
-            attempts.push(() => tryOpenAi(base));
-            attempts.push(() => tryOllama(base));
-        }
-
-        for (const attempt of attempts) {
-            try {
-                const result = await attempt();
-                const modelText = result.modelCount > 0
-                    ? `models: ${result.modelCount} (e.g. ${result.sample})`
-                    : 'no models returned';
-                showTestStatus(`Connected (${result.type}). ${modelText}`, 'ok');
-                return;
-            } catch (err) {
-                continue;
+            const res = await fetch(url);
+            if (res.ok) {
+                const data = await res.json();
+                const count = data.models ? data.models.length : 0;
+                showStatus(els.testStatus, `Success! Found ${count} models.`, 'ok');
+            } else {
+                showStatus(els.testStatus, `Error: HTTP ${res.status}`, 'error');
             }
+        } catch (e) {
+            showStatus(els.testStatus, `Connection Failed: ${e.message}`, 'error');
         }
-
-        showTestStatus('Connection failed. Check server, endpoint, and CORS.', 'error');
-    }
-
-    function bindEvents() {
-        els.providerCloud.addEventListener('change', () => setProviderUI('cloud'));
-        els.providerLocal.addEventListener('change', () => setProviderUI('local'));
-        els.saveBtn.addEventListener('click', saveSettings);
-        els.testBtn.addEventListener('click', testConnection);
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
-        els.providerCloud = getEl('provider-cloud');
-        els.providerLocal = getEl('provider-local');
-        els.localEndpoint = getEl('local-endpoint');
-        els.localServerType = getEl('local-server-type');
-        els.localModel = getEl('local-model');
-        els.saveBtn = getEl('save-settings');
-        els.testBtn = getEl('test-local');
-        els.saveStatus = getEl('save-status');
-        els.testStatus = getEl('test-status');
-        els.localSettings = getEl('local-settings');
+        els.modeLocal = getEl('mode-local');
+        els.modeCloud = getEl('mode-cloud');
 
-        await loadTheme();
+        els.sectionLocal = getEl('section-local');
+        els.sectionCloud = getEl('section-cloud');
+
+        els.keyGoogle = getEl('key-google');
+        els.keyOpenai = getEl('key-openai');
+        els.keyAnthropic = getEl('key-anthropic');
+        els.localEndpoint = getEl('local-endpoint');
+        els.modelSelect = getEl('model-select');
+        els.saveBtn = getEl('save-settings');
+        els.saveStatus = getEl('save-status');
+        els.testBtn = getEl('test-local');
+        els.testStatus = getEl('test-status');
+
+        els.saveBtn.addEventListener('click', saveSettings);
+        els.testBtn.addEventListener('click', testLocalConnection);
+
+        // Mode switching listeners
+        els.modeLocal.addEventListener('change', () => setModeUI('local'));
+        els.modeCloud.addEventListener('change', () => setModeUI('cloud'));
+
         await loadSettings();
-        bindEvents();
     });
 })();

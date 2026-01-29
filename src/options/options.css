@@ -192,3 +192,73 @@ pre {
 .hidden {
     display: none;
 }
+
+/* === NEW RADIO CARDS === */
+.hidden-section {
+    display: none;
+}
+
+.mode-selector .row {
+    align-items: stretch;
+}
+
+.radio-card {
+    flex: 1;
+    cursor: pointer;
+    position: relative;
+    display: block; /* Ensure it takes space */
+}
+
+/* Hide native input */
+.radio-card input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.card-content {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border-dim);
+    padding: 16px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: all 0.2s ease;
+}
+
+.radio-card:hover .card-content {
+    border-color: var(--terminal);
+    box-shadow: 0 0 10px rgba(255, 16, 240, 0.15);
+}
+
+.radio-card input:checked + .card-content {
+    background: rgba(45, 226, 230, 0.08); /* slight cyan tint */
+    border-color: var(--electric);
+    box-shadow: 0 0 15px rgba(255, 107, 53, 0.2);
+}
+
+.radio-card .icon {
+    font-size: 1.8rem;
+}
+
+.radio-card .text {
+    flex: 1;
+}
+
+.radio-card .title {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--terminal);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+}
+
+.radio-card .subtitle {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--accent);
+    line-height: 1.3;
+}
