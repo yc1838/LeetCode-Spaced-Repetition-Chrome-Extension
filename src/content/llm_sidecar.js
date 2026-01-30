@@ -385,47 +385,15 @@
         let contextMsg = "";
         let isRecurrence = false;
 
-        // --- SAFE OBSERVER: Verification Step ---
-        let verificationResult = "";
-        if (meta.test_input) {
-            try {
-                if (onProgress) onProgress("🛡️ Verifying with Safe Observer...");
-                // Determine API endpoint (default to localhost for now, user configurable later)
-                const verifyUrl = state.localEndpoint.replace('11434', '8000').replace('/api/chat', '') + '/verify';
-                // Hacky url construction, let's just use hardcoded localhost:8000 for this task as requested
-                const SAFE_OBSERVER_URL = 'http://localhost:8000/verify';
-
-                console.log(`[LLMSidecar] 🛡️ Verifying with Safe Observer at ${SAFE_OBSERVER_URL}...`);
-                const res = await fetch(SAFE_OBSERVER_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ code, test_input: meta.test_input })
-                });
-
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.result) {
-                        verificationResult = `\n\n--- 🛡️ SAFE OBSERVER EXECUTION LOGS ---\nThe code was executed in a sandbox against the failing input.\nOUTPUT:\n${data.result}\n--------------------------------------`;
-                        console.log("%c[LLMSidecar] 🛡️ SAFE OBSERVER CONNECTED", "color: #00ff00; font-weight: bold; font-size: 14px;");
-                        console.log("[LLMSidecar] Verified Output:", data.result);
-                    }
-                } else {
-                    console.warn(`[LLMSidecar] ⚠️ Safe Observer returned ${res.status} (Is the server running?)`);
-                    console.log("%c[LLMSidecar] ⚠️ SAFE OBSERVER FAILED - FALLING BACK TO STANDARD AI", "color: orange; font-weight: bold;");
-                }
-            } catch (e) {
-                console.warn("[LLMSidecar] Safe Observer connection failed:", e);
-                console.log("%c[LLMSidecar] ❌ SAFE OBSERVER UNREACHABLE (Is 'python api.py' running?) - FALLING BACK", "color: red; font-weight: bold;");
-            }
-        }
-
-        // --- RAG: Retrieval Step ---
+        // --- RAG: Retrieval Step (First) ---
+        // Check Knowledge Base first to avoid expensive re-verification of known issues.
+        // Call Site: llm_sidecar.js:400 (Approx)
         if (window.VectorDB) {
             try {
                 if (onProgress) onProgress("🧠 Searching Knowledge Base...");
                 // 1. Embed
                 // Only embed if we have an API key for the provider
-                if (hasAnyKey()) { // Simple check, embed() has more specific checks
+                if (hasAnyKey()) {
                     const vector = await embed(queryText);
 
                     // 2. Search
@@ -437,18 +405,70 @@
 
                         // 3. Decision Gate
                         if (topMatch.score > 0.92) {
-                            // High Confidence -> Return Cached Advice
+                            // High Confidence -> Return Cached Advice IMMEDIATELY
+                            // Call Site: llm_sidecar.js:420 (Approx logic gate)
                             console.log(`%c[AI Service] 🟢 LOCAL HIT (RAG) | Similarity: ${(topMatch.score * 100).toFixed(1)}%`, "color: #4ade80; font-weight: bold;");
+                            if (onProgress) onProgress("✨ Found existing solution!");
                             return `💡 **Recurring Mistake Detected**\n\nIt seems you've made a very similar mistake before (${(topMatch.score * 100).toFixed(0)}% match).\n\n**Previous Advice:**\n${topMatch.advice}`;
                         }
 
-                        // Medium Confidence -> Add Context
+                        // Medium Confidence -> Add Context but continue to verification
                         contextMsg = `\n\nCONTEXT: The user previously made a similar mistake (Similarity: ${topMatch.score.toFixed(2)}). Their previous advice was: "${topMatch.advice}". If this is the same issue, be brief and reference this.`;
                         isRecurrence = true;
                     }
                 }
             } catch (e) {
                 console.warn("[LLMSidecar] RAG step failed (continuing with standard analysis):", e);
+            }
+        }
+
+        // --- SAFE OBSERVER: Verification Step (Second) ---
+        // Only run if we didn't find a high-confidence match in RAG.
+        // Call Site: llm_sidecar.js:450 (Approx)
+        let verificationResult = "";
+        if (meta.test_input) {
+            try {
+                if (onProgress) onProgress("🛡️ Verifying with Safe Observer...");
+                // Determine API endpoint (default to localhost for now, user configurable later)
+                const verifyUrl = state.localEndpoint.replace('11434', '8000').replace('/api/chat', '') + '/autofix';
+                const SAFE_OBSERVER_URL = 'http://localhost:8000/autofix';
+
+                console.log(`[LLMSidecar] 🛡️ Requesting Auto-Fix at ${SAFE_OBSERVER_URL}...`);
+                const res = await fetch(SAFE_OBSERVER_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code, test_input: meta.test_input })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+
+                    if (data.verified) {
+                        console.log("%c[LLMSidecar] ✅ AUTO-FIX SUCCESS", "color: #00ff00; font-weight: bold;");
+
+                        // Append the verified fix to the advice context
+                        let fixDisplay = "";
+                        if (data.fixed_code) {
+                            fixDisplay = `\n\n**✅ VERIFIED FIX**\nI have generated and tested a fix for your code:\n\`\`\`python\n${data.fixed_code}\n\`\`\`\n`;
+                        } else if (data.explanation) {
+                            fixDisplay = `\n\n**✅ VERIFIED FIX**\nI generated a complex fix that passes the test. Strategy: ${data.explanation}\n`;
+                        }
+
+                        // We inject this into the prompt or return it as part of the analysis?
+                        // Let's modify the prompt to include it, so the final analysis references it.
+                        verificationResult = `\n\n--- 🛡️ SAFE OBSERVER LOGS ---\nAUTO-FIX STATUS: VERIFIED\n${fixDisplay}\nEXECUTION LOGS:\n${data.logs}\n--------------------------------------`;
+                    } else {
+                        console.warn("[LLMSidecar] ⚠️ Auto-Fix attempted but failed verification.");
+                        console.log("[LLMSidecar] 🔍 DEBUG: Verification Data:", data);
+                        verificationResult = `\n\n--- 🛡️ SAFE OBSERVER LOGS ---\nAuto-Fix Attempted: FAILED\nExecution Logs:\n${data.logs}\n--------------------------------------`;
+                    }
+                } else {
+                    console.warn(`[LLMSidecar] ⚠️ Safe Observer returned ${res.status}`);
+                    console.log("%c[LLMSidecar] ⚠️ SAFE OBSERVER FAILED", "color: orange; font-weight: bold;");
+                }
+            } catch (e) {
+                console.warn("[LLMSidecar] Safe Observer connection failed:", e);
+                console.log("%c[LLMSidecar] ❌ SAFE OBSERVER UNREACHABLE", "color: red; font-weight: bold;");
             }
         }
 
