@@ -311,10 +311,19 @@
 
                                     try {
                                         const errorDetails = data.runtime_error || data.compile_error || data.full_runtime_error || data.status_msg;
+
+                                        // Extract failing test case if available
+                                        const testInput = data.last_testcase || data.input_formatted || data.input || "";
+                                        console.log(`[LeetCode EasyRepeat] Failing Test Input: ${testInput}`);
+
                                         const analysis = await window.LLMSidecar.analyzeMistake(
                                             code,
                                             errorDetails,
-                                            { title: finalTitle, difficulty: difficulty },
+                                            {
+                                                title: finalTitle,
+                                                difficulty: difficulty,
+                                                test_input: testInput
+                                            },
                                             controller.signal
                                         );
 

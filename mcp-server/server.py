@@ -14,17 +14,11 @@ from e2b_code_interpreter import Sandbox
 async def verify_solution(code: str, test_input: str) -> str:
     """
     Executes the user's solution code against a specific test input.
-    
-    Args:
-        code (str): The full Python code of the solution class.
-        test_input (str): The input arguments for the function (e.g., "['4', '13', '5', '/', '+']").
-        
-    Returns:
-        str: The execution logs, stdout, and result.
     """
-    
+    return verify_solution_logic(code, test_input)
+
+def verify_solution_logic(code: str, test_input: str) -> str:
     # 1. Initialize E2B Sandbox (Synchronous context manager)
-    # We use the synchronous API inside the async tool wrapper, which is acceptable for this use case.
     with Sandbox.create() as sandbox:
         # 2. Prepare the verification script
         full_script = f"""
@@ -39,10 +33,25 @@ try:
     # the input is a list of strings "tokens".
     # We assume 'test_input' comes in as a valid python list string, e.g. "['2', '1', '+', '3', '*']"
     import ast
-    tokens = ast.literal_eval("{test_input}")
+    try:
+        tokens = ast.literal_eval("{test_input}")
+    except:
+        # Fallback if input is not a literal (e.g. raw string)
+        tokens = "{test_input}"
     
-    result = sol.evalRPN(tokens)
-    print(f"Result: {{result}}")
+    # Make it generic: Try to find the method to call?
+    # For now, we hardcode 'evalRPN' based on problem 150, but we should make this dynamic later.
+    # To make it dynamic, we inspect the Solution class.
+    import inspect
+    methods = [m for m in dir(sol) if not m.startswith('__')]
+    if methods:
+        method_name = methods[0] # Pick the first public method
+        method = getattr(sol, method_name)
+        result = method(tokens)
+        print(f"Result: {{result}}")
+    else:
+        print("Error: No method found in Solution class")
+
 except Exception as e:
     import traceback
     traceback.print_exc()

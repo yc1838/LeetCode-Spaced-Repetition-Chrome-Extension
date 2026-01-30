@@ -72,6 +72,39 @@ npm install
 
 ---
 
+## 🛡️ Safe Observer Setup (Local Backend)
+
+To enable the AI "Safe Observer" feature (real code execution verification), you must run the local verification server.
+
+1.  **Prerequisites**:
+    - Python 3.x installed
+    - Pip installed
+
+2.  **Installation**:
+    Navigate to the `mcp-server` directory and install dependencies:
+    ```bash
+    cd mcp-server
+    pip install -r requirements.txt
+    ```
+
+3.  **Configuration**:
+    Create a `.env` file in the `mcp-server` directory with your E2B API Key:
+    ```bash
+    E2B_API_KEY=your_api_key_here
+    ```
+
+4.  **Running the Server**:
+    Start the FastAPI server:
+    ```bash
+    python api.py
+    # Server running at http://0.0.0.0:8000
+    ```
+
+5.  **Usage**:
+    The Chrome Extension will automatically detect the running server at `http://localhost:8000` and use it to verify buggy solutions.
+
+---
+
 ## 🛠 Usage
 
 ### Automatic Tracking

@@ -385,6 +385,39 @@
         let contextMsg = "";
         let isRecurrence = false;
 
+        // --- SAFE OBSERVER: Verification Step ---
+        let verificationResult = "";
+        if (meta.test_input) {
+            try {
+                // Determine API endpoint (default to localhost for now, user configurable later)
+                const verifyUrl = state.localEndpoint.replace('11434', '8000').replace('/api/chat', '') + '/verify';
+                // Hacky url construction, let's just use hardcoded localhost:8000 for this task as requested
+                const SAFE_OBSERVER_URL = 'http://localhost:8000/verify';
+
+                console.log(`[LLMSidecar] 🛡️ Verifying with Safe Observer at ${SAFE_OBSERVER_URL}...`);
+                const res = await fetch(SAFE_OBSERVER_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code, test_input: meta.test_input })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.result) {
+                        verificationResult = `\n\n--- 🛡️ SAFE OBSERVER EXECUTION LOGS ---\nThe code was executed in a sandbox against the failing input.\nOUTPUT:\n${data.result}\n--------------------------------------`;
+                        console.log("%c[LLMSidecar] 🛡️ SAFE OBSERVER CONNECTED", "color: #00ff00; font-weight: bold; font-size: 14px;");
+                        console.log("[LLMSidecar] Verified Output:", data.result);
+                    }
+                } else {
+                    console.warn(`[LLMSidecar] ⚠️ Safe Observer returned ${res.status} (Is the server running?)`);
+                    console.log("%c[LLMSidecar] ⚠️ SAFE OBSERVER FAILED - FALLING BACK TO STANDARD AI", "color: orange; font-weight: bold;");
+                }
+            } catch (e) {
+                console.warn("[LLMSidecar] Safe Observer connection failed:", e);
+                console.log("%c[LLMSidecar] ❌ SAFE OBSERVER UNREACHABLE (Is 'python api.py' running?) - FALLING BACK", "color: red; font-weight: bold;");
+            }
+        }
+
         // --- RAG: Retrieval Step ---
         if (window.VectorDB) {
             try {
@@ -420,6 +453,7 @@
         const systemPrompt = [
             'You are a LeetCode mentor.',
             'Analyze the failure, point out the likely bug or misconception, and suggest a fix.',
+            'If "Safe Observer Verification" logs are provided, use them as GROUND TRUTH for what happened. Do not guess.',
             isRecurrence ? 'Be VERY CONCISE. The user has seen this before.' : 'Be concise and focus on actionable guidance.'
         ].join(' ');
 
@@ -427,8 +461,10 @@
             `Problem: ${title}`,
             `Difficulty: ${difficulty}`,
             `Error: ${errorDetails || 'Unknown Error'}`,
+            meta.test_input ? `Failing Test Input: ${meta.test_input}` : '',
             'Code:',
             code || '// No code captured',
+            verificationResult, // Include detailed execution logs
             contextMsg,
             '',
             'Classify the error into one of these SPECIFIC TAGS.',
