@@ -72,6 +72,15 @@
         if (isDuplicateDay) {
             if (problems[problemKey].difficulty === difficulty) {
                 console.log("[LeetCode EasyRepeat] Already logged today. Skipping storage update to prevent dups.");
+
+                // Still show toast to confirm to user
+                const existingNextDate = problems[problemKey].nextReviewDate || new Date().toISOString();
+                if (typeof showCompletionToast === 'function') {
+                    showCompletionToast(problemTitle, existingNextDate);
+                } else if (typeof global !== 'undefined' && global.showCompletionToast) {
+                    global.showCompletionToast(problemTitle, existingNextDate);
+                }
+
                 return { duplicate: true, problemTitle: problemTitle };
             }
             if (difficultySource === 'fallback' && problems[problemKey].difficulty) {

@@ -28,10 +28,18 @@
         anthropic: [
             { id: 'claude-3-5-sonnet-20240620', name: 'Claude 3.5 Sonnet', meta: 'BALANCED', provider: 'anthropic' },
             { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', meta: 'SPEED', provider: 'anthropic' },
+        ],
+        local: [
+            { id: 'llama3.1', name: 'Llama 3.1 (Recommended)', meta: 'LOCAL', provider: 'local' },
+            { id: 'mistral-nemo', name: 'Mistral Nemo', meta: 'LOCAL', provider: 'local' },
+            { id: 'llama3', name: 'Llama 3 (Legacy)', meta: 'LOCAL', provider: 'local' },
+            { id: 'mistral', name: 'Mistral (Original)', meta: 'LOCAL', provider: 'local' },
+            { id: 'deepseek-coder', name: 'DeepSeek Coder', meta: 'LOCAL', provider: 'local' }
         ]
     };
 
-    const ALL_MODELS = [...MODELS.gemini, ...MODELS.openai, ...MODELS.anthropic];
+    const ALL_MODELS = [...MODELS.gemini, ...MODELS.openai, ...MODELS.anthropic, ...MODELS.local];
+
     const CHAT_MODELS = ALL_MODELS.filter(m => m.type !== 'embedding');
 
     // --- Icons (SVG Strings) ---
@@ -45,12 +53,17 @@
     };
 
     // --- State ---
+    // --- State ---
     let state = {
         isOpen: false,
         position: { x: 20, y: 20 },
-        activeTab: 'settings', // 'settings' or 'chat'
+        activeTab: 'chat', // Only 'chat' remains as main tab
+
+        // Loaded from global settings
         keys: { google: '', openai: '', anthropic: '' },
-        selectedModelId: MODELS.gemini[0].id,
+        localEndpoint: 'http://localhost:11434',
+        selectedModelId: 'gemini-1.5-flash',
+
         messages: [],
         input: '',
         isLoading: false
@@ -62,32 +75,61 @@
     let isDragging = false;
 
     // --- Persistence ---
-    function loadState() {
+    async function loadState() {
         try {
-            const savedKeys = localStorage.getItem('llm_sidecar_keys');
-            if (savedKeys) state.keys = JSON.parse(savedKeys);
-
-            const savedModel = localStorage.getItem('llm_sidecar_model');
-            if (savedModel) state.selectedModelId = savedModel;
-
+            // Load position from local storage (UI state)
             const savedPos = localStorage.getItem('llm_sidecar_pos');
             if (savedPos) state.position = JSON.parse(savedPos);
+
+            // Load CONFIG from Chrome Storage (Global)
+            const globalSettings = await chrome.storage.local.get({
+                keys: { google: '', openai: '', anthropic: '' },
+                selectedModelId: 'gemini-1.5-flash',
+                localEndpoint: 'http://localhost:11434'
+            });
+
+            state.keys = globalSettings.keys;
+            state.selectedModelId = globalSettings.selectedModelId;
+            state.localEndpoint = globalSettings.localEndpoint;
+
+            console.log("[LLMSidecar] Configuration loaded:", state.selectedModelId);
+            render(); // Re-render with new config
         } catch (e) { console.error("Error loading state", e); }
     }
 
     function saveState() {
-        localStorage.setItem('llm_sidecar_keys', JSON.stringify(state.keys));
-        localStorage.setItem('llm_sidecar_model', state.selectedModelId);
+        // Only save UI state (position) locally
         localStorage.setItem('llm_sidecar_pos', JSON.stringify(state.position));
     }
+
+    // Listen for changes in options page
+    chrome.storage.onChanged.addListener((changes, namespace) => {
+        if (namespace === 'local') {
+            if (changes.keys) state.keys = changes.keys.newValue;
+            if (changes.selectedModelId) state.selectedModelId = changes.selectedModelId.newValue;
+            if (changes.localEndpoint) state.localEndpoint = changes.localEndpoint.newValue;
+            render();
+        }
+    });
 
     // --- API Logic ---
     async function callLLM(prompt, systemPrompt = '', signal = null) {
         const model = ALL_MODELS.find(m => m.id === state.selectedModelId);
-        const provider = model?.provider || 'google';
+
+        // Fallback: If model object not found in static list, try to guess provider from ID or Global State
+        // But for now, let's default to 'google' ONLY if we are sure.
+        let provider = model?.provider;
+
+        if (!provider) {
+            console.warn(`[LLMSidecar] Model ID '${state.selectedModelId}' not found in known definition. Defaulting to Google.`);
+            provider = 'google';
+        }
+
+        console.log(`[LLMSidecar] Calling LLM. Model: ${state.selectedModelId}, Provider: ${provider}`);
+
         const apiKey = state.keys[provider];
 
-        if (!apiKey) throw new Error(`Missing API Key for ${provider}`);
+        if (provider !== 'local' && !apiKey) throw new Error(`Missing API Key for ${provider} (Model: ${state.selectedModelId})`);
 
         const fetchOptions = {
             method: 'POST',
@@ -130,15 +172,112 @@
             if (data.error) throw new Error(data.error.message);
             return data.content?.[0]?.text;
         }
+
+        if (provider === 'local') {
+            const host = state.keys.local || 'http://localhost:11434';
+            const url = `${host}/api/chat`;
+
+            // Auto-map legacy 'llama3' to 'llama3.1' to prevent 404s
+            let finalModelId = state.selectedModelId;
+            if (finalModelId === 'llama3') finalModelId = 'llama3.1';
+
+            const options = {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: finalModelId,
+                    messages: [...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []), { role: 'user', content: prompt }],
+                    stream: false
+                })
+            };
+
+            // Use background proxy to bypass CORS
+            const response = await new Promise((resolve, reject) => {
+                try {
+                    console.log("[LLMSidecar] Sending proxyFetch message to background...");
+                    chrome.runtime.sendMessage({ action: 'proxyFetch', url, options }, (res) => {
+                        console.log("[LLMSidecar] Received response from background:", res);
+
+                        // Check for orphaned script or messaging error
+                        if (chrome.runtime.lastError) {
+                            console.error("[LLMSidecar] Runtime Error:", chrome.runtime.lastError);
+                            return reject(new Error("Extension Disconnected. Please REFRESH the LeetCode page."));
+                        }
+                        if (!res) {
+                            console.error("[LLMSidecar] Empty response.");
+                            return reject(new Error("No response from background proxy."));
+                        }
+
+                        if (res.success) {
+                            console.log(`[LLMSidecar] Proxy Response: ${res.status} ${res.ok ? 'OK' : 'FAIL'}`);
+
+                            // 1. Check for Origin Block (403)
+                            if (res.status === 403) {
+                                reject(new Error("Ollama Connection Refused (403). You likely need to set OLLAMA_ORIGINS=\"*\" when running Ollama."));
+                                return;
+                            }
+
+                            // 2. Check for empty body
+                            if (!res.data || res.data.trim() === "") {
+                                reject(new Error(`Ollama returned empty response (Status: ${res.status}). Check if model '${state.selectedModelId}' is installed ('ollama list') and loaded.`));
+                                return;
+                            }
+
+                            // 3. Try Parse
+                            try {
+                                console.log("[LLMSidecar] Raw Response Data:", res.data);
+                                const json = JSON.parse(res.data);
+                                if (!res.ok) {
+                                    // API returned specific error json
+                                    reject(new Error(json.error || `HTTP ${res.status} Error from Local Provider`));
+                                } else {
+                                    resolve(json);
+                                }
+                            } catch (e) {
+                                console.error("[LLMSidecar] JSON Parse Error. Raw data:", res.data);
+                                reject(new Error("Failed to parse JSON from Local LLM response."));
+                            }
+                        } else {
+                            // Network call failed (e.g. Connection Refused)
+                            reject(new Error(res.error || "Connection to Local LLM failed. Is Ollama running?"));
+                        }
+                    });
+                } catch (e) {
+                    console.error("[LLMSidecar] Exception in sendMessage:", e);
+                    reject(new Error("Extension Context Invalidated. Please REFRESH the page."));
+                }
+            });
+
+            if (response.error) throw new Error(response.error);
+            return response.message?.content;
+        }
     }
 
     async function embed(text) {
         // Determine provider based on selected model's provider
         const currentModel = ALL_MODELS.find(m => m.id === state.selectedModelId);
-        const provider = currentModel?.provider || 'google';
+        let provider = currentModel?.provider || 'google';
+
+        // Fallback: If current provider doesn't support embeddings (e.g. Anthropic), try others
+        const SUPPORTS_EMBED = ['google', 'openai', 'local'];
+        if (!SUPPORTS_EMBED.includes(provider)) {
+            // Priority: Local > OpenAI > Google
+            /* eslint-disable no-constant-condition */
+            if (true) { // Just a block to organize priority
+                // Check if we can use Local (needs host, default is localhost)
+                // Local is always "available" if we assume default host, but check if user set explicit key/host?
+                // Actually, just check if others are missing? No, let's prefer Local if others are missing.
+                // Let's check for keys.
+                if (state.keys.local) provider = 'local';
+                else if (state.keys.openai) provider = 'openai';
+                else if (state.keys.google) provider = 'google';
+                else provider = 'local'; // Default to local blindly if nothing else
+            }
+        }
+
         const apiKey = state.keys[provider];
 
-        if (!apiKey) throw new Error(`Missing API Key for ${provider} to generate embeddings`);
+        if (provider !== 'local' && !apiKey) throw new Error(`Missing API Key for ${provider} (or fallback) to generate embeddings`);
 
         if (provider === 'google') {
             const modelId = 'text-embedding-004';
@@ -176,6 +315,57 @@
 
         // Fallback or error for Anthropic (no embedding API yet publicly strictly standard)
         // Or mock it with local hashing if needed, but for now throw.
+        if (provider === 'local') {
+            const host = state.keys.local || 'http://localhost:11434';
+            const fetchProxied = (targetUrl, body) => {
+                return new Promise((resolve, reject) => {
+                    try {
+                        chrome.runtime.sendMessage({
+                            action: 'proxyFetch',
+                            url: targetUrl,
+                            options: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+                        }, res => {
+                            if (chrome.runtime.lastError) return reject(new Error("Extension Disconnected. Refresh Page."));
+                            if (!res) return reject(new Error("No response."));
+
+                            if (res.success) {
+                                // Network Success
+                                try {
+                                    const json = JSON.parse(res.data);
+                                    if (res.ok) resolve(json);
+                                    else reject(new Error(json.error || `HTTP ${res.status}`));
+                                } catch (e) { reject(new Error("Invalid JSON")); }
+                            } else {
+                                // Network Error
+                                reject(new Error(res.error));
+                            }
+                        });
+                    } catch (e) { reject(new Error("Extension Disconnected.")); }
+                });
+            };
+
+            try {
+                // Try mxbai first
+                const data = await fetchProxied(`${host}/api/embeddings`, {
+                    model: 'mxbai-embed-large',
+                    prompt: text
+                });
+                if (data.embedding) return data.embedding;
+            } catch (e) { /* ignore fallback */ }
+
+            // Fallback to selected model (with mapping)
+            let embedModelId = state.selectedModelId;
+            if (embedModelId === 'llama3') embedModelId = 'llama3.1';
+
+            const data2 = await fetchProxied(`${host}/api/embeddings`, {
+                model: embedModelId,
+                prompt: text
+            });
+
+            if (data2.error) throw new Error("Embedding Error: " + data2.error);
+            return data2.embedding;
+        }
+
         throw new Error("Embeddings not supported for this provider yet.");
     }
 
@@ -187,7 +377,7 @@
         return hasAnyKey();
     }
 
-    async function analyzeMistake(code, errorDetails, meta = {}, signal = null) {
+    async function analyzeMistake(code, errorDetails, meta = {}, signal = null, onProgress = null) {
         const title = meta.title || 'Unknown Problem';
         const difficulty = meta.difficulty || 'Unknown';
         const queryText = `Error: ${errorDetails}\nCode Snippet: ${code.substring(0, 300)}`; // Truncate for embedding
@@ -195,12 +385,15 @@
         let contextMsg = "";
         let isRecurrence = false;
 
-        // --- RAG: Retrieval Step ---
+        // --- RAG: Retrieval Step (First) ---
+        // Check Knowledge Base first to avoid expensive re-verification of known issues.
+        // Call Site: llm_sidecar.js:400 (Approx)
         if (window.VectorDB) {
             try {
+                if (onProgress) onProgress("🧠 Searching Knowledge Base...");
                 // 1. Embed
                 // Only embed if we have an API key for the provider
-                if (hasAnyKey()) { // Simple check, embed() has more specific checks
+                if (hasAnyKey()) {
                     const vector = await embed(queryText);
 
                     // 2. Search
@@ -212,12 +405,14 @@
 
                         // 3. Decision Gate
                         if (topMatch.score > 0.92) {
-                            // High Confidence -> Return Cached Advice
+                            // High Confidence -> Return Cached Advice IMMEDIATELY
+                            // Call Site: llm_sidecar.js:420 (Approx logic gate)
                             console.log(`%c[AI Service] 🟢 LOCAL HIT (RAG) | Similarity: ${(topMatch.score * 100).toFixed(1)}%`, "color: #4ade80; font-weight: bold;");
+                            if (onProgress) onProgress("✨ Found existing solution!");
                             return `💡 **Recurring Mistake Detected**\n\nIt seems you've made a very similar mistake before (${(topMatch.score * 100).toFixed(0)}% match).\n\n**Previous Advice:**\n${topMatch.advice}`;
                         }
 
-                        // Medium Confidence -> Add Context
+                        // Medium Confidence -> Add Context but continue to verification
                         contextMsg = `\n\nCONTEXT: The user previously made a similar mistake (Similarity: ${topMatch.score.toFixed(2)}). Their previous advice was: "${topMatch.advice}". If this is the same issue, be brief and reference this.`;
                         isRecurrence = true;
                     }
@@ -227,9 +422,60 @@
             }
         }
 
+        // --- SAFE OBSERVER: Verification Step (Second) ---
+        // Only run if we didn't find a high-confidence match in RAG.
+        // Call Site: llm_sidecar.js:450 (Approx)
+        let verificationResult = "";
+        if (meta.test_input) {
+            try {
+                if (onProgress) onProgress("🛡️ Verifying with Safe Observer...");
+                // Determine API endpoint (default to localhost for now, user configurable later)
+                const verifyUrl = state.localEndpoint.replace('11434', '8000').replace('/api/chat', '') + '/autofix';
+                const SAFE_OBSERVER_URL = 'http://localhost:8000/autofix';
+
+                console.log(`[LLMSidecar] 🛡️ Requesting Auto-Fix at ${SAFE_OBSERVER_URL}...`);
+                const res = await fetch(SAFE_OBSERVER_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code, test_input: meta.test_input })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+
+                    if (data.verified) {
+                        console.log("%c[LLMSidecar] ✅ AUTO-FIX SUCCESS", "color: #00ff00; font-weight: bold;");
+
+                        // Append the verified fix to the advice context
+                        let fixDisplay = "";
+                        if (data.fixed_code) {
+                            fixDisplay = `\n\n**✅ VERIFIED FIX**\nI have generated and tested a fix for your code:\n\`\`\`python\n${data.fixed_code}\n\`\`\`\n`;
+                        } else if (data.explanation) {
+                            fixDisplay = `\n\n**✅ VERIFIED FIX**\nI generated a complex fix that passes the test. Strategy: ${data.explanation}\n`;
+                        }
+
+                        // We inject this into the prompt or return it as part of the analysis?
+                        // Let's modify the prompt to include it, so the final analysis references it.
+                        verificationResult = `\n\n--- 🛡️ SAFE OBSERVER LOGS ---\nAUTO-FIX STATUS: VERIFIED\n${fixDisplay}\nEXECUTION LOGS:\n${data.logs}\n--------------------------------------`;
+                    } else {
+                        console.warn("[LLMSidecar] ⚠️ Auto-Fix attempted but failed verification.");
+                        console.log("[LLMSidecar] 🔍 DEBUG: Verification Data:", data);
+                        verificationResult = `\n\n--- 🛡️ SAFE OBSERVER LOGS ---\nAuto-Fix Attempted: FAILED\nExecution Logs:\n${data.logs}\n--------------------------------------`;
+                    }
+                } else {
+                    console.warn(`[LLMSidecar] ⚠️ Safe Observer returned ${res.status}`);
+                    console.log("%c[LLMSidecar] ⚠️ SAFE OBSERVER FAILED", "color: orange; font-weight: bold;");
+                }
+            } catch (e) {
+                console.warn("[LLMSidecar] Safe Observer connection failed:", e);
+                console.log("%c[LLMSidecar] ❌ SAFE OBSERVER UNREACHABLE", "color: red; font-weight: bold;");
+            }
+        }
+
         const systemPrompt = [
             'You are a LeetCode mentor.',
             'Analyze the failure, point out the likely bug or misconception, and suggest a fix.',
+            'If "Safe Observer Verification" logs are provided, use them as GROUND TRUTH for what happened. Do not guess.',
             isRecurrence ? 'Be VERY CONCISE. The user has seen this before.' : 'Be concise and focus on actionable guidance.'
         ].join(' ');
 
@@ -237,8 +483,10 @@
             `Problem: ${title}`,
             `Difficulty: ${difficulty}`,
             `Error: ${errorDetails || 'Unknown Error'}`,
+            meta.test_input ? `Failing Test Input: ${meta.test_input}` : '',
             'Code:',
             code || '// No code captured',
+            verificationResult, // Include detailed execution logs
             contextMsg,
             '',
             'Classify the error into one of these SPECIFIC TAGS.',
@@ -290,42 +538,56 @@
             '- NEGATIVE_SHIFT (ValueError: negative shift count)',
             '- BITWISE_PRECEDENCE (Forgot parentheses around & |)',
             '',
-            'Respond with this JSON format only:',
+            'Respond with this JSON format only (NO MARKDOWN, NO ```json WRAPPERS, JUST THE RAW JSON):',
             '{',
             '  "root_cause": "1 sentence explanation",',
             '  "fix": "Code fix or strategy",',
             '  "family": "PYTHON" or "LOGIC" or "ALGO" or "STACK" or "BIT_MANIPULATION",',
             '  "specific_tag": "TAG_FROM_LIST (or NEW_TAG if distinct)",',
-            '  "is_recurring": false',
+            '  "is_recurring": false,',
+            '  "micro_skill": "Specific sub-skill missing (e.g. Loop Invariants, Boundary Conditions)",',
+            '  "anti_pattern": "Name of the bad habit (e.g. Off-by-one, Premature Optimization)",',
+            '  "rationale": "Why this is an error (conceptual reason)"',
             '}'
         ].join('\n');
 
         const activeModel = ALL_MODELS.find(m => m.id === state.selectedModelId);
         console.log(`%c[AI Service] ☁️ CLOUD REQUEST | Model: ${activeModel?.name || state.selectedModelId} (${activeModel?.provider})`, "color: #38bdf8; font-weight: bold;");
 
+        if (onProgress) onProgress("🤖 Consulting AI Model...");
         let advice = await callLLM(prompt, systemPrompt, signal);
 
         // 1. Parse JSON Response
         let parsed = null;
         try {
-            // Remove markdown code blocks if present
-            const cleanJson = advice.replace(/```json/g, '').replace(/```/g, '').trim();
-            parsed = JSON.parse(cleanJson);
+            // Robust Parsing: Extract JSON substring first
+            const firstBrace = advice.indexOf('{');
+            const lastBrace = advice.lastIndexOf('}');
+
+            if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                const jsonCandidate = advice.substring(firstBrace, lastBrace + 1);
+                parsed = JSON.parse(jsonCandidate);
+            } else {
+                throw new Error("No JSON object found in response");
+            }
         } catch (e) {
             console.warn("[LLMSidecar] JSON Parse Failed. Fallback to raw text.", e);
             // Attempt fallback extraction for legacy/malformed responses
             const catMatch = advice.match(/Category:?\s*([A-Z_]+)/i);
             parsed = {
-                root_cause: advice,
-                fix: "See explanation.",
+                root_cause: advice, // Use the full text as explanation
+                fix: "See detailed analysis.",
                 family: catMatch ? catMatch[1].toUpperCase() : 'UNCATEGORIZED',
                 specific_tag: 'GENERAL',
-                is_recurring: false
+                is_recurring: false,
+                micro_skill: 'General Problem Solving',
+                anti_pattern: 'Unknown',
+                rationale: 'Parsing failed'
             };
         }
 
         // 2. Format for Display (Markdown)
-        const displayAdvice = `### 🤖 Analysis: ${parsed.specific_tag}\n\n**Cause:** ${parsed.root_cause}\n\n**Fix:** ${parsed.fix}\n\n*(Family: ${parsed.family})*`;
+        const displayAdvice = `### 🤖 Analysis: ${parsed.anti_pattern || parsed.specific_tag}\n\n**Cause:** ${parsed.root_cause}\n\n**Fix:** ${parsed.fix}\n\n*(Skill: ${parsed.micro_skill || 'General'})*`;
 
         // 3. RAG Indexing
         if (window.VectorDB) {
@@ -341,10 +603,14 @@
                         category: parsed.family,   // Legacy support
                         family: parsed.family,
                         tag: parsed.specific_tag,
+                        micro_skill: parsed.micro_skill,
+                        anti_pattern: parsed.anti_pattern,
+                        rationale: parsed.rationale,
                         timestamp: Date.now()
                     }
                 });
                 console.log(`[LLMSidecar] Saved mistake: ${parsed.family}/${parsed.specific_tag}`);
+                console.log(`[LLMSidecar] Deep Metadata: ${parsed.micro_skill} / ${parsed.anti_pattern}`);
             } catch (e) {
                 console.warn("[LLMSidecar] Failed to index mistake:", e);
             }
@@ -359,8 +625,8 @@
 
         try {
             const records = await window.VectorDB.getAllWithKeys();
-            // multiple legacy formats: no tag, or tag is GENERAL
-            const legacy = records.filter(r => !r.metadata.tag || r.metadata.tag === 'GENERAL');
+            // multiple legacy formats: no tag, or tag is GENERAL, OR missing micro_skill
+            const legacy = records.filter(r => !r.metadata.micro_skill || r.metadata.micro_skill === 'Unknown');
 
             if (legacy.length === 0) {
                 if (onProgress) onProgress("No legacy records found.");
@@ -368,7 +634,7 @@
             }
 
             let completed = 0;
-            if (onProgress) onProgress(`Found ${legacy.length} legacy records. Starting...`);
+            if (onProgress) onProgress(`Found ${legacy.length} legacy records without Deep Tags. Starting...`);
 
             for (const r of legacy) {
                 // Extract original context
@@ -378,7 +644,6 @@
                 const code = parts[1] ? parts[1].trim() : '';
 
                 // Re-use the SAME prompt structure as analyzeMistake to get granular tags
-                // We create a minimal version of the prompt here for the specific classification task
                 const prompt = [
                     `Problem: ${r.metadata.title || 'Unknown'}`,
                     `Error: ${errorDetails}`,
@@ -392,7 +657,12 @@
                     '--- DATA ---',
                     '- INT_OVERFLOW, TYPE_MISMATCH',
                     '',
-                    'Respond {"family": "...", "specific_tag": "..."} only.'
+                    'Respond with JSON:',
+                    '{',
+                    '  "family": "...", "specific_tag": "...",',
+                    '  "micro_skill": "One specific skill missing",',
+                    '  "anti_pattern": "Name of the bad habit"',
+                    '}'
                 ].join('\n');
 
                 try {
@@ -404,10 +674,13 @@
 
                     if (parsed.specific_tag && parsed.family) {
                         // Update DB
-                        const newMeta = { ...r.metadata, family: parsed.family, tag: parsed.specific_tag };
-                        // Update display text too to reflect new tag? Maybe just metadata is enough for stats.
-                        // Let's keep advice as is or append a note? Users requested "fix data", primarily for stats.
-                        // We will just update metadata for the stats to be correct.
+                        const newMeta = {
+                            ...r.metadata,
+                            family: parsed.family,
+                            tag: parsed.specific_tag,
+                            micro_skill: parsed.micro_skill || 'General',
+                            anti_pattern: parsed.anti_pattern || 'Unknown'
+                        };
                         await window.VectorDB.update(r.id, { metadata: newMeta });
                     }
                 } catch (e) {
@@ -498,7 +771,7 @@
 
         // Tabs
         const tabs = createElement('div', 'llm-tabs no-drag');
-        const configTab = createElement('button', `llm-tab-btn ${state.activeTab === 'settings' ? 'active' : ''}`, '// CONFIG');
+        const configTab = createElement('button', `llm-tab-btn ${state.activeTab === 'settings' ? 'active' : ''}`, '// SYSTEM');
         configTab.onclick = () => { state.activeTab = 'settings'; render(); };
         const chatTab = createElement('button', `llm-tab-btn ${state.activeTab === 'chat' ? 'active' : ''}`, '// TERMINAL');
         chatTab.onclick = () => { state.activeTab = 'chat'; render(); };
@@ -507,7 +780,7 @@
         content.appendChild(tabs);
 
         // Views
-        if (state.activeTab === 'settings') renderSettings(content);
+        if (state.activeTab === 'settings') renderStatus(content);
         else renderChat(content);
 
         // Footer
@@ -519,41 +792,34 @@
         container.appendChild(content);
     }
 
-    function renderSettings(parent) {
+    function renderStatus(parent) {
         const area = createElement('div', 'llm-settings-area llm-custom-scroll no-drag');
 
-        // Selector
-        area.appendChild(createElement('span', 'llm-section-label', 'SELECT SUBSTRATE (MODEL)'));
-        const list = createElement('div', 'llm-model-list');
-        ALL_MODELS.filter(m => m.type !== 'embedding').forEach(m => {
-            const item = createElement('div', `llm-model-item ${state.selectedModelId === m.id ? 'selected' : ''}`);
-            item.onclick = () => { state.selectedModelId = m.id; saveState(); render(); };
-            item.innerHTML = `<span class="llm-model-item-name">${m.name}</span><span class="llm-model-item-meta">${m.meta}</span>`;
-            list.appendChild(item);
-        });
-        area.appendChild(list);
+        // Current Configuration (Read Only)
+        area.appendChild(createElement('span', 'llm-section-label', 'ACTIVE CONFIGURATION'));
+        const modelName = ALL_MODELS.find(m => m.id === state.selectedModelId)?.name || state.selectedModelId;
 
-        // Keys
-        area.appendChild(createElement('span', 'llm-section-label', 'ACCESS KEYS'));
-        ['google', 'openai', 'anthropic'].forEach(p => {
-            const group = createElement('div', 'llm-key-group');
-            group.innerHTML = `<div class="llm-key-icon">${ICONS.key}</div>`;
-            const input = createElement('input', 'llm-key-input');
-            input.type = 'password';
-            input.placeholder = `ENTER ${p.toUpperCase()} KEY`;
-            input.value = state.keys[p] || '';
-            input.oninput = (e) => { state.keys[p] = e.target.value; saveState(); }; // Auto save
-            input.onblur = () => { render(); } // Re-render to update status dots
-            group.appendChild(input);
-            area.appendChild(group);
-        });
+        const configCard = createElement('div', 'llm-config-card');
+        configCard.style.cssText = "background: rgba(45, 226, 230, 0.05); padding: 10px; border: 1px solid var(--color-cyan-dim); margin-bottom: 15px;";
+        configCard.innerHTML = `
+            <div style="font-size:0.8rem; color:var(--color-cyan); margin-bottom:5px;">MODEL: <b style="color:white;">${modelName}</b></div>
+            <div style="font-size:0.8rem; color:var(--color-cyan);">PROVIDER: <b style="color:white;">${state.keys.local ? 'LOCAL/HYBRID' : 'CLOUD'}</b></div>
+        `;
+        area.appendChild(configCard);
+
+        // Link to Options
+        const optionsBtn = createElement('button', 'llm-action-btn', '⚙️ OPEN FULL SETTINGS');
+        optionsBtn.onclick = () => {
+            // Use chrome runtime to open options
+            chrome.runtime.sendMessage({ action: "openOptions" });
+        };
+        area.appendChild(optionsBtn);
 
         // Migration Tool
         area.appendChild(createElement('div', 'llm-spacer', ''));
+        area.appendChild(createElement('span', 'llm-section-label', 'MAINTENANCE TOOLS'));
+
         const fixBtn = createElement('button', 'llm-action-btn', '⚡ FIX LEGACY DATA');
-        fixBtn.style.width = '100%';
-        fixBtn.style.marginTop = '15px';
-        fixBtn.style.justifyContent = 'center';
         fixBtn.onclick = async () => {
             fixBtn.disabled = true;
             fixBtn.innerText = "Scanning...";

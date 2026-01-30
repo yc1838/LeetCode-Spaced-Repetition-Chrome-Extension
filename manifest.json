@@ -19,6 +19,9 @@
         "default_popup": "src/popup/popup.html",
         "default_title": "LeetCode EasyRepeat"
     },
+    "background": {
+        "service_worker": "src/background.js"
+    },
     "content_scripts": [
         {
             "matches": [

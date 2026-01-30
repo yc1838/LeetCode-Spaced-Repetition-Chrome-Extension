@@ -72,6 +72,39 @@ npm install
 
 ---
 
+## 🛡️ Safe Observer Setup (Local Backend)
+
+To enable the AI "Safe Observer" feature (real code execution verification), you must run the local verification server.
+
+1.  **Prerequisites**:
+    - Python 3.x installed
+    - Pip installed
+
+2.  **Installation**:
+    Navigate to the `mcp-server` directory and install dependencies:
+    ```bash
+    cd mcp-server
+    pip install -r requirements.txt
+    ```
+
+3.  **Configuration**:
+    Create a `.env` file in the `mcp-server` directory with your E2B API Key:
+    ```bash
+    E2B_API_KEY=your_api_key_here
+    ```
+
+4.  **Running the Server**:
+    Start the FastAPI server:
+    ```bash
+    python api.py
+    # Server running at http://0.0.0.0:8000
+    ```
+
+5.  **Usage**:
+    The Chrome Extension will automatically detect the running server at `http://localhost:8000` and use it to verify buggy solutions.
+
+---
+
 ## 🛠 Usage
 
 ### Automatic Tracking
@@ -158,7 +191,7 @@ graph TD
 
     User -- Solve/Submit --> LCPage
 
-    subgraph Extension["Chrome Extension (Manifest V3)"]
+    subgraph Extension["Chrome Extension V3"]
         subgraph Content["Content Scripts (leetcode.com)"]
             Orchestrator[content.js<br/>orchestrator]
             DOM[leetcode_dom.js<br/>DOM parsing + difficulty cache]
@@ -189,6 +222,12 @@ graph TD
         Embed[Embedding APIs<br/>Gemini / OpenAI]
     end
 
+    subgraph MCP["Local Backend (Safe Observer)"]
+        FastAPI[api.py<br/>FastAPI Server]
+        Ollama[Ollama<br/>Llama 3]
+        Sandbox[E2B Sandbox<br/>Execution]
+    end
+
     LCPage --> Orchestrator
     Orchestrator --> DOM
     Orchestrator --> API
@@ -207,6 +246,14 @@ graph TD
     LLM <--> VDB
     VDB --> CS
     LLM --> LS
+    
+    %% Safe Observer Loop
+    LLM -- /autofix --> FastAPI
+    FastAPI -- Plan Fix --> Ollama
+    Ollama -- Candidate Code --> FastAPI
+    FastAPI -- Verify --> Sandbox
+    Sandbox -- Logs --> FastAPI
+    FastAPI -- Verified Fix --> LLM
 
     User -- Opens Popup --> PopupJS
     PopupJS --> StorageMod
@@ -218,6 +265,53 @@ graph TD
 ### AI Mistake Analysis Architecture
 
 ![AI Mistake Analysis Architecture](assets/architecture_diagram.png)
+
+### AI Analysis Workflow Strategy
+
+The following sequence diagram details the decision-making process for analyzing user mistakes, optimizing for speed and cost by prioritizing cached solutions (RAG) before attempting expensive verification (Auto-Fix).
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Sidecar as LLM Sidecar<br/>(llm_sidecar.js)
+    participant RAG as VectorDB<br/>(vector_db.js)
+    participant API as MCP Server<br/>(api.py)
+    participant Sandbox as E2B Sandbox<br/>(server.py)
+    participant LLM as AI Model<br/>(Cloud/Local)
+
+    User->>Sidecar: 1. Submits Wrong Answer
+    Note over Sidecar: llm_sidecar.js:385
+
+    rect rgb(20, 20, 30)
+        note right of Sidecar: Phase 1: Knowledge Retrieval
+        Sidecar->>RAG: 2. Search Similar Mistakes
+        RAG-->>Sidecar: Return Matches (Score 0-1)
+        Note over Sidecar: llm_sidecar.js:400
+    end
+
+    alt High Confidence Match (> 92%)
+        Sidecar->>User: 3a. Return Cached Advice IMMEDIATE
+        Note over Sidecar, User: Skip Auto-Fix & LLM Call
+    else Low Confidence
+        rect rgb(40, 20, 20)
+            note right of Sidecar: Phase 2: Safe Observer (Auto-Fix)
+            Sidecar->>API: 3b. Request Auto-Fix (/autofix)
+            Note over Sidecar: llm_sidecar.js:450
+            API->>LLM: Generate Candidate Fix
+            LLM-->>API: Python Code
+            API->>Sandbox: Verify Fix (server.py)
+            Sandbox-->>API: Execution Logs
+            API-->>Sidecar: Verified Code + Logs
+        end
+
+        rect rgb(20, 20, 40)
+            note right of Sidecar: Phase 3: Final Analysis
+            Sidecar->>LLM: 4. Analyze with Context (RAG + Verification)
+            LLM-->>Sidecar: Final Explanation JSON
+            Sidecar->>User: 5. Display Analysis
+        end
+    end
+```
 
 ### Storage
 Uses Chrome's `chrome.storage.local` API to persist:

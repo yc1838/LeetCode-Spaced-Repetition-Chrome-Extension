@@ -156,11 +156,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  * Then when we need it during submission handling, we use the cached value.
  */
 
-// DOM logic moved to leetcode_dom.js (including difficultyCache)
+// DOM logic moved to leetcode_dom.js
 // Initialize tracking
-if (typeof startDifficultyTracking === 'function') {
-    startDifficultyTracking();
-}
+// (startDifficultyTracking removed as it is now redundant with API Difficulty Fetching)
 
 
 // --- Robust Detection Logic ---

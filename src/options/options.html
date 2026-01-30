@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LeetCode EasyRepeat - AI Setup</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;600&family=JetBrains+Mono:wght@300;400;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;600&family=JetBrains+Mono:wght@300;400;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="options.css">
 </head>
+
 <body>
     <div class="page">
         <header class="hero">
@@ -17,47 +21,80 @@
             <div class="hero-note">Configure local or cloud AI providers and verify connections.</div>
         </header>
 
-        <section class="card">
-            <h2>Provider</h2>
-            <div class="row">
-                <label class="radio">
-                    <input type="radio" name="provider" value="cloud" id="provider-cloud">
-                    <span>Cloud (Gemini / OpenAI)</span>
+        <section class="card mode-selector">
+            <h2>Choose Intelligence Source</h2>
+            <div class="row" style="gap: 20px;">
+                <label class="radio-card">
+                    <input type="radio" name="provider-mode" value="local" id="mode-local">
+                    <div class="card-content">
+                        <span class="icon">🏠</span>
+                        <div class="text">
+                            <span class="title">Local (Recommended)</span>
+                            <span class="subtitle">Private, Free, Offline. Requires Ollama.</span>
+                        </div>
+                    </div>
                 </label>
-                <label class="radio">
-                    <input type="radio" name="provider" value="local" id="provider-local">
-                    <span>Local HTTP (Ollama / LM Studio)</span>
+                <label class="radio-card">
+                    <input type="radio" name="provider-mode" value="cloud" id="mode-cloud">
+                    <div class="card-content">
+                        <span class="icon">☁️</span>
+                        <div class="text">
+                            <span class="title">Cloud API</span>
+                            <span class="subtitle">Higher Logic, Paid. Requires API Keys.</span>
+                        </div>
+                    </div>
                 </label>
             </div>
         </section>
 
-        <section class="card" id="local-settings">
-            <h2>Local Model</h2>
+        <section class="card hidden-section" id="section-cloud">
+            <h2>Cloud Access Keys</h2>
             <div class="grid">
                 <div class="field">
-                    <label for="local-endpoint">Endpoint</label>
+                    <label for="key-google">Google Gemini API Key</label>
+                    <input id="key-google" type="password" placeholder="AIzaSy...">
+                </div>
+                <div class="field">
+                    <label for="key-openai">OpenAI API Key</label>
+                    <input id="key-openai" type="password" placeholder="sk-...">
+                </div>
+                <div class="field">
+                    <label for="key-anthropic">Anthropic API Key</label>
+                    <input id="key-anthropic" type="password" placeholder="sk-ant-...">
+                </div>
+            </div>
+        </section>
+
+        <section class="card hidden-section" id="section-local">
+            <h2>Local LLM Setup</h2>
+            <p class="hint">Use Ollama or LM Studio to run models locally.</p>
+            <div class="grid">
+                <div class="field">
+                    <label for="local-endpoint">Local Endpoint</label>
                     <input id="local-endpoint" type="text" placeholder="http://localhost:11434">
                 </div>
-                <div class="field">
-                    <label for="local-server-type">Server Type</label>
-                    <select id="local-server-type">
-                        <option value="auto">Auto-detect</option>
-                        <option value="ollama">Ollama</option>
-                        <option value="openai">OpenAI-compatible</option>
-                    </select>
-                </div>
-                <div class="field">
-                    <label for="local-model">Model (optional)</label>
-                    <input id="local-model" type="text" placeholder="llama3.1">
-                </div>
+            </div>
+            <div class="actions" style="margin-top:10px;">
+                <button id="test-local" class="btn">Test Connection</button>
+                <span id="test-status" class="status-text"></span>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Active Model</h2>
+            <div class="field">
+                <label for="model-select">Select the model to use for analysis & chat:</label>
+                <select id="model-select" class="full-width">
+                    <!-- Populated by JS -->
+                </select>
             </div>
             <div class="actions">
-                <button id="test-local" class="btn">Test connection</button>
-                <button id="save-settings" class="btn secondary">Save settings</button>
+                <button id="save-settings" class="btn primary">Save All Settings</button>
                 <span id="save-status" class="status-text"></span>
             </div>
-            <div id="test-status" class="status"></div>
         </section>
+
+
 
         <section class="card">
             <h2>Quick Setup (Local HTTP)</h2>
@@ -84,4 +121,5 @@ Use the server URL shown in the UI (usually http://localhost:1234)</code></pre>
     <script src="../shared/config.js"></script>
     <script src="options.js"></script>
 </body>
+
 </html>

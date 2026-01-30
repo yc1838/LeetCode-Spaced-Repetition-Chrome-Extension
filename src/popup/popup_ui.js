@@ -257,33 +257,48 @@
     }
 
     // Renders the rich timeline (History + Procrastination + Future)
+    // This function generates the visual grid of squares representing the problem's lifecycle.
     function renderMiniHeatmap(problem, gridId) {
         const grid = document.getElementById(gridId);
         if (!grid) return;
         grid.innerHTML = '';
 
-        // Helper for consistent YYYY-MM-DD formatting
+        // Helper for consistent YYYY-MM-DD formatting to match keys in our logic
         const toDateStr = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 
         // 1. Prepare History & Replay State
+        // We look at the 'history' array in the problem object to see past reviews.
         const history = (problem.history || []).map(h => ({
             date: new Date(h.date),
-            dateStr: toDateStr(new Date(h.date)), // YYYY-MM-DD
-            rating: h.rating || 3 // Default 'Good' if legacy
-        })).sort((a, b) => a.date - b.date);
+            dateStr: toDateStr(new Date(h.date)), // Normalize to string for easy comparison
+            rating: h.rating || 3 // Default to 'Good' (3) if no rating found (legacy data compliance)
+        })).sort((a, b) => a.date - b.date); // Ensure history is sorted chronologically
 
+        // Get "Today" to use as a reference point for what is Past vs Future
         const today = typeof window.getCurrentDate === 'function' ? window.getCurrentDate() : new Date();
-        today.setHours(0, 0, 0, 0);
+        today.setHours(0, 0, 0, 0); // Normalize time to midnight so we strictly compare Dates
         const todayStr = toDateStr(today);
 
-        // Determine Timeline Start: First history date or Today
+        // --- CORE LOGIC: DETERMINING HEATMAP START DATE ---
+        // distinct behaviors noticed by users are defined here:
+        // Case A: User has done this problem before (history.length > 0).
+        //         Start Date = The date of the VERY FIRST review.
+        //         This gives the user context on how long they've been practicing this problem.
+        // Case B: User has NEVER done this problem (or history is empty).
+        //         Start Date = Today.
+        //         This starts the timeline from "Now" since there is no past to show.
         let startDate = history.length > 0 ? new Date(history[0].date) : new Date(today);
         startDate.setHours(0, 0, 0, 0); // Normalize to midnight
 
-        // Determine Timeline End: max(Today + 30d, NextReview + 7d)
+        // --- CORE LOGIC: DETERMINING HEATMAP END DATE ---
+        // We want to show a reasonable window into the future.
+        // Base Rule: Show at least 30 days from Today.
         let endLimit = new Date(today);
         endLimit.setDate(today.getDate() + 30);
 
+        // Exception Rule: If the Next Review is very far away (e.g., 6 months later),
+        // we extend the view to include that review + 7 days buffer,
+        // so the user can actually see their next scheduled milestone.
         let nextReviewDate = new Date(problem.nextReviewDate);
         if (nextReviewDate > endLimit) {
             endLimit = new Date(nextReviewDate);
@@ -295,43 +310,50 @@
         // Detecting "missed" days in the past with FSRS is complex without full state reconstruction.
         // For now, we only check the gap from the *last* known due date (the stored one) to Today.
 
-        // Sets to track status of specific dates
-        const doneDates = new Set(history.map(h => h.dateStr));
-        const missedDates = new Set();
+        // Sets to track status of specific dates for O(1) lookup during rendering
+        const doneDates = new Set(history.map(h => h.dateStr)); // Dates where explicit action was taken
+        const missedDates = new Set(); // Dates where action SHOULD have been taken but wasn't
 
         // (Replay Loop removed for FSRS stability - can be re-added if we implement full history simulation)
         // history.forEach(...) 
 
         // --- CHECK CURRENT PROCRASTINATION GAP ---
-        // Reliably calculate gap from the STORED Next Review Date (Next Due) -> Today
+        // Logic: Compare the stored "Next Review Date" against "Today".
+        // If Next Review Date is in the PAST, it means the user is late.
+        // We mark every day from that Due Date until Yesterday as "Missed".
         const nextDueObj = new Date(problem.nextReviewDate);
         nextDueObj.setHours(0, 0, 0, 0);
 
-        // Ensure we don't count today as "missed" yet (it's just Due)
+        // Ensure we don't count today as "missed" yet (it's simply Due today)
         if (nextDueObj < today) {
             let curr = new Date(nextDueObj);
+            // Loop from Due Date up to (but not including) Today
             while (curr < today) {
                 const currStr = toDateStr(curr);
+                // Only mark as missed if the user didn't actually do it on that day (edge case prevention)
                 if (!doneDates.has(currStr)) {
                     missedDates.add(currStr);
                 }
-                curr.setDate(curr.getDate() + 1);
+                curr.setDate(curr.getDate() + 1); // Advance one day
             }
         }
 
         // --- FUTURE PROJECTION ---
+        // We want to show the user when they will need to review this again in the future.
         const futureProjectedDates = new Set();
 
         // 1. Always include the stored Next Review Date if it's in the future
+        // This is the most critical date to show.
         if (nextDueObj > today) {
             futureProjectedDates.add(toDateStr(nextDueObj));
         }
 
         // 2. Project subsequent reviews STARTING from the Next Review Date (or Today if overdue)
+        // This simulates: "If I do the review on time, when is the NEXT one after that?"
         const simulationStartDate = (nextDueObj > today) ? nextDueObj : today;
 
         if (typeof fsrs !== 'undefined' && fsrs.projectScheduleFSRS) {
-            // Use FSRS Projection
+            // Use FSRS Projection logic if available (advanced algorithm)
             const card = {
                 stability: problem.fsrs_stability,
                 difficulty: problem.fsrs_difficulty,
@@ -343,16 +365,18 @@
             projected.forEach(d => futureProjectedDates.add(d));
 
         } else if (typeof projectSchedule === 'function') {
-            // Fallback to SM-2 if FSRS not loaded
+            // Fallback to SM-2 logic if FSRS not loaded
             const projected = projectSchedule(problem.interval, problem.repetition, problem.easeFactor, simulationStartDate);
             projected.forEach(d => futureProjectedDates.add(d));
         }
 
         // --- RENDER ITERATION ---
+        // Now we actually build the DOM elements.
+        // We loop strictly Day-by-Day from StartDate to EndDate.
         const formatter = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
         let currentDate = new Date(startDate);
-        const MAX_DAYS = 90; // Safety cap
+        const MAX_DAYS = 90; // Hard Safety cap to prevent browser freezing if dates are corrupted
         let count = 0;
 
         while (currentDate <= endLimit && count < MAX_DAYS) {
@@ -360,45 +384,52 @@
             const cell = document.createElement('div');
             cell.className = 'cell';
 
-            // Tooltip
+            // Tooltip text (e.g., "Mon, Jan 29")
             const dateText = formatter.format(currentDate);
             cell.setAttribute('title', dateText); // Native tooltip fallback
 
             let statusLabel = "";
 
-            // Colors
+            // LOGIC: COLOR DETERMINATION PRIORITY
+            // We check conditions in specific order to determine the cell color.
+
+            // Priority 1: Was it explicitly DONE on this date?
             if (doneDates.has(dayStr)) {
-                cell.style.background = 'var(--status-done)';
+                cell.style.background = 'var(--status-done)'; // Green/Blue usually
                 cell.style.boxShadow = '0 0 6px var(--status-done)';
                 cell.classList.add('status-done');
                 statusLabel = "Completed";
             }
+            // Priority 2: Was it MISSED (overdue) on this date?
             else if (missedDates.has(dayStr)) {
-                cell.style.background = 'var(--status-missed)';
+                cell.style.background = 'var(--status-missed)'; // Red
                 cell.classList.add('status-missed');
                 statusLabel = "Missed";
             }
+            // Priority 3: Is it DUE TODAY?
             else if (dayStr === todayStr && nextDueObj <= today) {
-                cell.style.background = 'var(--status-due)';
-                cell.style.boxShadow = '0 0 8px var(--status-due)';
+                cell.style.background = 'var(--status-due)'; // Bright Yellow/Neon
+                cell.style.boxShadow = '0 0 8px var(--status-due)'; // Glowing effect
                 cell.classList.add('status-due');
                 statusLabel = "Due Today";
             }
+            // Priority 4: Is it SCHEDULED for the future?
             else if (futureProjectedDates.has(dayStr) && currentDate > today) {
-                cell.style.background = 'var(--status-projected)';
+                cell.style.background = 'var(--status-projected)'; // Faint color
                 cell.classList.add('status-projected');
                 statusLabel = "Scheduled";
             }
+            // Default: Empty cell (transparent/grey) handled by CSS
 
-            // Interaction
+            // Interaction: Mouse hover for custom tooltip
             cell.onmouseenter = () => {
                 const tooltip = document.getElementById('global-tooltip');
                 if (tooltip) {
                     tooltip.textContent = statusLabel ? `${dateText} (${statusLabel})` : dateText;
                     tooltip.classList.add('visible');
                     const rect = cell.getBoundingClientRect();
-                    tooltip.style.left = `${rect.left + rect.width / 2}px`;
-                    tooltip.style.top = `${rect.top}px`;
+                    tooltip.style.left = `${rect.left + rect.width / 2}px`; // Center align
+                    tooltip.style.top = `${rect.top}px`; // Position above
                 }
             };
             cell.onmouseleave = () => {
@@ -407,6 +438,7 @@
             };
 
             grid.appendChild(cell);
+            // Move to next day
             currentDate.setDate(currentDate.getDate() + 1);
             count++;
         }
