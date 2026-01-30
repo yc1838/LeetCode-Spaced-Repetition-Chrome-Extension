@@ -377,7 +377,7 @@
         return hasAnyKey();
     }
 
-    async function analyzeMistake(code, errorDetails, meta = {}, signal = null) {
+    async function analyzeMistake(code, errorDetails, meta = {}, signal = null, onProgress = null) {
         const title = meta.title || 'Unknown Problem';
         const difficulty = meta.difficulty || 'Unknown';
         const queryText = `Error: ${errorDetails}\nCode Snippet: ${code.substring(0, 300)}`; // Truncate for embedding
@@ -389,6 +389,7 @@
         let verificationResult = "";
         if (meta.test_input) {
             try {
+                if (onProgress) onProgress("🛡️ Verifying with Safe Observer...");
                 // Determine API endpoint (default to localhost for now, user configurable later)
                 const verifyUrl = state.localEndpoint.replace('11434', '8000').replace('/api/chat', '') + '/verify';
                 // Hacky url construction, let's just use hardcoded localhost:8000 for this task as requested
@@ -421,6 +422,7 @@
         // --- RAG: Retrieval Step ---
         if (window.VectorDB) {
             try {
+                if (onProgress) onProgress("🧠 Searching Knowledge Base...");
                 // 1. Embed
                 // Only embed if we have an API key for the provider
                 if (hasAnyKey()) { // Simple check, embed() has more specific checks
@@ -516,7 +518,7 @@
             '- NEGATIVE_SHIFT (ValueError: negative shift count)',
             '- BITWISE_PRECEDENCE (Forgot parentheses around & |)',
             '',
-            'Respond with this JSON format only:',
+            'Respond with this JSON format only (NO MARKDOWN, NO ```json WRAPPERS, JUST THE RAW JSON):',
             '{',
             '  "root_cause": "1 sentence explanation",',
             '  "fix": "Code fix or strategy",',
@@ -532,21 +534,29 @@
         const activeModel = ALL_MODELS.find(m => m.id === state.selectedModelId);
         console.log(`%c[AI Service] ☁️ CLOUD REQUEST | Model: ${activeModel?.name || state.selectedModelId} (${activeModel?.provider})`, "color: #38bdf8; font-weight: bold;");
 
+        if (onProgress) onProgress("🤖 Consulting AI Model...");
         let advice = await callLLM(prompt, systemPrompt, signal);
 
         // 1. Parse JSON Response
         let parsed = null;
         try {
-            // Remove markdown code blocks if present
-            const cleanJson = advice.replace(/```json/g, '').replace(/```/g, '').trim();
-            parsed = JSON.parse(cleanJson);
+            // Robust Parsing: Extract JSON substring first
+            const firstBrace = advice.indexOf('{');
+            const lastBrace = advice.lastIndexOf('}');
+
+            if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                const jsonCandidate = advice.substring(firstBrace, lastBrace + 1);
+                parsed = JSON.parse(jsonCandidate);
+            } else {
+                throw new Error("No JSON object found in response");
+            }
         } catch (e) {
             console.warn("[LLMSidecar] JSON Parse Failed. Fallback to raw text.", e);
             // Attempt fallback extraction for legacy/malformed responses
             const catMatch = advice.match(/Category:?\s*([A-Z_]+)/i);
             parsed = {
-                root_cause: advice,
-                fix: "See explanation.",
+                root_cause: advice, // Use the full text as explanation
+                fix: "See detailed analysis.",
                 family: catMatch ? catMatch[1].toUpperCase() : 'UNCATEGORIZED',
                 specific_tag: 'GENERAL',
                 is_recurring: false,

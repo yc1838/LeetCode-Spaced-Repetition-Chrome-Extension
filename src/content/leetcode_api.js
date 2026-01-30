@@ -324,7 +324,10 @@
                                                 difficulty: difficulty,
                                                 test_input: testInput
                                             },
-                                            controller.signal
+                                            controller.signal,
+                                            (status) => {
+                                                if (progressUI) progressUI.update(status);
+                                            }
                                         );
 
                                         // 6. Save to Notes
