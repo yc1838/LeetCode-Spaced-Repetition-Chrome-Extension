@@ -20,7 +20,7 @@ app.add_middleware(
 
 class VerificationRequest(BaseModel):
     code: str
-    test_input: str
+    test_input: str # Keep singular for backward compat, but we might send JSON string of list
 
 @app.get("/health")
 def health():
@@ -32,11 +32,15 @@ def verify_endpoint(req: VerificationRequest):
     Endpoint for the Chrome Extension to call.
     """
     print(f"Received verification request for input: {req.test_input}")
-    result = verify_solution_logic(req.code, req.test_input)
+    # Normalize input: always array
+    inputs = [req.test_input]
+    # verify_solution_logic expects a list of strings
+    result = verify_solution_logic(req.code, inputs)
     return {"result": result}
 
 import requests
 import re
+import json
 
 class AgentFixer:
     def __init__(self):
@@ -87,52 +91,132 @@ class AgentFixer:
             print(f"LLM Generation Failed: {e}")
         return None
 
-    def verify_fix(self, code: str, test_input: str):
-        # Run in sandbox
-        logs = verify_solution_logic(code, test_input)
+    def generate_tests(self, code: str, error: str) -> list[str]:
+        prompt = f"""
+        You are a QA Engineer for Python LeetCode problems.
+        Analyze the code and error below.
+        Generate 3 DISTINCT, EDGE-CASE test inputs that would stressors this code.
+        The inputs must be in valid Python literal format (e.g. string representation of args).
         
-        # Check for success
-        # Heuristic: If logs contain "Runtime Error" or "Traceback", it failed.
+        CODE:
+        {code}
+        
+        ERROR:
+        {error}
+        
+        CRITICAL:
+        1. Return ONLY a JSON list of strings.
+        2. Example: ["(([1,2], 3))", "(([], 0))"] or whatever the function signature expects.
+        3. Do NOT use markdown.
+        """
+        try:
+            res = requests.post(self.llm_url, json={
+                "model": self.model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": 0.4}
+            })
+            if res.status_code == 200:
+                raw = res.json().get('response', '').strip()
+                clean = re.sub(r'```json|```', '', raw).strip()
+                import json
+                tests = json.loads(clean)
+                if isinstance(tests, list):
+                    return tests[:3] # Cap at 3
+        except Exception as e:
+            print(f"Test Gen Failed: {e}")
+        return []
+
+    def verify_fix(self, code: str, test_inputs: list[str]):
+        # Run in sandbox with batch inputs
+        logs = verify_solution_logic(code, test_inputs)
+        
+        # Logs are now JSON string (list of dicts) or a Runtime Error string
+        try:
+            results = json.loads(logs)
+            # Check if ANY failed
+            failures = [r for r in results if r['status'] != 'Passed']
+            if failures:
+                # Return False and a summary of failures
+                return False, json.dumps(failures, indent=2)
+            return True, "All Tests Passed: " + json.dumps(results, indent=2)
+        except:
+            # If not JSON, it's a fatal error (syntax etc)
+            pass
+        
+        # Fallback for fatal errors
         if "Runtime Error" in logs or "Traceback" in logs:
             return False, logs
         
         return True, logs
 
-    def attempt_fix(self, code: str, error: str, test_input: str):
-        # 1. Generate
-        print("Generating fix...")
-        candidate = self.generate_fix(code, error, test_input)
-        if not candidate:
-            return {"verified": False, "error": "Failed to generate fix"}
+    def attempt_fix(self, code: str, error: str, initial_input: str, max_retries: int = 3):
+        current_code = code
+        current_error = error
         
-        # 2. Verify
-        print("Verifying fix...")
-        print(f"DEBUG: Candidate Code:\n{candidate}")
-        success, logs = self.verify_fix(candidate, test_input)
-        print(f"DEBUG: Verification Logs:\n{logs}")
+        # 0. Generate Test Suite
+        print("Generating Test Suite...")
+        generated_tests = self.generate_tests(code, error)
+        # Combine with user's failing input (deduplicate?)
+        all_tests = [initial_input] + generated_tests
+        print(f"Test Suite: {len(all_tests)} tests")
         
-        if success:
-            # 3. Refine Output
-            if self.is_simple_fix(candidate):
-                return {
-                    "verified": True, 
-                    "fixed_code": candidate,
-                    "explanation": None,
-                    "logs": logs
-                }
-            else:
+        history = [] 
+
+        for attempt in range(max_retries):
+            print(f"--- Attempt {attempt + 1}/{max_retries} ---")
+            
+            # 1. Generate Fix
+            print("Generating fix...")
+            retry_context = ""
+            if attempt > 0:
+                retry_context = f"PREVIOUS ATTEMPT FAILED.\nCode tried:\n{current_code}\n\nError/Failures:\n{current_error}\n\nFix these specific failures."
+            
+            candidate = self.generate_fix(current_code if attempt > 0 else code, current_error if attempt == 0 else retry_context, initial_input)
+            
+            if not candidate:
+                return {"verified": False, "error": "Failed to generate fix"}
+
+            # 2. Verify against ALL tests
+            print("Verifying fix against suite...")
+            success, logs = self.verify_fix(candidate, all_tests)
+            
+            history.append({
+                "attempt": attempt + 1,
+                "code": candidate,
+                "logs": logs,
+                "success": success
+            })
+
+            if success:
+                print(f"Verify Success on attempt {attempt + 1}!")
+                # Parse logs to get test details for UI
+                try:
+                    # extract JSON part if possible? 
+                    # verify_fix returns "All Tests Passed: [...]"
+                    # We might want to structured return
+                    pass
+                except: pass
+
                 return {
                     "verified": True,
-                    "fixed_code": None, # Too long to show? Maybe still show it.
-                    "explanation": "I generated a complex fix that passes the tests. It involves rewriting the class structure.",
-                    "logs": logs
+                    "fixed_code": candidate,
+                    "explanation": f"Fixed after {attempt + 1} attempts. Passed {len(all_tests)}/{len(all_tests)} tests (including {len(generated_tests)} generated edge cases).",
+                    "logs": logs,
+                    "attempts": attempt + 1,
+                    "test_count": len(all_tests)
                 }
-        else:
-            return {
-                "verified": False,
-                "fixed_code": candidate, # Return it anyway for debugging?
-                "logs": logs
-            }
+            
+            # If we failed, update state
+            current_code = candidate
+            current_error = logs 
+        
+        return {
+            "verified": False,
+            "fixed_code": current_code,
+            "logs": logs,
+            "history": history
+        }
 
 agent = AgentFixer()
 
@@ -151,7 +235,8 @@ def autofix_endpoint(req: VerificationRequest):
     print(f"Auto-Fix Request for: {req.test_input}")
     
     # 1. Reproduce the error locally
-    initial_logs = verify_solution_logic(req.code, req.test_input)
+    # verify_solution_logic expects a list, even for a single input
+    initial_logs = verify_solution_logic(req.code, [req.test_input])
     
     # Extract error from logs
     # Assume logs format: "Runtime Error: ... \nTraceback: ..."
@@ -164,4 +249,4 @@ def autofix_endpoint(req: VerificationRequest):
 if __name__ == "__main__":
     import uvicorn
     # Run on port 8000
-    uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("api:app", host="127.0.0.1", port=8000, reload=True)

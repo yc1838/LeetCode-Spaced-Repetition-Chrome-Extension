@@ -1,6 +1,6 @@
 # LeetCode EasyRepeat
 
-A Chrome Extension that helps you master LeetCode problems using a **Spaced Repetition System (SRS)**. It automatically tracks your "Accepted" submissions, schedules reviews based on the SM-2 algorithm, and features a stunning cyberpunk-inspired UI with customizable themes.
+A Chrome Extension that helps you master LeetCode problems using a **Spaced Repetition System (SRS)**. It automatically tracks your "Accepted" submissions, schedules reviews based on the **FSRS v4.5 algorithm**, and features a stunning cyberpunk-inspired UI with customizable themes.
 
 ![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-green?logo=google-chrome)
 ![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue)
@@ -8,10 +8,10 @@ A Chrome Extension that helps you master LeetCode problems using a **Spaced Repe
 
 ## ✨ Features
 
-### 🧠 Spaced Repetition (SM-2 Algorithm)
+### 🧠 Spaced Repetition (FSRS v4.5 Algorithm)
 - **Automatic Submission Detection**: Captures "Accepted" submissions directly on LeetCode
-- **Smart Scheduling**: Uses the scientifically-proven SM-2 algorithm to calculate optimal review intervals
-- **Ease Factor Adjustment**: Rate problems as **Easy**, **Medium**, or **Hard** to personalize your review schedule
+- **Smart Scheduling**: Uses the state-of-the-art **FSRS v4.5** algorithm with optimized weights for superior retention modeling
+- **Stability & Difficulty Modeling**: Dynamically adjusts stability and difficulty based on your performance
 - **Problem Difficulty Tracking**: Automatically detects and saves LeetCode difficulty (Easy/Medium/Hard)
 
 ### 🎨 Cyberpunk UI with Dual Themes
@@ -26,8 +26,7 @@ A Chrome Extension that helps you master LeetCode problems using a **Spaced Repe
 - **Vector Cards**: Expandable problem cards displaying:
   - Problem title and difficulty
   - Current interval and repetition count
-  - Easy/Medium/Hard rating buttons
-  - Easy/Medium/Hard rating buttons
+  - Again/Hard/Good/Easy rating buttons (FSRS)
   - Direct link to the problem
 
 ### 📝 Contextual Notes
@@ -49,7 +48,32 @@ A Chrome Extension that helps you master LeetCode problems using a **Spaced Repe
 - **SPA Navigation Aware**: Handles LeetCode's single-page-app navigation correctly
 - **Difficulty Caching**: Pre-caches difficulty before submission to handle DOM changes
 
+### 🛡️ Autonomous Auto-Fix Agent
+- **Multi-Turn Self-Correction**: Automatically iterates on buggy solutions up to 3 times, refining the code based on sandbox error logs.
+- **Agentic Test Generation**: Generates 3+ custom edge-case tests (e.g., empty inputs, large numbers) to rigorously verify fixes beyond the standard failing case.
+- **Safe Observer Sandbox**: Executes candidate fixes in an isolated E2B sandbox to ensure safety and correctness before suggesting them.
+- **Thought Signature**: Displays the number of attempts and test coverage (e.g., "Passed 4/4 Tests") directly in the UI.
+
+### 🧠 Neural Retention Agent (New!)
+A personalized learning assistant that builds a "Skill DNA" profile of your coding strengths and weaknesses.
+
+- **Two-Layer Skill Taxonomy**:
+  - **Layer 1 (LeetCode Tags)**: Tracks performance by topic (Binary Search, Dynamic Programming, etc.)
+  - **Layer 2 (Error Patterns)**: Detects recurring mistakes (off-by-one, null-check-missing, etc.)
+  
+- **Nightly Digest Engine**: Runs at 2am to analyze your daily practice and update your Skill DNA
+
+- **Personalized Micro-Drills**: Generates targeted practice exercises for your weak areas:
+  - **Fill-in-the-blank**: Complete missing code
+  - **Spot-the-bug**: Find errors in code snippets
+  - **Muscle-memory**: Write code patterns from memory
+
+- **Backfill Agent**: Automatically fetches LeetCode tags for problems missing metadata (rate-limited to avoid bans)
+
+- **Settings Page**: Configure digest time, error pattern threshold, and notification preferences
+
 ---
+
 
 ## 🚀 Quick Setup
 
@@ -117,9 +141,10 @@ Click the extension icon to see:
 - Rating buttons to adjust difficulty
 
 ### SRS Rating
-- **Easy** → Push review far into the future (higher ease factor)
-- **Medium** → Standard schedule progression
-- **Hard** → Review sooner (lower ease factor)
+- **Again** → Review very soon (stability decreases significantly)
+- **Hard** → Review sooner (lower stability increase)
+- **Good** → Standard progression (optimal retention)
+- **Easy** → Push review far into the future (higher stability)
 
 ### Sidebar Navigation
 
@@ -136,9 +161,10 @@ Click the extension icon to see:
 ## 🧪 Running Tests
 
 The project includes comprehensive unit tests covering:
-- **SRS Logic**: Interval calculations, repetition tracking, ease factors (including infinite loop resilience)
+- **FSRS Logic**: Stability/difficulty calculations, interval scheduling, retrievability
 - **API Integration**: Mocked tests for submission polling and status verification
 - **DOM Detection**: Problem extraction, difficulty parsing
+- **VectorDB & RAG**: Embedding storage and similarity search
 - **E2E Tests**: Puppeteer-based end-to-end browser testing (requires Chrome)
 
 ```bash
@@ -155,32 +181,93 @@ npx jest --coverage
 
 ```
 leetcode-srs-extension/
-├── manifest.json      # Chrome extension configuration (Manifest V3)
-├── content.js         # Runs on LeetCode pages - detects submissions
-├── content.css        # Toast notification styles
-├── popup.html         # Extension popup UI structure
-├── popup.js           # Popup logic - dashboard, themes, ratings
-├── popup.css          # Cyberpunk UI styles
-├── srs_logic.js       # SM-2 algorithm implementation (UMD module)
-├── tests/
-│   ├── srs.test.js              # SRS logic unit tests
-│   ├── dom.test.js              # DOM detection unit tests
-│   ├── api_submission_check.test.js # API polling logic tests
-│   ├── resilience.test.js       # Safety/Inf-loop protection tests
-│   └── e2e.js                   # End-to-end Puppeteer tests
-└── icons/             # Extension icons
+├── manifest.json          # Chrome extension configuration (Manifest V3)
+├── src/
+│   ├── content/           # Content scripts (runs on leetcode.com)
+│   │   ├── content.js     # Orchestrator
+│   │   ├── content_ui.js  # Toasts, rating modal, notes widget
+│   │   ├── leetcode_api.js # GraphQL + submission polling
+│   │   ├── leetcode_dom.js # DOM parsing + difficulty cache
+│   │   ├── llm_sidecar.js # LLM/RAG/Auto-Fix integration
+│   │   ├── shadow_logger.js # Debug logging
+│   │   └── morning_greeting.js # Neural Agent greeting banner
+│   ├── popup/             # Extension popup UI
+│   │   ├── popup.html
+│   │   ├── popup.js       # Dashboard + Neural Agent tab
+│   │   ├── popup_ui.js
+│   │   └── popup.css
+│   ├── drills/            # Micro-drill practice system
+│   │   ├── drills.html    # Drill practice page
+│   │   ├── drill_init.js  # Drill page controller
+│   │   ├── drill_page.js  # Drill rendering
+│   │   └── drill_queue.js # Queue UI component
+│   ├── algorithms/        # SRS algorithms
+│   │   ├── fsrs_logic.js  # FSRS v4.5 (primary)
+│   │   └── srs_logic.js   # SM-2 (legacy fallback)
+│   ├── shared/            # Shared utilities
+│   │   ├── storage.js     # Chrome storage wrapper
+│   │   └── vector_db.js   # Client-side VectorDB
+│   ├── background/        # Service worker + Neural Agent modules
+│   │   ├── background.js  # Main service worker
+│   │   ├── skill_matrix.js # Skill DNA tracking
+│   │   ├── drill_generator.js # AI-powered drill creation
+│   │   ├── drill_store.js # IndexedDB for drills
+│   │   ├── digest_orchestrator.js # Nightly analysis
+│   │   ├── error_pattern_detector.js # Layer 2 patterns
+│   │   └── backfill_agent.js # Tag fetcher
+│   ├── options/           # Settings page
+│   │   ├── options.html
+│   │   └── options.js
+│   └── data/              # Static data
+│       └── skill_taxonomy.json
+├── mcp-server/            # Local Auto-Fix server (Python)
+├── tests/                 # Jest tests (40+ files)
+└── assets/                # Icons and images
 ```
+
+---
+
+## 🔧 Technical Challenges & Robustness
+
+Building a reliable agentic extension on top of non-deterministic LLMs presented unique engineering challenges. This project implements several architectural patterns to ensure stability.
+
+### 1. Handling LLM Hallucinations (Fault Isolation)
+LLMs occasionally fail to follow strict output schemas (like JSON), even with careful prompting. A naive implementation would crash if the model returned malformed data for a single request.
+
+**Our Solution: Component-Level Fault Tolerance**
+The system treats every AI operation as an isolated transaction. In the `Drill Generator` workflow:
+- The system iterates through multiple user "weak skills" (e.g., *Dynamic Programming*, *Graphs*).
+- Each skill generation is wrapped in a "Safe Guard" pattern.
+- **Real-World Example:** If the model acts up while generating *Graph* drills (returning invalid JSON), the system catches the error, logs a warning, and **seamlessly proceeds** to generate drills for *Dynamic Programming*.
+- This ensures the user always gets *some* value, rather than a broken loading spinner.
+
+### 2. The "JSON-In-Markdown" Problem
+LLMs trained for chat often wrap code in markdown backticks (```json ... ```), which breaks standard `JSON.parse()`.
+
+**Our Solution: Heuristic Extraction Strategy**
+We implemented a multi-pass parser in `GeminiClient`:
+1.  **Strict Mode:** Enforce `response_mime_type: "application/json"` in the API request (for models that support it).
+2.  **Pattern Matching:** Regex extraction of content within markdown code blocks.
+3.  **Boundary Search:** Fallback logic that locates the outermost `{` and `}` to extract valid JSON objects from mixed-text responses.
+
+### 3. Graceful Degradation (The Fallback Ladder)
+The system is designed never to leave the user empty-handed.
+1.  **Tier 1 (Best):** Personalized drills generated live by Gemini based on recent mistakes.
+2.  **Tier 2 (Fallback):** If the API is unreachable (or offline), use "Skill DNA" patterns stored locally to select pre-written templates.
+3.  **Tier 3 (Safety):** If no history exists, provide curated "Demo" drills to showcase functionality.
+
+This ladder ensures the extension is functional immediately upon installation, even before the user configures their API keys.
 
 ---
 
 ## 🔧 Technical Details
 
-### SM-2 Algorithm
-The extension implements a modified SM-2 spaced repetition algorithm:
-- First review: 1 day
-- Second review: 6 days
-- Subsequent reviews: `interval × ease_factor`
-- Ease factor adjusts based on your difficulty ratings (1.3 - 2.5+)
+### FSRS v4.5 Algorithm
+The extension implements the **Free Spaced Repetition Scheduler (FSRS) v4.5**, a modern algorithm that outperforms SM-2:
+- **Stability-based Scheduling**: Uses a forgetting curve model with optimized weights trained on large datasets
+- **Difficulty Modeling**: Tracks per-problem difficulty (1-10) with automatic adjustment
+- **Retrievability Calculation**: Predicts your probability of recall at any given time
+- **Formula**: `Interval = Stability / FACTOR * (R^(1/DECAY) - 1)` where R=0.9 (target retention)
 
 ### Architecture
 
@@ -202,7 +289,7 @@ graph TD
 
         subgraph Shared["Shared Modules"]
             StorageMod[storage.js<br/>save submissions + notes]
-            SRS[SRS/FSRS Engine<br/>srs_logic.js + fsrs_logic.js]
+            SRS[FSRS Engine<br/>fsrs_logic.js]
             VDB[VectorDB<br/>vector_db.js]
         end
 
@@ -315,9 +402,10 @@ sequenceDiagram
 
 ### Storage
 Uses Chrome's `chrome.storage.local` API to persist:
-- Problem data (title, slug, difficulty, interval, repetition, ease factor)
+- Problem data (title, slug, difficulty, stability, difficulty score, state)
 - Theme preference
-- Test mode state
+- Activity log for streak tracking
+- Vector embeddings for RAG
 
 ### Detection Strategy
 1. **Passive**: MutationObserver watches for DOM changes

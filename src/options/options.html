@@ -83,7 +83,7 @@
         <section class="card">
             <h2>Active Model</h2>
             <div class="field">
-                <label for="model-select">Select the model to use for analysis & chat:</label>
+                <label for="model-select">Select the model to use for analysis &amp; chat:</label>
                 <select id="model-select" class="full-width">
                     <!-- Populated by JS -->
                 </select>
@@ -92,6 +92,65 @@
                 <button id="save-settings" class="btn primary">Save All Settings</button>
                 <span id="save-status" class="status-text"></span>
             </div>
+        </section>
+
+        <section class="card">
+            <h2>🧠 Neural Retention Agent</h2>
+            <p class="hint">Manually trigger digest and drill generation for testing.</p>
+            <div class="grid" style="gap: 15px; margin-top: 15px;">
+                <div class="field">
+                    <button id="backfill-history" class="btn primary" style="width: 100%;">
+                        📚 Backfill from ALL History
+                    </button>
+                    <span id="backfill-status" class="status-text"></span>
+                </div>
+                <div class="field">
+                    <button id="run-digest" class="btn" style="width: 100%;">
+                        ⚡ Run Nightly Digest (Today Only)
+                    </button>
+                    <span id="digest-status" class="status-text"></span>
+                </div>
+                <div class="field">
+                    <button id="gen-drills" class="btn" style="width: 100%;">
+                        🎯 Generate Drills from Weak Skills
+                    </button>
+                    <span id="drills-status" class="status-text"></span>
+                </div>
+                <div class="notes" style="margin-top: 15px; font-size: 0.85em; opacity: 0.7;">
+                    <p>• <b>Backfill</b>: Process ALL past submissions to build your Skill DNA</p>
+                    <p>• <b>Nightly</b>: Analyze only today's mistakes</p>
+                    <p>• <b>Generate</b>: Create drills based on weak skills</p>
+                </div>
+
+                <hr style="margin: 20px 0; border: none; border-top: 1px solid rgba(255,255,255,0.1);">
+
+                <h3 style="margin-bottom: 15px; font-size: 1em;">⚙️ Agent Settings</h3>
+                <div class="grid" style="gap: 15px;">
+                    <div class="field">
+                        <label for="digest-time">Nightly Digest Time:</label>
+                        <input type="time" id="digest-time" value="02:00" class="full-width">
+                    </div>
+                    <div class="field">
+                        <label for="pattern-threshold">Error Pattern Threshold:</label>
+                        <input type="number" id="pattern-threshold" min="1" max="10" value="3" class="full-width">
+                        <span class="hint">Mistakes needed to activate a pattern</span>
+                    </div>
+                    <div class="field">
+                        <label for="notification-email">Notification Email (optional):</label>
+                        <input type="email" id="notification-email" placeholder="your@email.com" class="full-width">
+                    </div>
+                    <div class="field">
+                        <label for="debug-logs">Verbose Debug Logs:</label>
+                        <div class="checkbox-row">
+                            <input type="checkbox" id="debug-logs">
+                            <label for="debug-logs" class="hint">Enable background debug logging (Service Worker console)</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="actions" style="margin-top: 15px;">
+                    <button id="save-agent-settings" class="btn">💾 Save Agent Settings</button>
+                    <span id="agent-save-status" class="status-text"></span>
+                </div>
         </section>
 
 

@@ -47,6 +47,19 @@
                     <path d="M12 6v6l4 2" />
                 </svg>
             </div>
+            <div class="nav-icon" id="tab-neural" title="Neural Agent">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3" />
+                    <circle cx="12" cy="5" r="2" />
+                    <circle cx="19" cy="12" r="2" />
+                    <circle cx="12" cy="19" r="2" />
+                    <circle cx="5" cy="12" r="2" />
+                    <line x1="12" y1="7" x2="12" y2="9" />
+                    <line x1="17" y1="12" x2="15" y2="12" />
+                    <line x1="12" y1="15" x2="12" y2="17" />
+                    <line x1="9" y1="12" x2="7" y2="12" />
+                </svg>
+            </div>
             <!-- Manual Scan / Sync -->
             <div class="nav-icon" id="btn-sync" title="Initiate Scan">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
@@ -125,6 +138,40 @@
                 </div>
             </section>
 
+            <!-- NEURAL AGENT VIEW (Hidden by default) -->
+            <section id="neural-container" style="display:none; padding:15px;">
+                <div class="heatmap-header" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>NEURAL_RETENTION_AGENT</span>
+                    <label class="agent-toggle-switch">
+                        <input type="checkbox" id="agent-enabled-toggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <!-- Skill DNA Graph -->
+                <div id="skill-graph-container"
+                    style="margin-top:15px; min-height:200px; display:flex; justify-content:center; align-items:center;">
+                    <div class="stat-loading">Loading Skill DNA...</div>
+                </div>
+
+                <!-- Drill Queue -->
+                <div id="drill-queue-container" style="margin-top:15px;">
+                    <div class="heatmap-header"
+                        style="font-size:0.7rem; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+                        <span>PENDING_DRILLS</span>
+                        <div style="display:flex; gap:8px;">
+                            <button id="btn-view-all-drills" class="drill-action-btn" title="View all drills">📋 View
+                                All</button>
+                            <button id="btn-generate-drills" class="drill-action-btn" title="Generate new drills">⚡
+                                Generate</button>
+                        </div>
+                    </div>
+                    <div id="drill-queue-list">
+                        <!-- Drill items injected via JS -->
+                    </div>
+                </div>
+            </section>
+
         </main>
     </div>
 
@@ -133,6 +180,10 @@
     <script src="../algorithms/fsrs_logic.js"></script>
     <script src="../shared/storage.js"></script>
     <script src="../algorithms/vector_db.js"></script>
+    <script src="../content/skill_graph.js"></script>
+    <script src="../content/drill_queue.js"></script>
+    <script src="../content/skill_animations.js"></script>
+    <script src="../background/agent_loader.js"></script>
     <script src="popup_ui.js"></script>
     <script src="popup.js"></script>
 </body>

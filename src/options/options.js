@@ -8,8 +8,6 @@
             { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (BALANCED)', provider: 'google' },
             { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite (EFFICIENT)', provider: 'google' },
             { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (FAST)', provider: 'google' },
-            { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (STABLE)', provider: 'google' },
-            { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (FREE)', provider: 'google' }
         ],
         openai: [
             { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai' },
@@ -26,12 +24,14 @@
     };
 
     const DEFAULTS = {
+        aiProvider: 'local',
         keys: { google: '', openai: '', anthropic: '' },
         localEndpoint: 'http://127.0.0.1:11434',
-        selectedModelId: 'gemini-1.5-flash'
+        selectedModelId: 'gemini-2.5-flash'
     };
 
     const els = {};
+    const statusTimers = new WeakMap();
 
     function getEl(id) { return document.getElementById(id); }
 
@@ -128,10 +128,25 @@
         // No, Sidecar will be updated to read from chrome.storage directly.
     }
 
-    function showStatus(el, text, type) {
+    function showStatus(el, text, type, options = {}) {
+        if (!el) return;
+        const existing = statusTimers.get(el);
+        if (existing) {
+            clearTimeout(existing);
+            statusTimers.delete(el);
+        }
         el.textContent = text;
         el.className = 'status-text ' + (type || '');
-        setTimeout(() => el.textContent = '', 2000);
+        // Loading state and sticky option should NOT auto-clear
+        if (options.sticky || type === 'loading') return;
+        // Errors stay longer so user can read them
+        const timeout = type === 'error' ? 8000 : 2000;
+        const timerId = setTimeout(() => {
+            el.textContent = '';
+            el.className = 'status-text';
+            statusTimers.delete(el);
+        }, timeout);
+        statusTimers.set(el, timerId);
     }
 
     function normalizeEndpoint(input) {
@@ -195,5 +210,137 @@
         els.modeCloud.addEventListener('change', () => setModeUI('cloud'));
 
         await loadSettings();
+
+        // Neural Agent buttons
+        const backfillBtn = getEl('backfill-history');
+        const backfillStatus = getEl('backfill-status');
+        const runDigestBtn = getEl('run-digest');
+        const genDrillsBtn = getEl('gen-drills');
+        const digestStatus = getEl('digest-status');
+        const drillsStatus = getEl('drills-status');
+
+        if (backfillBtn) {
+            backfillBtn.addEventListener('click', async () => {
+                showStatus(backfillStatus, 'Processing all history...', '');
+                try {
+                    const response = await chrome.runtime.sendMessage({ action: 'backfillHistory' });
+                    if (response && response.success) {
+                        const skills = response.skills || 0;
+                        const source = response.source ? ` (source: ${response.source})` : '';
+                        const entries = response.historyEntries ? `, ${response.historyEntries} events` : '';
+                        showStatus(backfillStatus, `✅ Processed ${response.count || 0} problems, updated ${skills} skills${entries}${source}`, 'ok', { sticky: true });
+                    } else {
+                        showStatus(backfillStatus, '⚠️ ' + (response?.error || 'No history found'), 'error', { sticky: true });
+                    }
+                } catch (e) {
+                    showStatus(backfillStatus, '❌ ' + e.message, 'error');
+                }
+            });
+        }
+
+        if (runDigestBtn) {
+            runDigestBtn.addEventListener('click', async () => {
+                showStatus(digestStatus, 'Running digest...', '');
+                try {
+                    // Send message to background script
+                    const response = await chrome.runtime.sendMessage({ action: 'runDigestNow' });
+
+                    if (response && response.success) {
+                        // Check for result details (either returned directly or we can fetch from storage, 
+                        // but usually the background response for runDigestNow includes what we need if we update the handler too?
+                        // Actually, looking at background.js handler, it just calls await DigestOrchestrator.runDigest() 
+                        // but returns { success: true }. We might need to update background.js handler to return the specific result.
+                        // But wait, runDigestNow handler in background.js:
+                        // await DigestOrchestrator.runDigest();
+                        // sendResponse({ success: true });
+                        // It swallows the return value!
+
+                        // Let's rely on reading the lastDigestResult from storage for details, 
+                        // or just tell the user "Digest complete! Check logs."
+                        // Better: read storage.
+                        const { lastDigestResult } = await chrome.storage.local.get('lastDigestResult');
+                        if (lastDigestResult) {
+                            const time = new Date(lastDigestResult.timestamp).toLocaleTimeString();
+                            const msg = `✅ Digest complete at ${time}! Processed ${lastDigestResult.submissionsProcessed} items, updated ${lastDigestResult.skillsUpdated} skills.`;
+                            showStatus(digestStatus, msg, 'ok', { sticky: true });
+                        } else {
+                            showStatus(digestStatus, '✅ Digest complete!', 'ok');
+                        }
+                    } else {
+                        showStatus(digestStatus, '⚠️ ' + (response?.error || 'No data to process'), 'error');
+                    }
+                } catch (e) {
+                    showStatus(digestStatus, '❌ ' + e.message, 'error');
+                }
+            });
+        }
+
+        if (genDrillsBtn) {
+            // Check if there's a pending or completed generation on load
+            const { drillGenerationStatus } = await chrome.storage.local.get('drillGenerationStatus');
+            if (drillGenerationStatus) {
+                if (drillGenerationStatus.status === 'generating') {
+                    showStatus(drillsStatus, 'Generating drills...', 'loading');
+                } else if (drillGenerationStatus.status === 'complete') {
+                    const fallbackNote = drillGenerationStatus.fallback ? ` (fallback: ${drillGenerationStatus.fallback})` : '';
+                    showStatus(drillsStatus, `✅ Generated ${drillGenerationStatus.count || 0} drills!${fallbackNote}`, 'ok', { sticky: true });
+                }
+            }
+
+            genDrillsBtn.addEventListener('click', async () => {
+                showStatus(drillsStatus, 'Generating drills...', 'loading');
+                genDrillsBtn.disabled = true;
+                try {
+                    const response = await chrome.runtime.sendMessage({ action: 'generateDrillsNow' });
+                    if (response && response.success) {
+                        const fallbackNote = response.fallback ? ` (fallback: ${response.fallback})` : '';
+                        showStatus(drillsStatus, `✅ Generated ${response.count || 0} drills!${fallbackNote}`, 'ok', { sticky: true });
+                    } else {
+                        showStatus(drillsStatus, '⚠️ ' + (response?.error || 'No weak skills found'), 'error', { sticky: true });
+                    }
+                } catch (e) {
+                    showStatus(drillsStatus, '❌ ' + e.message, 'error');
+                } finally {
+                    genDrillsBtn.disabled = false;
+                }
+            });
+        }
+
+        // Agent Settings
+        const digestTimeInput = getEl('digest-time');
+        const patternThresholdInput = getEl('pattern-threshold');
+        const notificationEmailInput = getEl('notification-email');
+        const debugLogsInput = getEl('debug-logs');
+        const saveAgentBtn = getEl('save-agent-settings');
+        const agentSaveStatus = getEl('agent-save-status');
+
+        // Load agent settings
+        const agentSettings = await chrome.storage.local.get({
+            agentDigestTime: '02:00',
+            agentPatternThreshold: 3,
+            agentNotificationEmail: '',
+            agentDebugLogs: false
+        });
+
+        if (digestTimeInput) digestTimeInput.value = agentSettings.agentDigestTime;
+        if (patternThresholdInput) patternThresholdInput.value = agentSettings.agentPatternThreshold;
+        if (notificationEmailInput) notificationEmailInput.value = agentSettings.agentNotificationEmail;
+        if (debugLogsInput) debugLogsInput.checked = Boolean(agentSettings.agentDebugLogs);
+
+        if (saveAgentBtn) {
+            saveAgentBtn.addEventListener('click', async () => {
+                try {
+                    await chrome.storage.local.set({
+                        agentDigestTime: digestTimeInput?.value || '02:00',
+                        agentPatternThreshold: parseInt(patternThresholdInput?.value || 3),
+                        agentNotificationEmail: notificationEmailInput?.value || '',
+                        agentDebugLogs: Boolean(debugLogsInput?.checked)
+                    });
+                    showStatus(agentSaveStatus, '✅ Settings saved!', 'ok');
+                } catch (e) {
+                    showStatus(agentSaveStatus, '❌ ' + e.message, 'error');
+                }
+            });
+        }
     });
 })();

@@ -106,6 +106,23 @@ h2 {
     font-size: 0.75rem;
 }
 
+.field input[type="checkbox"] {
+    width: auto;
+    margin-right: 6px;
+}
+
+.checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.hint {
+    font-size: 0.7rem;
+    color: var(--electric);
+    opacity: 0.8;
+}
+
 .actions {
     display: flex;
     align-items: center;
@@ -156,6 +173,34 @@ h2 {
 .status-text {
     font-size: 0.7rem;
     color: var(--electric);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.status-text.ok {
+    color: #4ade80;
+}
+
+.status-text.error {
+    color: #ff5c5c;
+}
+
+.status-text.loading::before {
+    content: '';
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--border-dim);
+    border-top-color: var(--terminal);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .steps {

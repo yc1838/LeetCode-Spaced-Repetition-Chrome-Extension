@@ -375,6 +375,8 @@ function updateClock() {
 function setupSidebar(dueProblems, allProblems) {
     const tabDash = document.getElementById('tab-dashboard');
     const tabAll = document.getElementById('tab-all');
+    const tabStats = document.getElementById('tab-stats');
+    const tabNeural = document.getElementById('tab-neural');
     const title = document.getElementById('queue-title');
 
     // Remove old active classes
@@ -383,24 +385,32 @@ function setupSidebar(dueProblems, allProblems) {
     tabDash.classList.add('active'); // Default
 
     tabDash.onclick = () => {
-        updateTabUI(tabDash, [tabAll, tabStats]);
+        updateTabUI(tabDash, [tabAll, tabStats, tabNeural]);
         title.innerText = "ACTIVE_PROBLEM_VECTORS";
         toggleViews('dashboard');
         renderVectors(dueProblems, 'vector-list', true);
     };
 
-    const tabStats = document.getElementById('tab-stats');
     if (tabStats) {
         tabStats.onclick = () => {
-            updateTabUI(tabStats, [tabDash, tabAll]);
+            updateTabUI(tabStats, [tabDash, tabAll, tabNeural]);
             title.innerText = "NEURAL_WEAKNESS_ANALYSIS";
             toggleViews('stats');
             loadStats();
         };
     }
 
+    if (tabNeural) {
+        tabNeural.onclick = () => {
+            updateTabUI(tabNeural, [tabDash, tabAll, tabStats]);
+            title.innerText = "NEURAL_RETENTION_AGENT";
+            toggleViews('neural');
+            loadNeuralAgent();
+        };
+    }
+
     tabAll.onclick = () => {
-        updateTabUI(tabAll, [tabDash, tabStats]);
+        updateTabUI(tabAll, [tabDash, tabStats, tabNeural]);
         title.innerText = "ALL_ARCHIVED_VECTORS";
         toggleViews('dashboard');
         renderVectors(allProblems, 'vector-list', false);
@@ -416,15 +426,22 @@ function toggleViews(view) {
     const dash = document.querySelector('.heatmap-container'); // Global heatmap
     const list = document.querySelector('#vector-list').parentElement; // List section
     const stats = document.getElementById('stats-container');
+    const neural = document.getElementById('neural-container');
+
+    // Hide all first
+    if (dash) dash.style.display = 'none';
+    if (list) list.style.display = 'none';
+    if (stats) stats.style.display = 'none';
+    if (neural) neural.style.display = 'none';
 
     if (view === 'stats') {
-        if (dash) dash.style.display = 'none';
-        if (list) list.style.display = 'none';
         if (stats) stats.style.display = 'block';
+    } else if (view === 'neural') {
+        if (neural) neural.style.display = 'block';
     } else {
+        // dashboard view
         if (dash) dash.style.display = 'block';
         if (list) list.style.display = 'block';
-        if (stats) stats.style.display = 'none';
     }
 }
 
@@ -449,6 +466,179 @@ async function loadStats() {
     } catch (e) {
         console.error(e);
         container.innerHTML = `<div style="color:var(--accent)">DB Error: ${e.message}</div>`;
+    }
+}
+
+/**
+ * Load and render the Neural Retention Agent view.
+ */
+async function loadNeuralAgent() {
+    const graphContainer = document.getElementById('skill-graph-container');
+    const queueContainer = document.getElementById('drill-queue-list');
+    const toggle = document.getElementById('agent-enabled-toggle');
+
+    // Check if agent is enabled
+    const storage = await chrome.storage.local.get({ agentEnabled: false });
+    if (toggle) toggle.checked = storage.agentEnabled;
+
+    // Toggle handler
+    if (toggle) {
+        toggle.onchange = async () => {
+            await chrome.storage.local.set({ agentEnabled: toggle.checked });
+            await loadNeuralAgent(); // Re-render
+        };
+    }
+
+    if (!storage.agentEnabled) {
+        graphContainer.innerHTML = `
+            <div style="text-align:center; color:var(--terminal); opacity:0.7;">
+                <div style="font-size:24px; margin-bottom:10px;">🧠</div>
+                <div>Neural Agent is disabled.</div>
+                <div style="font-size:0.7em; margin-top:5px;">Enable it above to visualize your Skill DNA.</div>
+            </div>
+        `;
+        queueContainer.innerHTML = '';
+        return;
+    }
+
+    // Render Skill Graph (demo data for now)
+    if (typeof SkillGraph !== 'undefined') {
+        const demoFamilies = [
+            { id: 'arrays', name: 'Arrays', confidence: 0.8 },
+            { id: 'dp', name: 'Dynamic Programming', confidence: 0.4 },
+            { id: 'graphs', name: 'Graphs', confidence: 0.6 },
+            { id: 'trees', name: 'Trees', confidence: 0.75 },
+            { id: 'strings', name: 'Strings', confidence: 0.55 }
+        ];
+
+        graphContainer.innerHTML = '';
+        const svg = SkillGraph.renderGraph({ families: demoFamilies }, { width: 250, height: 200 });
+        graphContainer.appendChild(svg);
+
+        // Apply animations
+        if (typeof SkillAnimations !== 'undefined') {
+            SkillAnimations.injectStyles();
+        }
+    } else {
+        graphContainer.innerHTML = '<div style="color:var(--accent)">SkillGraph not loaded</div>';
+    }
+
+    // Render Drill Queue (Real data from storage or fallback to demo)
+    if (typeof DrillQueue !== 'undefined') {
+        // Try to load real drills from storage
+        let drills = [];
+        try {
+            const result = await chrome.storage.local.get(['generatedDrills', 'skillDNA']);
+
+            if (result.generatedDrills && result.generatedDrills.length > 0) {
+                // Use drills generated by DrillGenerator
+                drills = result.generatedDrills;
+                console.log('[NeuralAgent] Loaded', drills.length, 'generated drills');
+            } else if (result.skillDNA && result.skillDNA.patterns) {
+                // Generate drills from weak patterns on the fly
+                const weakPatterns = Object.values(result.skillDNA.patterns)
+                    .filter(p => p.active && p.mistakes >= 2)
+                    .sort((a, b) => a.score - b.score)
+                    .slice(0, 3);
+
+                if (weakPatterns.length > 0) {
+                    drills = weakPatterns.map((p, i) => ({
+                        id: `pattern_${p.patternId}_${i}`,
+                        type: 'spot-bug',
+                        skillId: p.patternId,
+                        content: `Practice: Avoid "${p.patternId.replace(/-/g, ' ')}" errors`,
+                        answer: `Watch for ${p.patternId}`,
+                        fromSkillDNA: true
+                    }));
+                    console.log('[NeuralAgent] Generated', drills.length, 'drills from weak patterns');
+                }
+            }
+        } catch (e) {
+            console.warn('[NeuralAgent] Could not load drills from storage:', e);
+        }
+
+        // Fallback to demo if no real drills
+        if (drills.length === 0) {
+            drills = [
+                {
+                    id: 'demo1',
+                    type: 'fill-in-blank',
+                    skillId: 'binary_search',
+                    content: 'def binary_search(arr, target):\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // ___\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1',
+                    answer: '2'
+                },
+                {
+                    id: 'demo2',
+                    type: 'spot-bug',
+                    skillId: 'two_pointers',
+                    content: 'def reverse_string(s):\n    left, right = 0, len(s)\n    while left < right:\n        s[left], s[right] = s[right], s[left]\n        left += 1\n        right -= 1\n    return s',
+                    answer: 'off-by-one: right should be len(s) - 1'
+                },
+                {
+                    id: 'demo3',
+                    type: 'muscle-memory',
+                    skillId: 'sliding_window',
+                    content: 'Write the sliding window template for finding max sum of k consecutive elements',
+                    answer: 'window sum pattern'
+                }
+            ];
+            console.log('[NeuralAgent] Using demo drills (no generated drills found)');
+        }
+
+        queueContainer.innerHTML = '';
+        const queue = DrillQueue.renderQueue(drills, {
+            onStart: async (drill) => {
+                console.log('[NeuralAgent] Starting drill:', drill);
+
+                // Store drill session for the page to load
+                await chrome.storage.local.set({
+                    currentDrillSession: {
+                        drills: drills,
+                        currentDrill: drill,
+                        startTime: Date.now()
+                    }
+                });
+
+                // Open drill page in new tab
+                const drillUrl = chrome.runtime.getURL(`src/drills/drills.html?drillId=${drill.id}`);
+                chrome.tabs.create({ url: drillUrl });
+            }
+        });
+        queueContainer.appendChild(queue);
+
+        // Wire up View All and Generate buttons
+        const viewAllBtn = document.getElementById('btn-view-all-drills');
+        const generateBtn = document.getElementById('btn-generate-drills');
+
+        if (viewAllBtn) {
+            viewAllBtn.addEventListener('click', () => {
+                const overviewUrl = chrome.runtime.getURL('src/drills/drill_overview.html');
+                chrome.tabs.create({ url: overviewUrl });
+            });
+        }
+
+        if (generateBtn) {
+            generateBtn.addEventListener('click', async () => {
+                generateBtn.classList.add('loading');
+                generateBtn.disabled = true;
+                try {
+                    const response = await chrome.runtime.sendMessage({ action: 'generateDrillsNow' });
+                    if (response && response.success) {
+                        // Refresh the page to show new drills
+                        location.reload();
+                    } else {
+                        console.error('[Popup] Drill generation failed:', response?.error);
+                    }
+                } catch (e) {
+                    console.error('[Popup] Drill generation error:', e);
+                } finally {
+                    generateBtn.classList.remove('loading');
+                    generateBtn.disabled = false;
+                }
+            });
+        }
+    } else {
+        queueContainer.innerHTML = '<div style="color:var(--accent)">DrillQueue not loaded</div>';
     }
 }
 

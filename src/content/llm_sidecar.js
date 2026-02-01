@@ -13,11 +13,9 @@
             { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', meta: 'REASONING', provider: 'google' },
             { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', meta: 'BALANCED', provider: 'google' },
             { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', meta: 'EFFICIENT', provider: 'google' },
-            { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', meta: 'LEGACY // FAST', provider: 'google' },
-            { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', meta: 'STABLE', provider: 'google' },
-            { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', meta: 'FREE // OLD', provider: 'google' },
+            { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', meta: 'FAST', provider: 'google' },
             // Embedding models (hidden from standard selection but used internally)
-            { id: 'text-embedding-004', name: 'Gemini Embedding', meta: 'EMBED', provider: 'google', type: 'embedding' }
+            { id: 'gemini-embedding-001', name: 'Gemini Embedding', meta: 'EMBED', provider: 'google', type: 'embedding' }
         ],
         openai: [
             { id: 'gpt-4o-mini', name: 'GPT-4o Mini', meta: 'EFFICIENT', provider: 'openai' },
@@ -41,6 +39,15 @@
     const ALL_MODELS = [...MODELS.gemini, ...MODELS.openai, ...MODELS.anthropic, ...MODELS.local];
 
     const CHAT_MODELS = ALL_MODELS.filter(m => m.type !== 'embedding');
+    const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+    const DEPRECATED_GEMINI_MODELS = new Set(['gemini-1.5-flash', 'gemini-1.5-pro']);
+
+    function normalizeGeminiModelId(modelId) {
+        if (!modelId || typeof modelId !== 'string') return DEFAULT_GEMINI_MODEL;
+        if (!modelId.startsWith('gemini-')) return DEFAULT_GEMINI_MODEL;
+        if (DEPRECATED_GEMINI_MODELS.has(modelId)) return DEFAULT_GEMINI_MODEL;
+        return modelId;
+    }
 
     // --- Icons (SVG Strings) ---
     const ICONS = {
@@ -62,7 +69,7 @@
         // Loaded from global settings
         keys: { google: '', openai: '', anthropic: '' },
         localEndpoint: 'http://localhost:11434',
-        selectedModelId: 'gemini-1.5-flash',
+        selectedModelId: 'gemini-2.5-flash',
 
         messages: [],
         input: '',
@@ -84,7 +91,7 @@
             // Load CONFIG from Chrome Storage (Global)
             const globalSettings = await chrome.storage.local.get({
                 keys: { google: '', openai: '', anthropic: '' },
-                selectedModelId: 'gemini-1.5-flash',
+                selectedModelId: 'gemini-2.5-flash',
                 localEndpoint: 'http://localhost:11434'
             });
 
@@ -138,7 +145,12 @@
         };
 
         if (provider === 'google') {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${state.selectedModelId}:generateContent?key=${apiKey}`;
+            const modelId = normalizeGeminiModelId(state.selectedModelId);
+            if (modelId !== state.selectedModelId) {
+                console.warn(`[LLMSidecar] Deprecated or invalid Gemini model '${state.selectedModelId}', using '${modelId}'.`);
+                state.selectedModelId = modelId;
+            }
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
             const res = await fetch(url, {
                 ...fetchOptions,
                 body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt ? `${systemPrompt}\n${prompt}` : prompt }] }] })
@@ -174,7 +186,7 @@
         }
 
         if (provider === 'local') {
-            const host = state.keys.local || 'http://localhost:11434';
+            const host = state.localEndpoint || 'http://localhost:11434';
             const url = `${host}/api/chat`;
 
             // Auto-map legacy 'llama3' to 'llama3.1' to prevent 404s
@@ -280,7 +292,7 @@
         if (provider !== 'local' && !apiKey) throw new Error(`Missing API Key for ${provider} (or fallback) to generate embeddings`);
 
         if (provider === 'google') {
-            const modelId = 'text-embedding-004';
+            const modelId = 'gemini-embedding-001';
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:embedContent?key=${apiKey}`;
 
             const res = await fetch(url, {
@@ -316,7 +328,7 @@
         // Fallback or error for Anthropic (no embedding API yet publicly strictly standard)
         // Or mock it with local hashing if needed, but for now throw.
         if (provider === 'local') {
-            const host = state.keys.local || 'http://localhost:11434';
+            const host = state.localEndpoint || 'http://localhost:11434';
             const fetchProxied = (targetUrl, body) => {
                 return new Promise((resolve, reject) => {
                     try {
@@ -370,11 +382,15 @@
     }
 
     function hasAnyKey() {
-        return Object.values(state.keys || {}).some((k) => !!k);
+        if (state.keys && Object.values(state.keys).some(k => !!k)) return true;
+        // Check if current model is local
+        const model = ALL_MODELS.find(m => m.id === state.selectedModelId);
+        return model?.provider === 'local';
     }
 
     function isAnalysisEnabled() {
-        return hasAnyKey();
+        // Always enabled if local is selected or keys exist
+        return true;
     }
 
     async function analyzeMistake(code, errorDetails, meta = {}, signal = null, onProgress = null) {
@@ -431,7 +447,7 @@
                 if (onProgress) onProgress("🛡️ Verifying with Safe Observer...");
                 // Determine API endpoint (default to localhost for now, user configurable later)
                 const verifyUrl = state.localEndpoint.replace('11434', '8000').replace('/api/chat', '') + '/autofix';
-                const SAFE_OBSERVER_URL = 'http://localhost:8000/autofix';
+                const SAFE_OBSERVER_URL = verifyUrl;
 
                 console.log(`[LLMSidecar] 🛡️ Requesting Auto-Fix at ${SAFE_OBSERVER_URL}...`);
                 const res = await fetch(SAFE_OBSERVER_URL, {
@@ -448,15 +464,19 @@
 
                         // Append the verified fix to the advice context
                         let fixDisplay = "";
+                        const attempts = data.attempts || 1;
+                        const testCount = data.test_count || 1;
+                        const effortMsg = ` (Took ${attempts} attempts, Passed ${testCount}/${testCount} Tests)`;
+
                         if (data.fixed_code) {
-                            fixDisplay = `\n\n**✅ VERIFIED FIX**\nI have generated and tested a fix for your code:\n\`\`\`python\n${data.fixed_code}\n\`\`\`\n`;
+                            fixDisplay = `\n\n**✅ VERIFIED FIX${effortMsg}**\nI have generated and tested a fix for your code against a suite of ${testCount} edge-case tests.\n\`\`\`python\n${data.fixed_code}\n\`\`\`\n`;
                         } else if (data.explanation) {
-                            fixDisplay = `\n\n**✅ VERIFIED FIX**\nI generated a complex fix that passes the test. Strategy: ${data.explanation}\n`;
+                            fixDisplay = `\n\n**✅ VERIFIED FIX${effortMsg}**\nI generated a complex fix that passes the test suite. Strategy: ${data.explanation}\n`;
                         }
 
                         // We inject this into the prompt or return it as part of the analysis?
                         // Let's modify the prompt to include it, so the final analysis references it.
-                        verificationResult = `\n\n--- 🛡️ SAFE OBSERVER LOGS ---\nAUTO-FIX STATUS: VERIFIED\n${fixDisplay}\nEXECUTION LOGS:\n${data.logs}\n--------------------------------------`;
+                        verificationResult = `\n\n--- 🛡️ SAFE OBSERVER LOGS ---\nAUTO-FIX STATUS: VERIFIED${effortMsg}\n${fixDisplay}\nEXECUTION LOGS:\n${data.logs}\n--------------------------------------`;
                     } else {
                         console.warn("[LLMSidecar] ⚠️ Auto-Fix attempted but failed verification.");
                         console.log("[LLMSidecar] 🔍 DEBUG: Verification Data:", data);

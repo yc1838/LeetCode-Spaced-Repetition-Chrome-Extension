@@ -972,3 +972,52 @@ body.theme-brnd .notes-flashcard::before {
     position: static;
     opacity: 1;
 }
+
+/* Drill Action Buttons */
+.drill-action-btn {
+    background: transparent;
+    border: 1px solid var(--border-dim);
+    color: var(--electric);
+    padding: 3px 8px;
+    font-family: var(--font-main);
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.drill-action-btn:hover {
+    border-color: var(--terminal);
+    color: var(--terminal);
+    box-shadow: 0 0 8px var(--border-glow);
+}
+
+.drill-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.drill-action-btn.loading {
+    position: relative;
+    color: transparent;
+}
+
+.drill-action-btn.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 10px;
+    height: 10px;
+    margin: -5px 0 0 -5px;
+    border: 2px solid var(--border-dim);
+    border-top-color: var(--terminal);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

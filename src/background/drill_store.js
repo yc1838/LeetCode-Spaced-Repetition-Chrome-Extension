@@ -1,0 +1,226 @@
+/**
+ * Drill Store
+ * 
+ * Manages persistent storage of drills (personalized exercises).
+ * Drills target specific weak skills identified by the Skill Matrix.
+ */
+
+(function (root, factory) {
+    if (typeof module === 'object' && module.exports) {
+        // Node.js (for testing)
+        module.exports = factory();
+    } else {
+        // Browser
+        root.DrillStore = factory();
+    }
+}(typeof self !== 'undefined' ? self : this, function () {
+
+    // Valid drill types
+    const DRILL_TYPES = ['fill-in-blank', 'spot-bug', 'critique', 'muscle-memory'];
+
+    /**
+     * Generate a unique ID for a drill.
+     */
+    function generateId() {
+        return 'drill_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+    }
+
+    /**
+     * Check if a drill type is valid.
+     */
+    function isValidDrillType(type) {
+        return DRILL_TYPES.includes(type);
+    }
+
+    /**
+     * Create a new drill entity.
+     */
+    function createDrill({ type, skillId, content, answer, test_cases, explanation, difficulty = 'medium' }) {
+        const now = new Date().toISOString();
+        return {
+            id: generateId(),
+            type,
+            skillId,
+            content,
+            answer,
+            test_cases: test_cases || [],
+            explanation: explanation || null,
+            difficulty,
+            status: 'pending',      // pending | completed | skipped
+            correct: null,          // true | false | null
+            createdAt: now,
+            completedAt: null,
+            attempts: 0
+        };
+    }
+
+    /**
+     * DrillStore class - manages IndexedDB operations for drills.
+     */
+    class DrillStore {
+        constructor() {
+            this.db = null;
+            this.initialized = false;
+        }
+
+        /**
+         * Initialize the database.
+         */
+        async init() {
+            if (this.initialized) return;
+
+            try {
+                const Dexie = (typeof window !== 'undefined' && window.Dexie) ||
+                    (typeof self !== 'undefined' && self.Dexie) ||
+                    (typeof global !== 'undefined' && global.Dexie);
+
+                if (!Dexie) {
+                    throw new Error('Dexie not found. Ensure dexie.min.js is imported.');
+                }
+
+                this.db = new Dexie('DrillsDB');
+                this.db.version(1).stores({
+                    drills: 'id, type, skillId, status, createdAt, difficulty'
+                });
+                await this.db.open();
+                this.initialized = true;
+                console.log('[DrillStore] Database initialized.');
+            } catch (e) {
+                console.error('[DrillStore] Failed to initialize:', e);
+                throw e;
+            }
+        }
+
+        /**
+         * Add a new drill.
+         */
+        async add(drill) {
+            if (!this.initialized) await this.init();
+            await this.db.drills.add(drill);
+            return drill;
+        }
+
+        /**
+         * Get all drills.
+         */
+        async getAll() {
+            if (!this.initialized) await this.init();
+            return await this.db.drills.toArray();
+        }
+
+        /**
+         * Get drill by ID.
+         */
+        async getById(id) {
+            if (!this.initialized) await this.init();
+            return await this.db.drills.get(id);
+        }
+
+        /**
+         * Update an existing drill.
+         */
+        async update(drill) {
+            if (!this.initialized) await this.init();
+            await this.db.drills.put(drill);
+            return drill;
+        }
+
+        /**
+         * Delete a drill by ID.
+         */
+        async delete(id) {
+            if (!this.initialized) await this.init();
+            await this.db.drills.delete(id);
+        }
+
+        /**
+         * Clear all drills.
+         */
+        async clear() {
+            if (!this.initialized) await this.init();
+            await this.db.drills.clear();
+        }
+
+        /**
+         * Get drills by skill ID.
+         */
+        async getBySkillId(skillId) {
+            if (!this.initialized) await this.init();
+            return await this.db.drills.where('skillId').equals(skillId).toArray();
+        }
+
+        /**
+         * Get drills by type.
+         */
+        async getByType(type) {
+            if (!this.initialized) await this.init();
+            return await this.db.drills.where('type').equals(type).toArray();
+        }
+
+        /**
+         * Get pending drills.
+         */
+        async getPending() {
+            if (!this.initialized) await this.init();
+            return await this.db.drills.where('status').equals('pending').toArray();
+        }
+
+        /**
+         * Get today's drill queue (N pending drills).
+         */
+        async getTodayQueue(limit = 5) {
+            if (!this.initialized) await this.init();
+            return await this.db.drills
+                .where('status')
+                .equals('pending')
+                .limit(limit)
+                .toArray();
+        }
+
+        /**
+         * Get drill statistics.
+         */
+        async getStats() {
+            if (!this.initialized) await this.init();
+            const all = await this.db.drills.toArray();
+
+            const completed = all.filter(d => d.status === 'completed');
+            const correct = completed.filter(d => d.correct === true);
+            const pending = all.filter(d => d.status === 'pending');
+
+            return {
+                total: all.length,
+                completed: completed.length,
+                pending: pending.length,
+                correct: correct.length,
+                accuracy: completed.length > 0
+                    ? ((correct.length / completed.length) * 100).toFixed(1) + '%'
+                    : '0%'
+            };
+        }
+
+        /**
+         * Mark a drill as completed.
+         */
+        async markCompleted(id, correct) {
+            if (!this.initialized) await this.init();
+            const drill = await this.getById(id);
+            if (drill) {
+                drill.status = 'completed';
+                drill.correct = correct;
+                drill.completedAt = new Date().toISOString();
+                drill.attempts++;
+                await this.update(drill);
+            }
+            return drill;
+        }
+    }
+
+    return {
+        DrillStore,
+        createDrill,
+        generateId,
+        isValidDrillType,
+        DRILL_TYPES
+    };
+}));
