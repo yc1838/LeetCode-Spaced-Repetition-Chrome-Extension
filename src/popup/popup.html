@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LeetCode SRS OS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;600&family=JetBrains+Mono:wght@100;400;700&family=Courier+Prime:wght@400;700&family=Inter:wght@400;600;800&family=Space+Mono:wght@400;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+
+    <div class="extension-container">
+        <!-- STATUS BAR -->
+        <header class="status-bar">
+            <div>LeetCode EasyRepeat OS</div>
+            <div class="status-controls">
+                <button id="ai-mode-toggle" class="ai-toggle" title="Toggle AI analysis">AI_MODE: OFF</button>
+                <button id="btn-setup" class="ai-toggle" title="Open setup">SETUP</button>
+                <div class="status-ready">[SYS_READY] <span id="clock">00:00:00</span></div>
+            </div>
+        </header>
+
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <div class="nav-icon active" id="tab-dashboard" title="Dashboard">
+                <svg viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                </svg>
+            </div>
+            <div class="nav-icon" id="tab-all" title="All Vectors">
+                <svg viewBox="0 0 24 24">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                </svg>
+            </div>
+            <div class="nav-icon" id="tab-stats" title="Weakness Stats">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" />
+                    <path d="M12 6v6l4 2" />
+                </svg>
+            </div>
+            <div class="nav-icon" id="tab-neural" title="Neural Agent">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3" />
+                    <circle cx="12" cy="5" r="2" />
+                    <circle cx="19" cy="12" r="2" />
+                    <circle cx="12" cy="19" r="2" />
+                    <circle cx="5" cy="12" r="2" />
+                    <line x1="12" y1="7" x2="12" y2="9" />
+                    <line x1="17" y1="12" x2="15" y2="12" />
+                    <line x1="12" y1="15" x2="12" y2="17" />
+                    <line x1="9" y1="12" x2="7" y2="12" />
+                </svg>
+            </div>
+            <!-- Manual Scan / Sync -->
+            <div class="nav-icon" id="btn-sync" title="Initiate Scan">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+                    <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+                    <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+                    <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+                    <line x1="4" y1="12" x2="20" y2="12" opacity="0.5" stroke-dasharray="2 2" />
+                </svg>
+            </div>
+            <!-- Streak Repair -->
+            <div class="nav-icon" id="btn-repair" title="Repair Streak">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path
+                        d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z">
+                    </path>
+                </svg>
+            </div>
+            <!-- Theme Toggle -->
+            <div class="nav-icon" id="btn-theme" title="Switch Theme">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="5" />
+                    <path
+                        d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+                </svg>
+            </div>
+        </aside>
+
+        <!-- VIEWPORT -->
+        <main class="viewport">
+
+            <!-- COGNITIVE MAP (Global Stats) -->
+            <section class="heatmap-container">
+                <div class="heatmap-header">
+                    <span>COGNITIVE_RETENTION_MAP</span>
+                    <span id="streak-display">STREAK: --</span>
+                </div>
+                <div class="heatmap-grid" id="global-heatmap">
+                    <!-- JS Generated Cells -->
+                </div>
+            </section>
+
+            <!-- Test Mode (Hidden unless toggled) -->
+            <div class="sim-controls" id="sim-controls"
+                style="display:none; border:1px solid var(--electric); padding:10px; margin-bottom:15px; background: rgba(45, 226, 230, 0.05);">
+                <div class="heatmap-header">SIMULATION_MODE_ACTIVE</div>
+                <input type="date" id="test-mode-date"
+                    style="background:transparent; border:none; color:var(--electric); font-family:inherit; width:100%;">
+            </div>
+
+            <!-- ACTIVE VECTORS (Queue) -->
+            <section>
+                <div class="heatmap-header" style="margin-bottom: 15px; display:flex; justify-content:space-between;">
+                    <span id="queue-title">ACTIVE_PROBLEM_VECTORS</span>
+
+                    <!-- Custom Switch for Test Mode -->
+                    <label style="cursor:pointer; display:flex; align-items:center; gap:5px; font-size:0.6rem;">
+                        <input type="checkbox" id="test-mode-toggle" style="display:none;">
+                        <span style="color:var(--terminal);">[SIM_MODE]</span>
+                    </label>
+                </div>
+
+                <div class="vector-list" id="vector-list">
+                    <!-- Cards will be injected here via popup.js -->
+                </div>
+            </section>
+
+
+            <!-- STATS VIEW (Hidden by default) -->
+            <section id="stats-container" style="display:none; padding:15px;">
+                <div class="heatmap-header">WEAKNESS_RADAR</div>
+                <div id="stats-content" style="margin-top:20px; color: var(--electric);">
+                    <div class="stat-loading">Connecting to LeetCode Neural Link...</div>
+                </div>
+            </section>
+
+            <!-- NEURAL AGENT VIEW (Hidden by default) -->
+            <section id="neural-container" style="display:none; padding:15px;">
+                <div class="heatmap-header" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>NEURAL_RETENTION_AGENT</span>
+                    <label class="agent-toggle-switch">
+                        <input type="checkbox" id="agent-enabled-toggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <!-- Skill DNA Graph -->
+                <div id="skill-graph-container"
+                    style="margin-top:15px; min-height:200px; display:flex; justify-content:center; align-items:center;">
+                    <div class="stat-loading">Loading Skill DNA...</div>
+                </div>
+
+                <!-- Drill Queue -->
+                <div id="drill-queue-container" style="margin-top:15px;">
+                    <div class="heatmap-header"
+                        style="font-size:0.7rem; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+                        <span>PENDING_DRILLS</span>
+                        <div style="display:flex; gap:8px;">
+                            <button id="btn-view-all-drills" class="drill-action-btn" title="View all drills">📋 View
+                                All</button>
+                            <button id="btn-generate-drills" class="drill-action-btn" title="Generate new drills">⚡
+                                Generate</button>
+                        </div>
+                    </div>
+                    <div id="drill-queue-list">
+                        <!-- Drill items injected via JS -->
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <div id="global-tooltip" class="srs-tooltip"></div>
+    <script src="../shared/config.js"></script>
+    <script src="../algorithms/fsrs_logic.js"></script>
+    <script src="../shared/storage.js"></script>
+    <script src="../algorithms/vector_db.js"></script>
+    <script src="../content/skill_graph.js"></script>
+    <script src="../content/drill_queue.js"></script>
+    <script src="../content/skill_animations.js"></script>
+    <script src="../background/agent_loader.js"></script>
+    <script src="popup_ui.js"></script>
+    <script src="popup.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,17 @@
+{
+    "name": "leetcode-srs-extension",
+    "version": "1.0.1",
+    "description": "LeetCode SRS Extension",
+    "scripts": {
+        "test": "jest"
+    },
+    "devDependencies": {
+        "fake-indexeddb": "^6.2.5",
+        "jest": "^29.7.0",
+        "jest-environment-jsdom": "^29.7.0",
+        "puppeteer": "^24.35.0"
+    },
+    "dependencies": {
+        "dexie": "^4.2.1"
+    }
+}

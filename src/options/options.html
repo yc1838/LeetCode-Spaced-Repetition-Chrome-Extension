@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LeetCode EasyRepeat - AI Setup</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;600&family=JetBrains+Mono:wght@300;400;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="options.css">
+</head>
+
+<body>
+    <div class="page">
+        <header class="hero">
+            <div class="hero-title">LeetCode EasyRepeat</div>
+            <div class="hero-subtitle">AI Setup</div>
+            <div class="hero-note">Configure local or cloud AI providers and verify connections.</div>
+        </header>
+
+        <section class="card mode-selector">
+            <h2>Choose Intelligence Source</h2>
+            <div class="row" style="gap: 20px;">
+                <label class="radio-card">
+                    <input type="radio" name="provider-mode" value="local" id="mode-local">
+                    <div class="card-content">
+                        <span class="icon">🏠</span>
+                        <div class="text">
+                            <span class="title">Local (Recommended)</span>
+                            <span class="subtitle">Private, Free, Offline. Requires Ollama.</span>
+                        </div>
+                    </div>
+                </label>
+                <label class="radio-card">
+                    <input type="radio" name="provider-mode" value="cloud" id="mode-cloud">
+                    <div class="card-content">
+                        <span class="icon">☁️</span>
+                        <div class="text">
+                            <span class="title">Cloud API</span>
+                            <span class="subtitle">Higher Logic, Paid. Requires API Keys.</span>
+                        </div>
+                    </div>
+                </label>
+            </div>
+        </section>
+
+        <section class="card hidden-section" id="section-cloud">
+            <h2>Cloud Access Keys</h2>
+            <div class="grid">
+                <div class="field">
+                    <label for="key-google">Google Gemini API Key</label>
+                    <input id="key-google" type="password" placeholder="AIzaSy...">
+                </div>
+                <div class="field">
+                    <label for="key-openai">OpenAI API Key</label>
+                    <input id="key-openai" type="password" placeholder="sk-...">
+                </div>
+                <div class="field">
+                    <label for="key-anthropic">Anthropic API Key</label>
+                    <input id="key-anthropic" type="password" placeholder="sk-ant-...">
+                </div>
+            </div>
+        </section>
+
+        <section class="card hidden-section" id="section-local">
+            <h2>Local LLM Setup</h2>
+            <p class="hint">Use Ollama or LM Studio to run models locally.</p>
+            <div class="grid">
+                <div class="field">
+                    <label for="local-endpoint">Local Endpoint</label>
+                    <input id="local-endpoint" type="text" placeholder="http://localhost:11434">
+                </div>
+            </div>
+            <div class="actions" style="margin-top:10px;">
+                <button id="test-local" class="btn">Test Connection</button>
+                <span id="test-status" class="status-text"></span>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Active Model</h2>
+            <div class="field">
+                <label for="model-select">Select the model to use for analysis &amp; chat:</label>
+                <select id="model-select" class="full-width">
+                    <!-- Populated by JS -->
+                </select>
+            </div>
+            <div class="actions">
+                <button id="save-settings" class="btn primary">Save All Settings</button>
+                <span id="save-status" class="status-text"></span>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>🧠 Neural Retention Agent</h2>
+            <p class="hint">Manually trigger digest and drill generation for testing.</p>
+            <div class="grid" style="gap: 15px; margin-top: 15px;">
+                <div class="field">
+                    <button id="backfill-history" class="btn primary" style="width: 100%;">
+                        📚 Backfill from ALL History
+                    </button>
+                    <span id="backfill-status" class="status-text"></span>
+                </div>
+                <div class="field">
+                    <button id="run-digest" class="btn" style="width: 100%;">
+                        ⚡ Run Nightly Digest (Today Only)
+                    </button>
+                    <span id="digest-status" class="status-text"></span>
+                </div>
+                <div class="field">
+                    <button id="gen-drills" class="btn" style="width: 100%;">
+                        🎯 Generate Drills from Weak Skills
+                    </button>
+                    <span id="drills-status" class="status-text"></span>
+                </div>
+                <div class="notes" style="margin-top: 15px; font-size: 0.85em; opacity: 0.7;">
+                    <p>• <b>Backfill</b>: Process ALL past submissions to build your Skill DNA</p>
+                    <p>• <b>Nightly</b>: Analyze only today's mistakes</p>
+                    <p>• <b>Generate</b>: Create drills based on weak skills</p>
+                </div>
+
+                <hr style="margin: 20px 0; border: none; border-top: 1px solid rgba(255,255,255,0.1);">
+
+                <h3 style="margin-bottom: 15px; font-size: 1em;">⚙️ Agent Settings</h3>
+                <div class="grid" style="gap: 15px;">
+                    <div class="field">
+                        <label for="digest-time">Nightly Digest Time:</label>
+                        <input type="time" id="digest-time" value="02:00" class="full-width">
+                    </div>
+                    <div class="field">
+                        <label for="pattern-threshold">Error Pattern Threshold:</label>
+                        <input type="number" id="pattern-threshold" min="1" max="10" value="3" class="full-width">
+                        <span class="hint">Mistakes needed to activate a pattern</span>
+                    </div>
+                    <div class="field">
+                        <label for="notification-email">Notification Email (optional):</label>
+                        <input type="email" id="notification-email" placeholder="your@email.com" class="full-width">
+                    </div>
+                    <div class="field">
+                        <label for="debug-logs">Verbose Debug Logs:</label>
+                        <div class="checkbox-row">
+                            <input type="checkbox" id="debug-logs">
+                            <label for="debug-logs" class="hint">Enable background debug logging (Service Worker console)</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="actions" style="margin-top: 15px;">
+                    <button id="save-agent-settings" class="btn">💾 Save Agent Settings</button>
+                    <span id="agent-save-status" class="status-text"></span>
+                </div>
+        </section>
+
+
+
+        <section class="card">
+            <h2>Quick Setup (Local HTTP)</h2>
+            <ol class="steps">
+                <li>Install a local model server.</li>
+                <li>Start the server and keep it running.</li>
+                <li>Enter the endpoint and click Test connection.</li>
+            </ol>
+            <div class="subhead">Ollama (example)</div>
+            <pre><code>ollama serve
+ollama pull llama3.1
+ollama run llama3.1</code></pre>
+            <div class="subhead">LM Studio (OpenAI-compatible)</div>
+            <pre><code>Start the local server in LM Studio
+Use the server URL shown in the UI (usually http://localhost:1234)</code></pre>
+            <div class="subhead">Troubleshooting</div>
+            <ul class="notes">
+                <li>If the test fails with a network error, the server is likely not running.</li>
+                <li>If you see a CORS error, enable CORS on the local server.</li>
+            </ul>
+        </section>
+    </div>
+
+    <script src="../shared/config.js"></script>
+    <script src="options.js"></script>
+</body>
+
+</html>
