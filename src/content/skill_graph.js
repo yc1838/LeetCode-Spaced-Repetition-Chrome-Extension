@@ -1,14 +1,19 @@
 /**
  * Skill Graph Component
- * 
+ *
  * SVG-based visualization of the Skill DNA as a node graph.
  */
 
 (function (root, factory) {
+    var exported = factory();
     if (typeof module === 'object' && module.exports) {
-        module.exports = factory();
+        module.exports = exported;
     } else {
-        root.SkillGraph = factory();
+        root.SkillGraph = exported;
+    }
+    // Also set on window for bundled contexts
+    if (typeof window !== 'undefined') {
+        window.SkillGraph = exported;
     }
 }(typeof self !== 'undefined' ? self : this, function () {
 

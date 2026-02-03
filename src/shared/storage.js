@@ -1,18 +1,24 @@
 /**
  * LeetCode EasyRepeat - Storage Layer
- * 
+ *
  * Handles saving submission data to Chrome's local storage.
  * Orchestrates SRS/FSRS calculations and updates history.
  */
 (function (root, factory) {
+    var exported = factory();
     if (typeof module === 'object' && module.exports) {
         // Node.js
-        module.exports = factory();
+        module.exports = exported;
     } else {
-        // Browser
-        const exported = factory();
+        // Browser - set individual functions on root
         for (const key in exported) {
             root[key] = exported[key];
+        }
+    }
+    // Also set on window for bundled contexts
+    if (typeof window !== 'undefined') {
+        for (const key in exported) {
+            window[key] = exported[key];
         }
     }
 }(typeof self !== 'undefined' ? self : this, function () {

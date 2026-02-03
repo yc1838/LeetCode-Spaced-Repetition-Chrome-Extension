@@ -1,14 +1,19 @@
 /**
  * Drill Queue Widget
- * 
+ *
  * Displays pending drills in the popup with start buttons.
  */
 
 (function (root, factory) {
+    var exported = factory();
     if (typeof module === 'object' && module.exports) {
-        module.exports = factory();
+        module.exports = exported;
     } else {
-        root.DrillQueue = factory();
+        root.DrillQueue = exported;
+    }
+    // Also set on window for bundled contexts
+    if (typeof window !== 'undefined') {
+        window.DrillQueue = exported;
     }
 }(typeof self !== 'undefined' ? self : this, function () {
 

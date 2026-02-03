@@ -5,6 +5,8 @@
  */
 
 (async function () {
+    // drillId is the single source of truth for which drill we should render.
+    // If this is missing, we cannot decide what to show.
     const drillId = DrillPage.getDrillFromURL(window.location.search);
     let sessionDrills = []; // Store all drills for navigation
 
@@ -19,7 +21,7 @@
         return;
     }
 
-    // Session timer
+    // Session timer (UI only; navigation does not depend on this).
     let seconds = 0;
     const timerEl = document.getElementById('session-time');
     setInterval(() => {
@@ -34,11 +36,15 @@
      * If no more drills, show completion screen.
      */
     function goToNextDrill(currentDrillId) {
+        // Look up the current drill inside the in-memory session list.
+        // IMPORTANT: if currentDrillId is missing or does not exist in sessionDrills,
+        // findIndex returns -1 and nextDrill becomes sessionDrills[0],
+        // which can look like "stuck on the same page".
         const currentIndex = sessionDrills.findIndex(d => d.id === currentDrillId);
         const nextDrill = sessionDrills[currentIndex + 1];
 
         if (nextDrill) {
-            // Navigate to next drill (same tab)
+            // Navigate to next drill (same tab) by changing the query param.
             const nextUrl = DrillPage.getDrillPageURL(nextDrill.id);
             window.location.href = nextUrl;
         } else {
@@ -51,18 +57,19 @@
      * Show session completion screen.
      */
     function showCompletionScreen() {
+        // Replace drill UI with a simple "done" message and a close button.
         document.getElementById('drill-content').innerHTML = `
-            <div class="completion-state" style="text-align: center; padding: 40px;">
-                <div style="font-size: 48px; margin-bottom: 20px;">🎉</div>
-                <div style="font-size: 24px; margin-bottom: 10px; color: var(--electric, #00ff88);">Session Complete!</div>
-                <div style="opacity: 0.7; margin-bottom: 30px;">You've finished all drills in this session.</div>
-                <button onclick="window.close()" class="btn-primary" style="padding: 12px 24px; font-size: 16px;">Close</button>
+            <div class="completion-state">
+                <div class="completion-icon">🎉</div>
+                <div class="completion-title">Session Complete!</div>
+                <div class="completion-subtitle">You've finished all drills in this session.</div>
+                <button onclick="window.close()" class="btn-primary">Close</button>
             </div>
         `;
         document.getElementById('drill-result').style.display = 'none';
     }
 
-    // Load drill from storage
+    // Load drill session from storage (set by popup or overview page).
     try {
         const result = await chrome.storage.local.get('currentDrillSession');
         const session = result.currentDrillSession || {};
@@ -70,21 +77,22 @@
 
         let drill = null;
 
-        // 1. Try to find requested drill in existing session
+        // 1) Try to find the requested drill in the existing session list.
         if (drillId && sessionDrills.length > 0) {
             drill = sessionDrills.find(d => d.id === drillId);
         }
 
-        // 2. If no drill found (invalid ID or empty session), handle fallback
+        // 2) If no drill found (invalid ID or empty session), handle fallback.
         if (!drill) {
             // If we have a session but ID is invalid, default to first drill
             if (sessionDrills.length > 0) {
                 console.warn(`Drill ID ${drillId} not found in session, resetting to first drill.`);
                 drill = sessionDrills[0];
-                // Update URL to match
+                // NOTE: We do NOT update the URL here.
+                // If you want the URL to match the displayed drill, uncomment below.
                 // window.history.replaceState(null, '', DrillPage.getDrillPageURL(drill.id));
             }
-            // 3. If NO session exists at all, create Demo Session
+            // 3) If NO session exists at all, create a Demo Session.
             else {
                 console.log('No active session found. Creating Demo Session.');
                 // Demo drills for testing - use fixed IDs
@@ -113,7 +121,7 @@
                     }
                 ];
 
-                // Save new demo session
+                // Save new demo session so navigation works on next/skip.
                 await chrome.storage.local.set({
                     currentDrillSession: {
                         drills: sessionDrills,
@@ -127,7 +135,7 @@
             }
         }
 
-        // Render whatever we found or created
+        // Render whatever we found or created.
         renderDrill(drill);
 
     } catch (e) {
@@ -142,13 +150,14 @@
     }
 
     function renderDrill(drill) {
+        // Render the drill HTML, then wire up progress + handlers.
         const contentEl = document.getElementById('drill-content');
         const skillBadge = document.getElementById('current-skill');
 
         contentEl.innerHTML = DrillPage.renderDrillContent(drill);
         skillBadge.textContent = DrillPage.getSkillDisplayName(drill.skillId);
 
-        // Update Progress
+        // Update progress UI based on the position in sessionDrills.
         const total = sessionDrills.length;
         const index = sessionDrills.findIndex(d => d.id === drill.id);
         const current = index + 1;
@@ -159,7 +168,26 @@
         if (progressText) progressText.textContent = `Drill ${current} of ${total}`;
         if (progressFill) progressFill.style.width = `${(current / total) * 100}%`;
 
-        // Spot-Bug Interactive Handler
+        // If the user is typing code, use Tab to indent instead of moving focus.
+        const textareas = contentEl.querySelectorAll('textarea');
+        textareas.forEach((textarea) => {
+            textarea.addEventListener('keydown', (event) => {
+                if (event.key !== 'Tab') return;
+                event.preventDefault();
+
+                const start = textarea.selectionStart || 0;
+                const end = textarea.selectionEnd || 0;
+                const value = textarea.value || '';
+
+                // Insert a literal tab at the cursor (simple, predictable behavior).
+                textarea.value = value.slice(0, start) + '\t' + value.slice(end);
+                const nextCursor = start + 1;
+                textarea.selectionStart = nextCursor;
+                textarea.selectionEnd = nextCursor;
+            });
+        });
+
+        // Spot-Bug Interactive Handler (select a token -> record line number).
         if (drill.type === 'spot-bug') {
             const tokens = contentEl.querySelectorAll('.code-token');
             const hiddenInput = document.getElementById('drill-answer');
@@ -187,7 +215,7 @@
             });
         }
 
-        // Submit handler
+        // Submit handler: verify answer, show result, then wire Next/Finish.
         document.getElementById('btn-submit').onclick = async () => {
             const answer = DrillPage.getUserAnswer(drill.type);
 
@@ -196,32 +224,31 @@
                 return;
             }
 
-            // Verify answer
+            // Verify answer using AI grading (muscle-memory) or DrillVerifier.
             let result;
 
             // For muscle-memory drills, use CodeGeneratorAgent for AI evaluation
             if (drill.type === 'muscle-memory' && typeof CodeGeneratorAgent !== 'undefined') {
-                // Show processing indicator (Spinner)
+                const aiStart = Date.now();
+                const answerPreview = answer.length > 180 ? `${answer.slice(0, 180)}...` : answer;
+                console.log('[DrillAI] Start evaluation', {
+                    drillId: drill.id,
+                    skillId: drill.skillId,
+                    inputLength: answer.length,
+                    inputPreview: answerPreview
+                });
+
+                // Show processing indicator (Spinner) while AI evaluates.
                 const submitBtn = document.getElementById('btn-submit');
                 const originalText = submitBtn.textContent;
 
                 // Disable button and show spinner in a modal/overlay style or inline
                 submitBtn.disabled = true;
 
-                // Create loading overlay
+                // Create loading overlay to block input during grading.
                 const loadingOverlay = document.createElement('div');
                 loadingOverlay.id = 'loading-overlay';
-                loadingOverlay.style.cssText = `
-                    position: absolute;
-                    top: 0; left: 0; right: 0; bottom: 0;
-                    background: rgba(10, 10, 15, 0.85);
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    justify-content: center;
-                    z-index: 100;
-                    border-radius: 16px;
-                `;
+                loadingOverlay.className = 'loading-overlay';
                 loadingOverlay.innerHTML = `
                     <div class="loading-spinner"></div>
                     <div class="loading-text">AI Evaluating Solution...</div>
@@ -230,12 +257,21 @@
                 document.querySelector('.drill-container').appendChild(loadingOverlay);
 
                 try {
-                    // Parse input type
+                    // Parse input type for AI grading.
                     const inputInfo = typeof DrillInputHandler !== 'undefined'
                         ? DrillInputHandler.parseInput(answer)
                         : { type: 'pseudo-code', content: answer };
+                    console.log('[DrillAI] Parsed input type', {
+                        drillId: drill.id,
+                        inputType: inputInfo.type
+                    });
 
-                    // Generate code from pseudo-code/natural language
+                    // Generate code from pseudo-code/natural language.
+                    console.log('[DrillAI] Calling CodeGeneratorAgent.generateCode', {
+                        drillId: drill.id,
+                        skillId: drill.skillId,
+                        inputType: inputInfo.type
+                    });
                     const genResult = await CodeGeneratorAgent.generateCode(answer, {
                         skillId: drill.skillId,
                         drillType: drill.type,
@@ -244,20 +280,34 @@
 
                     loadingOverlay.remove(); // Remove loading state
 
+                    console.log('[DrillAI] Code generation result', {
+                        drillId: drill.id,
+                        success: Boolean(genResult.success),
+                        confidence: genResult.confidence,
+                        codeLength: genResult.code ? genResult.code.length : 0,
+                        retryable: Boolean(genResult.retryable),
+                        error: genResult.error || null
+                    });
+
                     if (genResult.success && genResult.code) {
-                        // Run hallucination check if available
+                        // Run hallucination check if available.
                         let hallucinationWarning = null;
                         if (typeof HallucinationChecker !== 'undefined') {
                             const halluCheck = await HallucinationChecker.check(answer, genResult.code, {
                                 skillId: drill.skillId,
                                 drillType: drill.type
                             });
+                            console.log('[DrillAI] Hallucination check', {
+                                drillId: drill.id,
+                                isHallucination: Boolean(halluCheck?.isHallucination),
+                                reason: halluCheck?.reason || null
+                            });
                             if (halluCheck.isHallucination) {
                                 hallucinationWarning = `⚠️ Warning: ${halluCheck.reason}`;
                             }
                         }
 
-                        // AI successfully generated code
+                        // AI successfully generated code (consider hallucination).
                         result = {
                             correct: !hallucinationWarning,  // Only correct if no hallucination detected
                             feedback: hallucinationWarning
@@ -266,7 +316,7 @@
                             generatedCode: genResult.code
                         };
 
-                        // Send async notification if available
+                        // Send async notification if available.
                         if (typeof AsyncNotifier !== 'undefined') {
                             AsyncNotifier.notify(drill.id, {
                                 success: result.correct,
@@ -275,9 +325,20 @@
                                 totalCount: 1
                             });
                         }
+                        console.log('[DrillAI] Evaluation complete', {
+                            drillId: drill.id,
+                            correct: result.correct,
+                            elapsedMs: Date.now() - aiStart
+                        });
                     } else {
-                        // AI couldn't generate valid code
+                        // AI couldn't generate valid code.
                         const errorMsg = genResult.error || 'Unknown error';
+                        console.warn('[DrillAI] Generation failed', {
+                            drillId: drill.id,
+                            error: errorMsg,
+                            retryable: Boolean(genResult.retryable),
+                            elapsedMs: Date.now() - aiStart
+                        });
 
                         if (genResult.retryable) {
                             result = {
@@ -307,21 +368,21 @@
             } else if (typeof DrillVerifier !== 'undefined' && DrillVerifier.verifyAnswer) {
                 result = await DrillVerifier.verifyAnswer(drill, answer);
             } else {
-                // Simple fallback
+                // Simple fallback if verifier is missing.
                 result = {
                     correct: drill.answer && answer.toLowerCase().includes(drill.answer.toLowerCase()),
                     feedback: drill.answer ? `Expected: ${drill.answer}` : 'Answer recorded'
                 };
             }
 
-            // Show result
+            // Show result panel and hide the drill content.
             document.getElementById('drill-content').style.display = 'none';
             const resultEl = document.getElementById('drill-result');
             resultEl.style.display = 'block';
             resultEl.style.display = 'block';
             resultEl.innerHTML = DrillPage.renderResult(result);
 
-            // Add Retry Button if applicable
+            // Add Retry Button if applicable (AI failure).
             if (result.retryable) {
                 const actionsContainer = resultEl.querySelector('.result-actions');
                 const retryBtn = document.createElement('button');
@@ -333,7 +394,7 @@
                 actionsContainer.insertBefore(retryBtn, actionsContainer.firstChild);
             }
 
-            // Track result (don't let tracking errors block navigation)
+            // Track result (don't let tracking errors block navigation).
             try {
                 if (typeof DrillTracker !== 'undefined' && DrillTracker.recordAttempt) {
                     await DrillTracker.recordAttempt(drill.id, {
@@ -346,7 +407,7 @@
                 console.warn('[DrillInit] Tracking failed, continuing:', e.message);
             }
 
-            // Wire buttons - navigate to next drill instead of closing
+            // Wire buttons - navigate to next drill instead of closing.
             document.getElementById('btn-next')?.addEventListener('click', () => {
                 goToNextDrill(drill.id);
             });
@@ -355,10 +416,10 @@
             });
         };
 
-        // Skip handler - navigate to next drill instead of closing
+        // Skip handler - navigate to next drill instead of closing.
         document.getElementById('btn-skip')?.addEventListener('click', async () => {
             if (confirm('Skip this drill?')) {
-                // Track skip (don't let tracking errors block navigation)
+                // Track skip (don't let tracking errors block navigation).
                 try {
                     if (typeof DrillTracker !== 'undefined' && DrillTracker.recordAttempt) {
                         await DrillTracker.recordAttempt(drill.id, {

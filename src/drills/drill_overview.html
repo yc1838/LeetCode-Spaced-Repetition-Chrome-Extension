@@ -29,9 +29,6 @@
             <!-- Folders injected via JS -->
         </ul>
 
-        <div style="margin-top: auto;">
-            <div class="scroll-hint">Scroll Card to Flip</div>
-        </div>
     </aside>
 
     <main>
@@ -47,12 +44,12 @@
         <div class="controls reveal" style="animation-delay: 0.2s;">
             <button class="btn-start" id="btn-start">Start Review Session</button>
         </div>
+
+        <div class="scroll-hint">Scroll Card to Flip</div>
     </main>
 
-    <!-- Dependencies -->
     <script src="../assets/libs/dexie.min.js"></script>
-    <script src="../background/drill_store.js"></script>
-    <script src="drill_overview.js"></script>
+    <script type="module" src="drill_overview.entry.js"></script>
 </body>
 
 </html>

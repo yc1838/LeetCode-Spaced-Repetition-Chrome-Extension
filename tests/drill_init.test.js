@@ -1,135 +1,244 @@
 /**
- * Drill Page Initialization Tests (TDD)
- * 
- * Verifying navigation logic, especially Skip/Next functionality.
+ * Drill Init Logic Tests
+ *
+ * These tests focus on the navigation flow:
+ * - load session from storage
+ * - render drill by drillId from URL
+ * - skip/next should move forward instead of looping
  */
 
 const { JSDOM } = require('jsdom');
 
-describe('Drill Init Logic', () => {
-    let mockWindow, mockDocument;
+const flushPromises = async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+};
 
-    beforeEach(() => {
-        const dom = new JSDOM(`
-            <!DOCTYPE html>
-            <html>
-            <body>
-                <div id="drill-content"></div>
-                <div id="session-time"></div>
-                <div id="current-skill"></div>
-                <div id="drill-progress"></div>
-                <div id="progress-fill"></div>
-                <div id="drill-result" style="display:none;"></div>
-            </body>
-            </html>
-        `, {
-            url: 'chrome-extension://abc123/src/drills/drills.html?drillId=drill1'
-        });
-
-        mockWindow = dom.window;
-        mockDocument = mockWindow.document;
-
-        // Mock global objects
-        global.window = mockWindow;
-        global.document = mockDocument;
-        global.chrome = {
-            storage: {
-                local: {
-                    get: jest.fn(),
-                    set: jest.fn()
-                }
-            },
-            runtime: {
-                getURL: jest.fn(path => `chrome-extension://abc/${path}`)
-            }
-        };
-
-        // Mock DrillPage helper
-        global.DrillPage = {
-            getDrillFromURL: jest.fn(() => 'drill1'),
-            getDrillPageURL: jest.fn(id => `chrome-extension://abc/src/drills/drills.html?drillId=${id}`),
-            getSkillDisplayName: jest.fn(id => id),
-            renderDrillContent: jest.fn(() => '<button id="btn-skip">Skip</button>'),
-            getUserAnswer: jest.fn(),
-            renderResult: jest.fn()
-        };
-
-        // Mock DrillTracker
-        global.DrillTracker = {
-            recordAttempt: jest.fn().mockResolvedValue(true)
-        };
+function setupDom(search = '?drillId=drill1') {
+    const dom = new JSDOM(`
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <div id="drill-content"></div>
+            <div id="session-time"></div>
+            <div id="current-skill"></div>
+            <div id="drill-progress"></div>
+            <div id="progress-fill"></div>
+            <div id="drill-result" style="display:none;"></div>
+        </body>
+        </html>
+    `, {
+        url: `chrome-extension://test-id/src/drills/drills.html${search}`
     });
 
-    test('Skip Button - should navigate to next drill URL', async () => {
-        // Setup session with 2 drills
-        const sessionDrills = [
-            { id: 'drill1', type: 'fill-in-blank' },
-            { id: 'drill2', type: 'fill-in-blank' }
-        ];
+    global.window = dom.window;
+    global.document = dom.window.document;
+    global.HTMLElement = dom.window.HTMLElement;
 
-        global.chrome.storage.local.get.mockResolvedValue({
-            currentDrillSession: { drills: sessionDrills, currentDrill: sessionDrills[0] }
-        });
+    // JSDOM's location is read-only; override with a simple mutable object.
+    const location = { href: dom.window.location.href, search };
+    Object.defineProperty(global.window, 'location', {
+        value: location,
+        writable: true
+    });
 
-        // Mock window.location assignment
-        delete mockWindow.location;
-        mockWindow.location = { search: '?drillId=drill1', href: '' };
+    return dom;
+}
 
-        // Mock confirm to always return true for skip
-        mockWindow.confirm = jest.fn(() => true);
+function installGlobals({ session, drillMarkup } = {}) {
+    const defaultSession = {
+        drills: [
+            { id: 'drill1', type: 'fill-in-blank', skillId: 'arrays' }
+        ],
+        currentDrill: { id: 'drill1', type: 'fill-in-blank', skillId: 'arrays' },
+        startTime: Date.now()
+    };
 
-        // Load script (we need to eval/require carefully or mock the logic)
-        // Since logic is in an IIFE in drill_init.js, we can't easily require it directly in Jest without exporting.
-        // For TDD, we'll extract the navigation logic to a testable class/module in the fix.
-        // BUT FIRST, let's verify if we can spot the bug via logic inspection or a targeted test if we expose it.
+    global.chrome = {
+        storage: {
+            local: {
+                get: jest.fn().mockResolvedValue({
+                    currentDrillSession: session || defaultSession
+                }),
+                set: jest.fn().mockResolvedValue(true)
+            }
+        },
+        runtime: {
+            getURL: jest.fn(path => `chrome-extension://test-id/${path}`)
+        }
+    };
 
-        // Simulating the logic found in drill_init.js:
-        const drillId = 'drill1';
-        let currentIndex = sessionDrills.findIndex(d => d.id === drillId);
-        let nextDrill = sessionDrills[currentIndex + 1];
+    const html = drillMarkup || `
+        <div class="drill-container">
+            <input id="drill-answer" value="answer" />
+            <button id="btn-submit">Submit</button>
+            <button id="btn-skip">Skip</button>
+        </div>
+    `;
 
-        // The suspected bug:
-        // In drill_init.js, goToNextDrill finds index from `sessionDrills`.
-        // If sessionDrills is loaded from storage, it should work.
-        // However, if the user skips multiple times, maybe the URL param update isn't enough?
+    global.DrillPage = {
+        getDrillFromURL: jest.fn(search => new URLSearchParams(search).get('drillId')),
+        getDrillPageURL: jest.fn(id => `chrome-extension://test-id/src/drills/drills.html?drillId=${id}`),
+        getSkillDisplayName: jest.fn(id => id),
+        renderDrillContent: jest.fn(() => html),
+        getUserAnswer: jest.fn(() => 'answer'),
+        renderResult: jest.fn(() => '<div class="result-actions"></div>')
+    };
 
-        // Let's manually trigger the "Skip" logic as implemented in drill_init.js:
-        // document.getElementById('btn-skip')?.addEventListener('click', ...)
+    global.DrillTracker = {
+        recordAttempt: jest.fn().mockResolvedValue(true)
+    };
 
-        // PROBLEM: We can't run drill_init.js directly in Jest because it's an IIFE that runs immediately.
-        // HYPOTHESIS: The bug is likely that `window.location.href` change doesn't reload the extension page state in a test environment,
-        // but in real browser it does. 
-        // WAIT, the user says "按 highlight 几下 skip 却右上角还是一直显示 1 out of 5". 
-        // This implies the page IS NOT reloading or the state isn't updating.
-        // If it's an SPA (Single Page App) navigation, we shouldn't use window.location.href = ...?
-        // Ah, `window.location.href = nextUrl` causes a full page reload.
+    global.confirm = jest.fn(() => true);
+    global.window.confirm = global.confirm;
+}
 
-        // If the user says "press skip multiple times", it means the page might NOT be reloading, OR
-        // it reloads but fails to read the NEW drillId from URL?
-        // OR, `sessionDrills` is re-initialized every time from storage, but maybe storage isn't updated?
+describe('drill_init navigation flow', () => {
+    beforeEach(() => {
+        jest.resetModules();
+        jest.useFakeTimers();
+    });
 
-        // Let's try to repro logic:
-        // 1. Load page ?drillId=drill1
-        // 2. Load session from storage (drills: [1,2,3])
-        // 3. Render drill 1
-        // 4. Click skip -> goToNextDrill('drill1')
-        // 5. Find index of drill1 -> 0
-        // 6. Next is drill2
-        // 7. window.location.href = ...?drillId=drill2
+    afterEach(() => {
+        jest.runOnlyPendingTimers();
+        jest.clearAllTimers();
+        jest.useRealTimers();
+        jest.clearAllMocks();
+    });
 
-        // If the page reloads:
-        // 1. Load page ?drillId=drill2
-        // 2. Load session (drills: [1,2,3])
-        // 3. Render drill 2.
-        // 4. Index of drill2 -> 1.
-        // 5. Progress: Drill 2 of 3.
+    test('renders the drill that matches drillId in the URL and updates progress', async () => {
+        setupDom('?drillId=drill2');
 
-        // User says: "Show 1 out of 5 drills".
-        // This means it thinks it's still on Drill 1.
-        // Maybe `getDrillFromURL` is failing or getting the OLD url?
+        const session = {
+            drills: [
+                { id: 'drill1', type: 'fill-in-blank', skillId: 'arrays' },
+                { id: 'drill2', type: 'fill-in-blank', skillId: 'hash_map' }
+            ],
+            currentDrill: { id: 'drill1', type: 'fill-in-blank', skillId: 'arrays' },
+            startTime: Date.now()
+        };
 
-        // Another possibility: `drill_init.js` logic for `currentDrillSession` storage loading.
-        // Maybe it falls back to "Demo Drills" every time because it fails to match ID?
+        installGlobals({ session });
 
+        require('../src/drills/drill_init');
+        await flushPromises();
+
+        expect(global.DrillPage.renderDrillContent).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 'drill2' })
+        );
+
+        expect(document.getElementById('drill-progress').textContent).toBe('Drill 2 of 2');
+        expect(document.getElementById('progress-fill').style.width).toBe('100%');
+    });
+
+    test('falls back to the first drill when drillId is not found', async () => {
+        setupDom('?drillId=missing');
+
+        const session = {
+            drills: [
+                { id: 'drill1', type: 'fill-in-blank', skillId: 'arrays' },
+                { id: 'drill2', type: 'fill-in-blank', skillId: 'hash_map' }
+            ],
+            currentDrill: { id: 'drill1', type: 'fill-in-blank', skillId: 'arrays' },
+            startTime: Date.now()
+        };
+
+        installGlobals({ session });
+
+        require('../src/drills/drill_init');
+        await flushPromises();
+
+        expect(global.DrillPage.renderDrillContent).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 'drill1' })
+        );
+        expect(document.getElementById('drill-progress').textContent).toBe('Drill 1 of 2');
+    });
+
+    test('skip navigates to the next drill in the session', async () => {
+        setupDom('?drillId=drill1');
+
+        const session = {
+            drills: [
+                { id: 'drill1', type: 'fill-in-blank', skillId: 'arrays' },
+                { id: 'drill2', type: 'fill-in-blank', skillId: 'hash_map' }
+            ],
+            currentDrill: { id: 'drill1', type: 'fill-in-blank', skillId: 'arrays' },
+            startTime: Date.now()
+        };
+
+        installGlobals({ session });
+
+        require('../src/drills/drill_init');
+        await flushPromises();
+
+        document.getElementById('btn-skip').click();
+        await flushPromises();
+
+        expect(global.confirm).toHaveBeenCalled();
+        expect(global.window.location.href).toBe(
+            'chrome-extension://test-id/src/drills/drills.html?drillId=drill2'
+        );
+    });
+
+    test('skip does not navigate when user cancels confirm', async () => {
+        setupDom('?drillId=drill1');
+
+        const session = {
+            drills: [
+                { id: 'drill1', type: 'fill-in-blank', skillId: 'arrays' },
+                { id: 'drill2', type: 'fill-in-blank', skillId: 'hash_map' }
+            ],
+            currentDrill: { id: 'drill1', type: 'fill-in-blank', skillId: 'arrays' },
+            startTime: Date.now()
+        };
+
+        installGlobals({ session });
+        global.confirm = jest.fn(() => false);
+        global.window.confirm = global.confirm;
+
+        const initialHref = global.window.location.href;
+
+        require('../src/drills/drill_init');
+        await flushPromises();
+
+        document.getElementById('btn-skip').click();
+        await flushPromises();
+
+        expect(global.confirm).toHaveBeenCalled();
+        expect(global.window.location.href).toBe(initialHref);
+    });
+
+    test('skip on last drill shows completion screen', async () => {
+        setupDom('?drillId=drill1');
+
+        const session = {
+            drills: [
+                { id: 'drill1', type: 'fill-in-blank', skillId: 'arrays' }
+            ],
+            currentDrill: { id: 'drill1', type: 'fill-in-blank', skillId: 'arrays' },
+            startTime: Date.now()
+        };
+
+        installGlobals({ session });
+
+        require('../src/drills/drill_init');
+        await flushPromises();
+
+        document.getElementById('btn-skip').click();
+        await flushPromises();
+
+        expect(document.getElementById('drill-content').innerHTML).toContain('Session Complete!');
+    });
+
+    test('missing drillId shows an error state and exits early', async () => {
+        setupDom('');
+
+        installGlobals();
+
+        require('../src/drills/drill_init');
+        await flushPromises();
+
+        const content = document.getElementById('drill-content').innerHTML;
+        expect(content).toContain('No drill specified');
     });
 });

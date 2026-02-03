@@ -8,12 +8,19 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;800&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;600;800&family=JetBrains+Mono:wght@400;500&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="drills.css">
 </head>
 
 <body>
+    <svg class="texture-overlay">
+        <filter id="grain">
+            <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="4" stitchTiles="stitch" />
+            <feColorMatrix type="saturate" values="0" />
+        </filter>
+        <rect width="100%" height="100%" filter="url(#grain)" />
+    </svg>
     <div class="page-container">
         <!-- Header -->
         <header class="drill-header-bar">
@@ -50,22 +57,8 @@
         </footer>
     </div>
 
-    <!-- Scripts -->
-    <script src="../shared/config.js"></script>
-    <script src="../shared/storage.js"></script>
     <script src="../assets/libs/dexie.min.js"></script>
-    <script src="../background/drill_store.js"></script>
-    <script src="../background/drill_types.js"></script>
-    <script src="../background/gemini_client.js"></script>
-    <script src="../background/drill_verifier.js"></script>
-    <script src="../background/drill_tracker.js"></script>
-    <script src="../background/code_generator_agent.js"></script>
-    <script src="../background/hallucination_checker.js"></script>
-    <script src="../background/async_notifier.js"></script>
-    <script src="../background/sandbox_client.js"></script>
-    <script src="drill_input_handler.js"></script>
-    <script src="drill_page.js"></script>
-    <script src="drill_init.js"></script>
+    <script type="module" src="drills.entry.js"></script>
 </body>
 
 </html>

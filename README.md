@@ -85,6 +85,12 @@ npm install
 
 > **Why?** This project uses external libraries (like Jest for testing and jsdom for simulation) which are not stored in the repository.
 
+Build the extension bundle so `dist/` assets exist:
+
+```bash
+npm run build
+```
+
 ---
 
 ## 📥 How to Install in Chrome

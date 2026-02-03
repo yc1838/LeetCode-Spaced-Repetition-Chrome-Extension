@@ -14,8 +14,9 @@ global.chrome = {
     }
 };
 
-// Mock fetch
-global.fetch = jest.fn();
+jest.mock('../src/background/llm_gateway', () => ({
+    analyzeSubmissions: jest.fn()
+}));
 
 // Setup fake IndexedDB
 require('fake-indexeddb/auto');
@@ -25,15 +26,17 @@ global.Dexie = Dexie;
 describe('Drill Generator', () => {
     let DrillGenerator;
     let DrillStore;
+    let LLMGateway;
 
     beforeAll(() => {
         DrillStore = require('../src/background/drill_store');
         DrillGenerator = require('../src/background/drill_generator');
+        LLMGateway = require('../src/background/llm_gateway');
     });
 
     beforeEach(async () => {
         jest.clearAllMocks();
-        global.fetch.mockReset();
+        LLMGateway.analyzeSubmissions.mockReset();
 
         const store = new DrillStore.DrillStore();
         await store.init();
@@ -42,24 +45,13 @@ describe('Drill Generator', () => {
 
     describe('generateDrillsForSkill', () => {
         it('should generate drills for a weak skill', async () => {
-            global.fetch.mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({
-                    candidates: [{
-                        content: {
-                            parts: [{
-                                text: JSON.stringify({
-                                    drills: [{
-                                        type: 'fill-in-blank',
-                                        content: 'In binary search, the condition should be left ___ right',
-                                        answer: '<=',
-                                        difficulty: 'easy'
-                                    }]
-                                })
-                            }]
-                        }
-                    }]
-                })
+            LLMGateway.analyzeSubmissions.mockResolvedValueOnce({
+                drills: [{
+                    type: 'fill-in-blank',
+                    content: 'In binary search, the condition should be left ___ right',
+                    answer: '<=',
+                    difficulty: 'easy'
+                }]
             });
 
             const drills = await DrillGenerator.generateDrillsForSkill('binary_search_basic', {
@@ -73,22 +65,11 @@ describe('Drill Generator', () => {
         });
 
         it('should handle multiple drill generation', async () => {
-            global.fetch.mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({
-                    candidates: [{
-                        content: {
-                            parts: [{
-                                text: JSON.stringify({
-                                    drills: [
-                                        { type: 'fill-in-blank', content: 'Q1', answer: 'A1', difficulty: 'easy' },
-                                        { type: 'spot-bug', content: 'Q2', answer: 'line 5', difficulty: 'medium' }
-                                    ]
-                                })
-                            }]
-                        }
-                    }]
-                })
+            LLMGateway.analyzeSubmissions.mockResolvedValueOnce({
+                drills: [
+                    { type: 'fill-in-blank', content: 'Q1', answer: 'A1', difficulty: 'easy' },
+                    { type: 'spot-bug', content: 'Q2', answer: 'line 5', difficulty: 'medium' }
+                ]
             });
 
             const drills = await DrillGenerator.generateDrillsForSkill('off_by_one', { count: 2 });
@@ -97,7 +78,7 @@ describe('Drill Generator', () => {
         });
 
         it('should handle API failure gracefully', async () => {
-            global.fetch.mockResolvedValueOnce({ ok: false, status: 500 });
+            LLMGateway.analyzeSubmissions.mockResolvedValueOnce({ error: 'HTTP 500' });
 
             const drills = await DrillGenerator.generateDrillsForSkill('bfs');
 
@@ -186,22 +167,12 @@ describe('Drill Generator', () => {
 
     describe('generateFromWeakSkills', () => {
         it('should generate drills for multiple weak skills', async () => {
-            global.fetch
+            LLMGateway.analyzeSubmissions
                 .mockResolvedValueOnce({
-                    ok: true,
-                    json: () => Promise.resolve({
-                        candidates: [{
-                            content: { parts: [{ text: '{"drills":[{"type":"fill-in-blank","content":"Q1","answer":"A1","difficulty":"easy"}]}' }] }
-                        }]
-                    })
+                    drills: [{ type: 'fill-in-blank', content: 'Q1', answer: 'A1', difficulty: 'easy' }]
                 })
                 .mockResolvedValueOnce({
-                    ok: true,
-                    json: () => Promise.resolve({
-                        candidates: [{
-                            content: { parts: [{ text: '{"drills":[{"type":"spot-bug","content":"Q2","answer":"A2","difficulty":"medium"}]}' }] }
-                        }]
-                    })
+                    drills: [{ type: 'spot-bug', content: 'Q2', answer: 'A2', difficulty: 'medium' }]
                 });
 
             const weakSkills = [

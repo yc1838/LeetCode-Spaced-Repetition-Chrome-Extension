@@ -1,14 +1,19 @@
 /**
  * Skill Animations
- * 
+ *
  * CSS animations for skill nodes: pulsing, sparkle, confidence changes.
  */
 
 (function (root, factory) {
+    var exported = factory();
     if (typeof module === 'object' && module.exports) {
-        module.exports = factory();
+        module.exports = exported;
     } else {
-        root.SkillAnimations = factory();
+        root.SkillAnimations = exported;
+    }
+    // Also set on window for bundled contexts
+    if (typeof window !== 'undefined') {
+        window.SkillAnimations = exported;
     }
 }(typeof self !== 'undefined' ? self : this, function () {
 

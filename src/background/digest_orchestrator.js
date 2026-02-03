@@ -26,6 +26,14 @@
         DayLogHarvester = require('./day_log_harvester');
         GeminiClient = require('./gemini_client');
         SkillMatrix = require('./skill_matrix').SkillMatrix;
+    } else {
+        const browserRoot = typeof self !== 'undefined'
+            ? self
+            : (typeof window !== 'undefined' ? window : globalThis);
+
+        DayLogHarvester = browserRoot.DayLogHarvester;
+        GeminiClient = browserRoot.GeminiClient;
+        SkillMatrix = browserRoot.SkillMatrix?.SkillMatrix;
     }
 
     /**

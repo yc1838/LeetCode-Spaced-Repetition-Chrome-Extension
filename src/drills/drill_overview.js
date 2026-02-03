@@ -1,5 +1,8 @@
 /**
  * Drill Overview Page - Embossed Cardstock Logic
+ *
+ * This page builds a drill session and writes it to chrome.storage.local
+ * so drill_init.js can load it and handle next/skip navigation.
  */
 
 (async function () {
@@ -81,8 +84,8 @@
 
     async function loadDrills() {
         try {
-            if (typeof DrillStore !== 'undefined') {
-                const store = new DrillStore.DrillStore();
+            if (typeof window.DrillStore !== 'undefined') {
+                const store = new window.DrillStore.DrillStore();
                 await store.init();
                 const drills = await store.getAll();
                 // We show all drills, but prioritize pending?
@@ -192,11 +195,14 @@
         }
         frontContent += `<div class="code-block">${escapeHtml(codeContent)}</div>`;
 
+        // Generate Header based on Type
+        const headerText = getDrillInstruction(drill.type);
+
         card.innerHTML = `
             <!-- Front Face -->
             <div class="card-face reveal">
                 <div class="tag">${skillName} — ${difficulty}</div>
-                <h2>Problem Statement</h2>
+                <h2>${headerText}</h2>
 
                 ${frontContent}
 
@@ -243,6 +249,21 @@
         });
     }
 
+    function getDrillInstruction(type) {
+        switch (type) {
+            case 'fill-in-blank':
+                return 'Fill in the Blanks';
+            case 'spot-bug':
+                return 'Find the Bug';
+            case 'critique':
+                return 'Critique the Code';
+            case 'muscle-memory':
+                return 'Type the Solution';
+            default:
+                return 'Problem Statement';
+        }
+    }
+
     function renderEmptyCard() {
         card.innerHTML = `
             <div class="card-face reveal" style="align-items: center; justify-content: center;">
@@ -264,10 +285,12 @@
 
     // --- Actions ---
 
+    // Start Review = create a session snapshot + open drills.html.
+    // drill_init.js will read currentDrillSession and use the drillId query param.
     btnStart.addEventListener('click', async () => {
         if (!currentDrills || currentDrills.length === 0) return;
 
-        // Store session
+        // Store session so the drill page can navigate through this exact list.
         await chrome.storage.local.set({
             currentDrillSession: {
                 drills: currentDrills,
@@ -276,8 +299,8 @@
             }
         });
 
-        // Navigate
-        const drillUrl = chrome.runtime.getURL(`src/drills/drills.html?drillId=${currentDrills[0].id}`);
+        // Navigate to the first drill in the session.
+        const drillUrl = chrome.runtime.getURL(`dist/src/drills/drills.html?drillId=${currentDrills[0].id}`);
         window.location.href = drillUrl;
     });
 

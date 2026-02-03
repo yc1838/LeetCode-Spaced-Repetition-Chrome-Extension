@@ -103,7 +103,7 @@ describe('Agent Loader', () => {
             expect(modules).toContain('SkillMatrix');
             expect(modules).toContain('InsightsStore');
             expect(modules).toContain('DrillStore');
-            expect(modules).toContain('NightlyScheduler');
+            expect(modules).toContain('DigestScheduler');
             expect(modules).toContain('DrillGenerator');
         });
     });

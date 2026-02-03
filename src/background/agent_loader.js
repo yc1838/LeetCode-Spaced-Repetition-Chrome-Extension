@@ -1,15 +1,20 @@
 /**
  * Agent Loader
- * 
+ *
  * Loads and initializes all Neural Agent modules.
  * Manages feature flags and agent enable/disable state.
  */
 
 (function (root, factory) {
+    var exported = factory();
     if (typeof module === 'object' && module.exports) {
-        module.exports = factory();
+        module.exports = exported;
     } else {
-        root.AgentLoader = factory();
+        root.AgentLoader = exported;
+    }
+    // Also set on window for bundled contexts
+    if (typeof window !== 'undefined') {
+        window.AgentLoader = exported;
     }
 }(typeof self !== 'undefined' ? self : this, function () {
 

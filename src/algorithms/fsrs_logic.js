@@ -1,8 +1,13 @@
 (function (root, factory) {
+    var exported = factory();
     if (typeof module === 'object' && module.exports) {
-        module.exports = factory();
+        module.exports = exported;
     } else {
-        root.fsrs = factory();
+        root.fsrs = exported;
+    }
+    // Also set on window for bundled contexts
+    if (typeof window !== 'undefined') {
+        window.fsrs = exported;
     }
 }(typeof self !== 'undefined' ? self : this, function () {
 

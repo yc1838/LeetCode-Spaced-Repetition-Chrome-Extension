@@ -1,17 +1,22 @@
 /**
  * Drill Store
- * 
+ *
  * Manages persistent storage of drills (personalized exercises).
  * Drills target specific weak skills identified by the Skill Matrix.
  */
 
 (function (root, factory) {
+    var exported = factory();
     if (typeof module === 'object' && module.exports) {
         // Node.js (for testing)
-        module.exports = factory();
+        module.exports = exported;
     } else {
         // Browser
-        root.DrillStore = factory();
+        root.DrillStore = exported;
+    }
+    // Also set on window for bundled contexts
+    if (typeof window !== 'undefined') {
+        window.DrillStore = exported;
     }
 }(typeof self !== 'undefined' ? self : this, function () {
 
@@ -70,7 +75,8 @@
             if (this.initialized) return;
 
             try {
-                const Dexie = (typeof window !== 'undefined' && window.Dexie) ||
+                const Dexie = (typeof globalThis !== 'undefined' && globalThis.Dexie) ||
+                    (typeof window !== 'undefined' && window.Dexie) ||
                     (typeof self !== 'undefined' && self.Dexie) ||
                     (typeof global !== 'undefined' && global.Dexie);
 

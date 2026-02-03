@@ -1,37 +1,50 @@
 /**
- * Neural Drill Practice - Styles
- * 
- * Modern dark theme with vibrant accents.
+ * Drill Practice - Paper UI Theme
+ * Matches the "All Drills" overview aesthetic.
  */
 
 :root {
-    --bg-primary: #0a0a0f;
-    --bg-secondary: #12121a;
-    --bg-card: #1a1a25;
-    --text-primary: #f0f0f5;
-    --text-secondary: #8888a0;
-    --accent: #667eea;
-    --accent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    --success: #22c55e;
-    --error: #ef4444;
-    --warning: #eab308;
-    --border: #2a2a40;
-    --font-main: 'Inter', -apple-system, sans-serif;
+    --paper-base: #f4f3ef;
+    --paper-shadow: #d1cfc7;
+    --paper-highlight: #ffffff;
+    --ink: #1a1a1a;
+    --accent: #3a5a40;
+    --accent-soft: rgba(58, 90, 64, 0.14);
+    --success: #2f7a4b;
+    --error: #b4493a;
+    --warning: #c7933a;
+    --debossed-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.1), inset -3px -3px 7px rgba(255, 255, 255, 0.8);
+    --embossed-shadow: 4px 4px 10px rgba(0, 0, 0, 0.08), -4px -4px 10px rgba(255, 255, 255, 0.9);
+    --font-main: 'Outfit', sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
+    --overlay-bg: rgba(244, 243, 239, 0.9);
 }
 
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
 }
 
 body {
     font-family: var(--font-main);
-    background: var(--bg-primary);
-    color: var(--text-primary);
+    background-color: var(--paper-base);
+    color: var(--ink);
     min-height: 100vh;
-    line-height: 1.6;
+}
+
+/* SVG Grain Texture Overlay */
+.texture-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    opacity: 0.04;
+    z-index: 1000;
+    mix-blend-mode: multiply;
 }
 
 /* Page Container */
@@ -39,9 +52,10 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
-    max-width: 900px;
+    max-width: 980px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 2.5rem 2rem 2rem;
+    gap: 1.5rem;
 }
 
 /* Header */
@@ -49,44 +63,48 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 15px 20px;
-    background: var(--bg-secondary);
-    border-radius: 12px;
-    margin-bottom: 20px;
-    border: 1px solid var(--border);
+    padding: 1.4rem 1.8rem;
+    background: var(--paper-base);
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: var(--embossed-shadow);
 }
 
 .logo {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
     font-size: 1.2rem;
-    font-weight: 600;
-    background: var(--accent-gradient);
-    background-clip: text;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
 }
 
 .progress-info {
     display: flex;
     align-items: center;
-    gap: 15px;
+    gap: 1rem;
 }
 
 #drill-progress {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.6;
 }
 
 .progress-bar {
-    width: 120px;
+    width: 140px;
     height: 6px;
-    background: var(--bg-card);
-    border-radius: 3px;
+    background: #ecebe4;
+    border-radius: 6px;
     overflow: hidden;
+    box-shadow: var(--debossed-shadow);
 }
 
 .progress-fill {
     height: 100%;
-    background: var(--accent-gradient);
+    background: var(--accent);
     transition: width 0.3s ease;
 }
 
@@ -99,33 +117,35 @@ body {
 
 /* Drill Container */
 .drill-container {
-    background: var(--bg-secondary);
+    background: var(--paper-base);
     border-radius: 16px;
-    padding: 30px;
-    border: 1px solid var(--border);
+    padding: 2rem;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: var(--embossed-shadow);
 }
 
 .drill-header {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 25px;
-    padding-bottom: 15px;
-    border-bottom: 1px solid var(--border);
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .drill-icon {
-    font-size: 28px;
+    font-size: 1.6rem;
 }
 
 .drill-type {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-secondary);
-    background: var(--bg-card);
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    background: var(--accent-soft);
     padding: 4px 10px;
-    border-radius: 4px;
+    border-radius: 6px;
+    font-family: var(--font-mono);
 }
 
 .drill-skill {
@@ -135,36 +155,36 @@ body {
 
 /* Code Block */
 .code-block {
-    background: #0d0d15;
-    padding: 20px;
+    background: #ecebe4;
+    padding: 1.4rem;
     border-radius: 10px;
     font-family: var(--font-mono);
     font-size: 0.95rem;
     line-height: 1.7;
     overflow-x: auto;
-    border: 1px solid var(--border);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: var(--debossed-shadow);
     white-space: pre-wrap;
-    color: #e0e0e8;
+    color: var(--ink);
 }
 
 /* Interactive Code (Spot-Bug) */
 .code-interactive {
-    background: #0d0d15;
-    padding: 20px 0;
-    /* Padding inside, lines touch edges horizontally for full-width highlight */
+    background: #ecebe4;
+    padding: 1.2rem 0;
     border-radius: 10px;
     font-family: var(--font-mono);
     font-size: 0.95rem;
     overflow-x: auto;
-    border: 1px solid var(--border);
-    color: #e0e0e8;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: var(--debossed-shadow);
+    color: var(--ink);
 }
 
 .code-line {
     display: flex;
     padding: 2px 20px;
     white-space: pre-wrap;
-    /* Preserve indentation */
 }
 
 /* Token Styles */
@@ -176,24 +196,24 @@ body {
 }
 
 .code-token:hover {
-    background: rgba(102, 126, 234, 0.3);
-    color: white;
+    background: var(--accent-soft);
+    color: var(--ink);
 }
 
 .code-token.selected {
     background: var(--accent);
-    color: white;
-    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.4);
+    color: var(--paper-highlight);
+    box-shadow: 0 0 0 2px rgba(58, 90, 64, 0.35);
 }
 
 .line-num {
     display: inline-block;
     width: 30px;
-    color: var(--text-secondary);
+    color: var(--ink);
     user-select: none;
     text-align: right;
     margin-right: 15px;
-    opacity: 0.5;
+    opacity: 0.4;
 }
 
 .line-content {
@@ -202,7 +222,7 @@ body {
 
 .drill-instruction {
     text-align: center;
-    color: var(--text-secondary);
+    opacity: 0.65;
     font-size: 0.9rem;
     margin-top: 10px;
     font-style: italic;
@@ -210,13 +230,15 @@ body {
 
 /* Drill Input */
 .drill-input {
-    margin-top: 25px;
+    margin-top: 1.5rem;
 }
 
 .drill-input label {
     display: block;
-    font-size: 0.9rem;
-    color: var(--text-secondary);
+    font-size: 0.85rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.65;
 }
 
 .input-header {
@@ -227,25 +249,28 @@ body {
 }
 
 .input-hint {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     color: var(--accent);
-    background: rgba(102, 126, 234, 0.1);
-    padding: 2px 8px;
-    border-radius: 4px;
-    border: 1px solid rgba(102, 126, 234, 0.3);
+    background: var(--accent-soft);
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(58, 90, 64, 0.2);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
 }
 
 .drill-input input,
 .drill-input textarea {
     width: 100%;
-    padding: 15px;
-    background: var(--bg-card);
-    border: 2px solid var(--border);
+    padding: 14px;
+    background: #fbfaf8;
+    border: 1px solid rgba(0, 0, 0, 0.1);
     border-radius: 10px;
-    color: var(--text-primary);
+    color: var(--ink);
     font-family: var(--font-main);
     font-size: 1rem;
     resize: vertical;
+    box-shadow: var(--debossed-shadow);
     transition: border-color 0.2s, box-shadow 0.2s;
 }
 
@@ -253,7 +278,7 @@ body {
 .drill-input textarea:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+    box-shadow: 0 0 0 3px rgba(58, 90, 64, 0.18);
 }
 
 .drill-input textarea.code-input {
@@ -265,68 +290,78 @@ body {
 /* Actions */
 .drill-actions {
     display: flex;
-    gap: 15px;
-    margin-top: 25px;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 1.6rem;
 }
 
 .btn-primary,
 .btn-secondary {
-    padding: 12px 30px;
-    border-radius: 8px;
-    font-size: 1rem;
-    font-weight: 600;
+    padding: 0.8rem 1.8rem;
+    border-radius: 50px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
     cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s;
+    transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
 }
 
 .btn-primary {
-    background: var(--accent-gradient);
-    color: white;
-    border: none;
+    background: var(--paper-base);
+    color: var(--ink);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: var(--embossed-shadow);
 }
 
 .btn-primary:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    box-shadow: 6px 6px 15px rgba(0, 0, 0, 0.08);
+}
+
+.btn-primary:active {
+    box-shadow: var(--debossed-shadow);
+    transform: translateY(1px);
 }
 
 .btn-secondary {
-    background: transparent;
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
+    background: var(--paper-highlight);
+    color: var(--ink);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    opacity: 0.75;
 }
 
 .btn-secondary:hover {
-    border-color: var(--text-secondary);
-    color: var(--text-primary);
+    opacity: 1;
 }
 
 /* Result */
 .drill-result {
-    background: var(--bg-secondary);
+    background: var(--paper-base);
     border-radius: 16px;
-    padding: 40px;
+    padding: 2.5rem;
     text-align: center;
-    border: 2px solid var(--border);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: var(--embossed-shadow);
 }
 
 .drill-result.correct {
-    border-color: var(--success);
+    border-color: rgba(47, 122, 75, 0.45);
 }
 
 .drill-result.incorrect {
-    border-color: var(--error);
+    border-color: rgba(180, 73, 58, 0.45);
 }
 
 .result-icon {
-    font-size: 64px;
-    margin-bottom: 20px;
+    font-size: 3.5rem;
+    margin-bottom: 1rem;
 }
 
 .result-message {
-    font-size: 1.8rem;
+    font-size: 1.6rem;
     font-weight: 700;
-    margin-bottom: 15px;
+    margin-bottom: 0.75rem;
 }
 
 .drill-result.correct .result-message {
@@ -338,15 +373,17 @@ body {
 }
 
 .result-feedback {
-    color: var(--text-secondary);
-    margin-bottom: 30px;
+    opacity: 0.75;
+    margin-bottom: 1.5rem;
     font-size: 1rem;
+    white-space: pre-wrap;
 }
 
 .result-actions {
     display: flex;
     justify-content: center;
-    gap: 15px;
+    flex-wrap: wrap;
+    gap: 12px;
 }
 
 /* Footer */
@@ -354,11 +391,11 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 15px 20px;
-    background: var(--bg-secondary);
-    border-radius: 12px;
-    margin-top: 20px;
-    border: 1px solid var(--border);
+    padding: 1.2rem 1.6rem;
+    background: var(--paper-base);
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: var(--embossed-shadow);
 }
 
 .skill-badge {
@@ -368,23 +405,24 @@ body {
 }
 
 .skill-icon {
-    font-size: 1.2rem;
+    font-size: 1.1rem;
 }
 
 #current-skill {
     color: var(--accent);
-    font-weight: 500;
+    font-weight: 600;
 }
 
 .session-info {
     font-family: var(--font-mono);
     font-size: 0.9rem;
-    color: var(--text-secondary);
+    opacity: 0.6;
 }
 
 /* Error/Loading States */
 .loading,
-.error-state {
+.error-state,
+.completion-state {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -393,7 +431,8 @@ body {
     text-align: center;
 }
 
-.error-icon {
+.error-icon,
+.completion-icon {
     font-size: 48px;
     margin-bottom: 15px;
 }
@@ -408,6 +447,19 @@ body {
     color: var(--accent);
     text-decoration: none;
     margin-top: 15px;
+    font-weight: 600;
+}
+
+.completion-title {
+    font-size: 1.4rem;
+    margin-bottom: 0.4rem;
+    color: var(--accent);
+    font-weight: 700;
+}
+
+.completion-subtitle {
+    opacity: 0.7;
+    margin-bottom: 1.5rem;
 }
 
 /* Animations */
@@ -425,17 +477,29 @@ body {
 
 .drill-container,
 .drill-result {
-    animation: fadeIn 0.3s ease-out;
+    animation: fadeIn 0.4s ease-out;
 }
 
 /* Responsive */
 @media (max-width: 768px) {
     .page-container {
-        padding: 10px;
+        padding: 1.5rem 1rem;
+    }
+
+    .drill-header-bar,
+    .drill-footer {
+        flex-direction: column;
+        gap: 0.8rem;
+        align-items: flex-start;
+    }
+
+    .progress-info {
+        width: 100%;
+        justify-content: space-between;
     }
 
     .drill-container {
-        padding: 20px;
+        padding: 1.5rem;
     }
 
     .drill-actions {
@@ -445,6 +509,7 @@ body {
     .btn-primary,
     .btn-secondary {
         width: 100%;
+        text-align: center;
     }
 }
 
@@ -452,7 +517,7 @@ body {
 .loading-spinner {
     width: 40px;
     height: 40px;
-    border: 3px solid rgba(102, 126, 234, 0.3);
+    border: 3px solid rgba(58, 90, 64, 0.2);
     border-radius: 50%;
     border-top-color: var(--accent);
     animation: spin 1s ease-in-out infinite;
@@ -474,21 +539,36 @@ body {
 }
 
 .loading-text {
-    color: var(--text-secondary);
+    opacity: 0.7;
     font-size: 1rem;
-    margin-top: 10px;
+}
+
+/* Loading Overlay */
+.loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: var(--overlay-bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    border-radius: 16px;
 }
 
 /* Retry Button */
 .btn-retry {
     background: var(--warning);
-    color: #1a1a25;
+    color: var(--ink);
     border: none;
-    padding: 8px 20px;
-    border-radius: 6px;
-    font-weight: 600;
+    padding: 0.7rem 1.4rem;
+    border-radius: 50px;
+    font-weight: 700;
     cursor: pointer;
-    margin-top: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    box-shadow: var(--embossed-shadow);
     transition: opacity 0.2s;
 }
 

@@ -14,15 +14,16 @@
         "http://127.0.0.1/*"
     ],
     "options_ui": {
-        "page": "src/options/options.html",
+        "page": "dist/src/options/options.html",
         "open_in_tab": true
     },
     "action": {
-        "default_popup": "src/popup/popup.html",
+        "default_popup": "dist/src/popup/popup.html",
         "default_title": "LeetCode EasyRepeat"
     },
     "background": {
-        "service_worker": "src/background.js"
+        "service_worker": "dist/background.js",
+        "type": "module"
     },
     "content_scripts": [
         {

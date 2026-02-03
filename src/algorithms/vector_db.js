@@ -1,14 +1,19 @@
 /**
  * VectorDB - Local Vector Store using Chrome Storage
- * 
+ *
  * Stores embeddings and allows for cosine similarity search.
  * MIGRATED from IndexedDB to Chrome Storage Local for cross-context access.
  */
 (function (root, factory) {
+    var exported = factory();
     if (typeof module === 'object' && module.exports) {
-        module.exports = factory();
+        module.exports = exported;
     } else {
-        root.VectorDB = factory();
+        root.VectorDB = exported;
+    }
+    // Also set on window for bundled contexts
+    if (typeof window !== 'undefined') {
+        window.VectorDB = exported;
     }
 }(typeof self !== 'undefined' ? self : this, function () {
 
@@ -36,22 +41,31 @@
     }
 
     // --- CORE STORAGE ---
+    function getChromeStorage() {
+        if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+            return null;
+        }
+        return chrome.storage.local;
+    }
+
     async function loadVectors() {
-        if (!chrome?.storage?.local) {
+        const storage = getChromeStorage();
+        if (!storage) {
             console.warn("Chrome Storage not available");
             return [];
         }
         return new Promise((resolve) => {
-            chrome.storage.local.get([STORAGE_KEY], (result) => {
+            storage.get([STORAGE_KEY], (result) => {
                 resolve(result[STORAGE_KEY] || []);
             });
         });
     }
 
     async function saveVectors(vectors) {
-        if (!chrome?.storage?.local) return;
+        const storage = getChromeStorage();
+        if (!storage) return;
         return new Promise((resolve) => {
-            chrome.storage.local.set({ [STORAGE_KEY]: vectors }, () => resolve());
+            storage.set({ [STORAGE_KEY]: vectors }, () => resolve());
         });
     }
 
@@ -59,7 +73,7 @@
     async function checkMigration() {
         // Migration only runs in a context where IDB is accessible (Pages)
         // AND where we can write to storage.
-        if (typeof indexedDB === 'undefined' || !chrome.storage) return;
+        if (typeof indexedDB === 'undefined' || !getChromeStorage()) return;
 
         const current = await loadVectors();
         if (current.length > 0) return; // Already initialized

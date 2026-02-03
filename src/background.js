@@ -3,25 +3,8 @@
  * Handles events that persist beyond the lifecycle of a single page or popup.
  */
 
-try {
-    importScripts(
-        'assets/libs/dexie.min.js',
-        'content/shadow_logger.js',
-        'background/skill_matrix.js',
-        'background/gemini_client.js',
-        'background/openai_client.js',
-        'background/llm_gateway.js',
-        'background/day_log_harvester.js',
-        'background/drill_store.js',
-        'background/drill_generator.js',
-        'background/digest_orchestrator.js'
-    );
-    console.log('[Background] Core scripts imported successfully.');
-    console.log('[Background] GeminiClient type:', typeof GeminiClient);
-    console.log('[Background] DrillGenerator type:', typeof DrillGenerator);
-} catch (e) {
-    console.error('[Background] Failed to import core scripts:', e);
-}
+// Dependencies are bundled via Vite entry (src/background/worker.js).
+console.log('[Background] Module bundle loaded.');
 
 // --- Debug logging toggle ---
 const DEBUG_LOG_KEY = 'agentDebugLogs';
@@ -861,37 +844,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // Future: Handle other background tasks (e.g. daily reminders, alarms)
 });
-
-// --- Neural Agent Module Imports ---
-// Import all Phase 1 modules using importScripts for service worker
-const NEURAL_MODULES = [
-    './background/skill_matrix.js',
-    './background/error_pattern_detector.js',
-    './background/backfill_agent.js',
-    './background/digest_orchestrator.js',
-    './background/day_log_harvester.js',
-    './background/gemini_client.js',
-    './background/insight_compressor.js',
-    './background/insight_deduplicator.js',
-    './background/insights_store.js',
-    './background/drill_generator.js',
-    './background/drill_store.js',
-    './background/drill_verifier.js',
-    './background/drill_tracker.js',
-    './background/drill_types.js',
-    './background/digest_scheduler.js',
-    './background/retention_policy.js',
-    './background/agent_loader.js'
-];
-
-for (const module of NEURAL_MODULES) {
-    try {
-        importScripts(module);
-        console.log(`[Background] Loaded: ${module}`);
-    } catch (e) {
-        console.warn(`[Background] Could not load ${module}:`, e.message);
-    }
-}
 
 // Initialize digest scheduler on load
 if (typeof DigestScheduler !== 'undefined') {

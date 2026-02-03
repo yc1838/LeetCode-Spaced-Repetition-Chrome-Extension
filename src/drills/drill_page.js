@@ -5,10 +5,15 @@
  */
 
 (function (root, factory) {
+    var exported = factory();
     if (typeof module === 'object' && module.exports) {
-        module.exports = factory();
+        module.exports = exported;
     } else {
-        root.DrillPage = factory();
+        root.DrillPage = exported;
+    }
+    // Also set on window for bundled contexts
+    if (typeof window !== 'undefined') {
+        window.DrillPage = exported;
     }
 }(typeof self !== 'undefined' ? self : this, function () {
 
@@ -21,6 +26,7 @@
 
     /**
      * Parse drill ID from URL query params.
+     * This ID drives which drill is rendered in drill_init.js.
      */
     function getDrillFromURL(search) {
         const params = new URLSearchParams(search);
@@ -29,9 +35,10 @@
 
     /**
      * Get URL for drill page with given drill ID.
+     * drill_init.js reads this same query param on load.
      */
     function getDrillPageURL(drillId) {
-        const base = chrome.runtime.getURL('src/drills/drills.html');
+        const base = chrome.runtime.getURL('dist/src/drills/drills.html');
         return `${base}?drillId=${drillId}`;
     }
 
@@ -53,6 +60,9 @@
 
     /**
      * Render drill content HTML based on type.
+     * NOTE: drill_init.js wires handlers by ID, so the markup MUST include:
+     * - #btn-submit and #btn-skip inside .drill-actions
+     * - #drill-answer for user input (or hidden input for spot-bug)
      */
     function renderDrillContent(drill) {
         const icon = getDrillTypeIcon(drill.type);
@@ -166,6 +176,7 @@
 
     /**
      * Get user's answer from the input field.
+     * drill_init.js uses this on submit to verify the drill.
      */
     function getUserAnswer(drillType) {
         const input = document.getElementById('drill-answer');
@@ -174,6 +185,7 @@
 
     /**
      * Render result feedback.
+     * drill_init.js injects this into #drill-result after submission.
      */
     function renderResult(result) {
         const statusClass = result.correct ? 'correct' : 'incorrect';
@@ -204,6 +216,7 @@
 
     /**
      * Open drill page in new tab.
+     * Used by other surfaces (e.g. popup/overview) to start a session.
      */
     function openDrillPage(drillId) {
         const url = getDrillPageURL(drillId);

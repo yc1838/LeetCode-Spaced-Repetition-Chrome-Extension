@@ -123,7 +123,7 @@
                     // Open drill results page
                     if (chrome.tabs) {
                         const drillUrl = chrome.runtime.getURL(
-                            `src/drills/drills.html?drillId=${drillId}&showResult=true`
+                            `dist/src/drills/drills.html?drillId=${drillId}&showResult=true`
                         );
                         chrome.tabs.create({ url: drillUrl });
                     }

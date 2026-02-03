@@ -18,15 +18,22 @@
 
 /**
  * THEME CONFIGURATION OBJECT:
- * 
+ *
  * This object defines two visual themes: "sakura" (pink) and "matrix" (green).
  * Each theme contains color values that will be applied as CSS custom properties.
- * 
+ *
  * WHY OBJECTS FOR CONFIGURATION?
  * - Easy to add new themes (just add another key)
  * - All theme values in one place (maintainability)
  * - Can be loaded from storage or server in the future
  */
+// THEMES is loaded via popup.entry.js which imports config.js (sets window.THEMES)
+const THEMES = window.THEMES || {};
+
+// Debug logging for module import issues
+console.log('[Popup] Resolved THEMES:', THEMES);
+
+import { renderGlobalHeatmap, renderVectors, renderMiniHeatmap } from './popup_ui.js';
 // THEMES is now loaded from configuration (config.js)
 
 // MODULE-LEVEL STATE:
@@ -163,7 +170,7 @@ function setupOptionsButton() {
         if (chrome?.runtime?.openOptionsPage) {
             chrome.runtime.openOptionsPage();
         } else {
-            const url = chrome.runtime.getURL('src/options/options.html');
+            const url = chrome.runtime.getURL('dist/src/options/options.html');
             window.open(url, '_blank');
         }
     };
@@ -502,7 +509,7 @@ async function loadNeuralAgent() {
     }
 
     // Render Skill Graph (demo data for now)
-    if (typeof SkillGraph !== 'undefined') {
+    if (typeof window.SkillGraph !== 'undefined') {
         const demoFamilies = [
             { id: 'arrays', name: 'Arrays', confidence: 0.8 },
             { id: 'dp', name: 'Dynamic Programming', confidence: 0.4 },
@@ -512,19 +519,19 @@ async function loadNeuralAgent() {
         ];
 
         graphContainer.innerHTML = '';
-        const svg = SkillGraph.renderGraph({ families: demoFamilies }, { width: 250, height: 200 });
+        const svg = window.SkillGraph.renderGraph({ families: demoFamilies }, { width: 250, height: 200 });
         graphContainer.appendChild(svg);
 
         // Apply animations
-        if (typeof SkillAnimations !== 'undefined') {
-            SkillAnimations.injectStyles();
+        if (typeof window.SkillAnimations !== 'undefined') {
+            window.SkillAnimations.injectStyles();
         }
     } else {
         graphContainer.innerHTML = '<div style="color:var(--accent)">SkillGraph not loaded</div>';
     }
 
     // Render Drill Queue (Real data from storage or fallback to demo)
-    if (typeof DrillQueue !== 'undefined') {
+    if (typeof window.DrillQueue !== 'undefined') {
         // Try to load real drills from storage
         let drills = [];
         try {
@@ -586,11 +593,12 @@ async function loadNeuralAgent() {
         }
 
         queueContainer.innerHTML = '';
-        const queue = DrillQueue.renderQueue(drills, {
+        const queue = window.DrillQueue.renderQueue(drills, {
             onStart: async (drill) => {
                 console.log('[NeuralAgent] Starting drill:', drill);
 
-                // Store drill session for the page to load
+                // Store drill session for the drill page to load.
+                // drill_init.js reads currentDrillSession and uses the drillId query param.
                 await chrome.storage.local.set({
                     currentDrillSession: {
                         drills: drills,
@@ -599,8 +607,8 @@ async function loadNeuralAgent() {
                     }
                 });
 
-                // Open drill page in new tab
-                const drillUrl = chrome.runtime.getURL(`src/drills/drills.html?drillId=${drill.id}`);
+                // Open drill page in new tab at the selected drill.
+                const drillUrl = chrome.runtime.getURL(`dist/src/drills/drills.html?drillId=${drill.id}`);
                 chrome.tabs.create({ url: drillUrl });
             }
         });
@@ -612,7 +620,7 @@ async function loadNeuralAgent() {
 
         if (viewAllBtn) {
             viewAllBtn.addEventListener('click', () => {
-                const overviewUrl = chrome.runtime.getURL('src/drills/drill_overview.html');
+                const overviewUrl = chrome.runtime.getURL('dist/src/drills/drill_overview.html');
                 chrome.tabs.create({ url: overviewUrl });
             });
         }

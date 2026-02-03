@@ -40,7 +40,7 @@
         if (taxonomy) return taxonomy;
         try {
             if (typeof fetch !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
-                const url = chrome.runtime.getURL('src/data/skill_taxonomy.json');
+                const url = chrome.runtime.getURL('data/skill_taxonomy.json');
                 const res = await fetch(url);
                 if (res.ok) {
                     taxonomy = await res.json();
