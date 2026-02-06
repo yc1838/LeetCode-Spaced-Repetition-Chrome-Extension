@@ -67,14 +67,60 @@
         activeTab: 'chat', // Only 'chat' remains as main tab
 
         // Loaded from global settings
+        aiProvider: 'local',
         keys: { google: '', openai: '', anthropic: '' },
         localEndpoint: 'http://localhost:11434',
-        selectedModelId: 'gemini-2.5-flash',
+        selectedModelId: 'llama3.1',
 
         messages: [],
         input: '',
         isLoading: false
     };
+
+    function inferProviderFromModelId(modelId) {
+        if (!modelId || typeof modelId !== 'string') return null;
+        const id = modelId.trim().toLowerCase();
+        if (!id) return null;
+        if (id.startsWith('gemini-')) return 'google';
+        if (id.startsWith('gpt-') || id.startsWith('o1') || id.startsWith('o3')) return 'openai';
+        if (id.startsWith('claude-')) return 'anthropic';
+        if (MODELS.local.some(m => m.id === id)) return 'local';
+        return null;
+    }
+
+    function getDefaultLocalModelId() {
+        return MODELS.local[0]?.id || 'llama3.1';
+    }
+
+    function getDefaultCloudModelId() {
+        return MODELS.gemini[0]?.id || DEFAULT_GEMINI_MODEL;
+    }
+
+    function ensureModelMatchesMode() {
+        const providerFromModel = inferProviderFromModelId(state.selectedModelId);
+
+        if (state.aiProvider === 'local') {
+            if (providerFromModel !== 'local') {
+                const fallback = getDefaultLocalModelId();
+                console.warn(`[LLMSidecar] Local mode is active; switching model '${state.selectedModelId}' -> '${fallback}'.`);
+                state.selectedModelId = fallback;
+            }
+            return;
+        }
+
+        // Cloud mode: avoid accidentally using a local model ID.
+        if (providerFromModel === 'local' || !providerFromModel) {
+            const fallback = getDefaultCloudModelId();
+            console.warn(`[LLMSidecar] Cloud mode is active; switching model '${state.selectedModelId}' -> '${fallback}'.`);
+            state.selectedModelId = fallback;
+        }
+    }
+
+    function getActiveProvider() {
+        ensureModelMatchesMode();
+        if (state.aiProvider === 'local') return 'local';
+        return inferProviderFromModelId(state.selectedModelId) || 'google';
+    }
 
     // --- References ---
     let container = null;
@@ -90,16 +136,23 @@
 
             // Load CONFIG from Chrome Storage (Global)
             const globalSettings = await chrome.storage.local.get({
+                aiProvider: 'local',
                 keys: { google: '', openai: '', anthropic: '' },
-                selectedModelId: 'gemini-2.5-flash',
+                selectedModelId: 'llama3.1',
                 localEndpoint: 'http://localhost:11434'
             });
 
+            state.aiProvider = globalSettings.aiProvider;
             state.keys = globalSettings.keys;
             state.selectedModelId = globalSettings.selectedModelId;
             state.localEndpoint = globalSettings.localEndpoint;
+            ensureModelMatchesMode();
 
-            console.log("[LLMSidecar] Configuration loaded:", state.selectedModelId);
+            console.log("[LLMSidecar] Configuration loaded:", {
+                mode: state.aiProvider,
+                model: state.selectedModelId,
+                provider: getActiveProvider()
+            });
             render(); // Re-render with new config
         } catch (e) { console.error("Error loading state", e); }
     }
@@ -112,31 +165,30 @@
     // Listen for changes in options page
     chrome.storage.onChanged.addListener((changes, namespace) => {
         if (namespace === 'local') {
+            if (changes.aiProvider) state.aiProvider = changes.aiProvider.newValue;
             if (changes.keys) state.keys = changes.keys.newValue;
             if (changes.selectedModelId) state.selectedModelId = changes.selectedModelId.newValue;
             if (changes.localEndpoint) state.localEndpoint = changes.localEndpoint.newValue;
+            ensureModelMatchesMode();
             render();
         }
     });
 
     // --- API Logic ---
     async function callLLM(prompt, systemPrompt = '', signal = null) {
-        const model = ALL_MODELS.find(m => m.id === state.selectedModelId);
+        const provider = getActiveProvider();
+        let modelId = state.selectedModelId;
 
-        // Fallback: If model object not found in static list, try to guess provider from ID or Global State
-        // But for now, let's default to 'google' ONLY if we are sure.
-        let provider = model?.provider;
-
-        if (!provider) {
-            console.warn(`[LLMSidecar] Model ID '${state.selectedModelId}' not found in known definition. Defaulting to Google.`);
-            provider = 'google';
+        if (provider === 'local' && modelId === 'llama3') {
+            modelId = 'llama3.1';
+            state.selectedModelId = modelId;
         }
 
-        console.log(`[LLMSidecar] Calling LLM. Model: ${state.selectedModelId}, Provider: ${provider}`);
+        console.log(`[LLMSidecar] Calling LLM. Mode=${state.aiProvider} Model=${modelId} Provider=${provider}`);
 
         const apiKey = state.keys[provider];
 
-        if (provider !== 'local' && !apiKey) throw new Error(`Missing API Key for ${provider} (Model: ${state.selectedModelId})`);
+        if (provider !== 'local' && !apiKey) throw new Error(`Missing API Key for ${provider} (Model: ${modelId})`);
 
         const fetchOptions = {
             method: 'POST',
@@ -145,10 +197,11 @@
         };
 
         if (provider === 'google') {
-            const modelId = normalizeGeminiModelId(state.selectedModelId);
-            if (modelId !== state.selectedModelId) {
-                console.warn(`[LLMSidecar] Deprecated or invalid Gemini model '${state.selectedModelId}', using '${modelId}'.`);
-                state.selectedModelId = modelId;
+            const normalizedGeminiModelId = normalizeGeminiModelId(modelId);
+            if (normalizedGeminiModelId !== modelId) {
+                console.warn(`[LLMSidecar] Deprecated or invalid Gemini model '${modelId}', using '${normalizedGeminiModelId}'.`);
+                modelId = normalizedGeminiModelId;
+                state.selectedModelId = normalizedGeminiModelId;
             }
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
             const res = await fetch(url, {
@@ -165,7 +218,7 @@
                 ...fetchOptions,
                 headers: { ...fetchOptions.headers, 'Authorization': `Bearer ${apiKey}` },
                 body: JSON.stringify({
-                    model: state.selectedModelId,
+                    model: modelId,
                     messages: [...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []), { role: 'user', content: prompt }]
                 })
             });
@@ -178,7 +231,7 @@
             const res = await fetch('https://api.anthropic.com/v1/messages', {
                 ...fetchOptions,
                 headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-direct-browser-access': 'true' },
-                body: JSON.stringify({ model: state.selectedModelId, max_tokens: 1024, system: systemPrompt, messages: [{ role: 'user', content: prompt }] })
+                body: JSON.stringify({ model: modelId, max_tokens: 1024, system: systemPrompt, messages: [{ role: 'user', content: prompt }] })
             });
             const data = await res.json();
             if (data.error) throw new Error(data.error.message);
@@ -189,15 +242,11 @@
             const host = state.localEndpoint || 'http://localhost:11434';
             const url = `${host}/api/chat`;
 
-            // Auto-map legacy 'llama3' to 'llama3.1' to prevent 404s
-            let finalModelId = state.selectedModelId;
-            if (finalModelId === 'llama3') finalModelId = 'llama3.1';
-
             const options = {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    model: finalModelId,
+                    model: modelId,
                     messages: [...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []), { role: 'user', content: prompt }],
                     stream: false
                 })
@@ -266,25 +315,15 @@
     }
 
     async function embed(text) {
-        // Determine provider based on selected model's provider
-        const currentModel = ALL_MODELS.find(m => m.id === state.selectedModelId);
-        let provider = currentModel?.provider || 'google';
+        let provider = getActiveProvider();
 
-        // Fallback: If current provider doesn't support embeddings (e.g. Anthropic), try others
+        // Fallback: If current provider doesn't support embeddings (e.g. Anthropic), try others.
         const SUPPORTS_EMBED = ['google', 'openai', 'local'];
         if (!SUPPORTS_EMBED.includes(provider)) {
-            // Priority: Local > OpenAI > Google
-            /* eslint-disable no-constant-condition */
-            if (true) { // Just a block to organize priority
-                // Check if we can use Local (needs host, default is localhost)
-                // Local is always "available" if we assume default host, but check if user set explicit key/host?
-                // Actually, just check if others are missing? No, let's prefer Local if others are missing.
-                // Let's check for keys.
-                if (state.keys.local) provider = 'local';
-                else if (state.keys.openai) provider = 'openai';
-                else if (state.keys.google) provider = 'google';
-                else provider = 'local'; // Default to local blindly if nothing else
-            }
+            if (state.aiProvider === 'local') provider = 'local';
+            else if (state.keys.openai) provider = 'openai';
+            else if (state.keys.google) provider = 'google';
+            else provider = 'local';
         }
 
         const apiKey = state.keys[provider];
@@ -382,10 +421,10 @@
     }
 
     function hasAnyKey() {
-        if (state.keys && Object.values(state.keys).some(k => !!k)) return true;
-        // Check if current model is local
-        const model = ALL_MODELS.find(m => m.id === state.selectedModelId);
-        return model?.provider === 'local';
+        if (state.aiProvider === 'local') return true;
+        const provider = getActiveProvider();
+        if (provider === 'local') return true;
+        return Boolean(state.keys?.[provider]);
     }
 
     function isAnalysisEnabled() {
@@ -572,7 +611,9 @@
         ].join('\n');
 
         const activeModel = ALL_MODELS.find(m => m.id === state.selectedModelId);
-        console.log(`%c[AI Service] ☁️ CLOUD REQUEST | Model: ${activeModel?.name || state.selectedModelId} (${activeModel?.provider})`, "color: #38bdf8; font-weight: bold;");
+        const activeProvider = getActiveProvider();
+        const modeLabel = state.aiProvider === 'local' ? '🏠 LOCAL REQUEST' : '☁️ CLOUD REQUEST';
+        console.log(`%c[AI Service] ${modeLabel} | Model: ${activeModel?.name || state.selectedModelId} (${activeProvider})`, "color: #38bdf8; font-weight: bold;");
 
         if (onProgress) onProgress("🤖 Consulting AI Model...");
         let advice = await callLLM(prompt, systemPrompt, signal);
@@ -751,7 +792,8 @@
         });
 
         const currentModel = ALL_MODELS.find(m => m.id === state.selectedModelId);
-        const hasKey = !!state.keys[currentModel?.provider || 'google'];
+        const activeProvider = getActiveProvider();
+        const hasKey = activeProvider === 'local' ? true : Boolean(state.keys[activeProvider]);
 
         if (state.isOpen) {
             const titleBlock = createElement('div', '');
@@ -818,12 +860,15 @@
         // Current Configuration (Read Only)
         area.appendChild(createElement('span', 'llm-section-label', 'ACTIVE CONFIGURATION'));
         const modelName = ALL_MODELS.find(m => m.id === state.selectedModelId)?.name || state.selectedModelId;
+        const providerLabel = state.aiProvider === 'local'
+            ? 'LOCAL'
+            : getActiveProvider().toUpperCase();
 
         const configCard = createElement('div', 'llm-config-card');
         configCard.style.cssText = "background: rgba(45, 226, 230, 0.05); padding: 10px; border: 1px solid var(--color-cyan-dim); margin-bottom: 15px;";
         configCard.innerHTML = `
             <div style="font-size:0.8rem; color:var(--color-cyan); margin-bottom:5px;">MODEL: <b style="color:white;">${modelName}</b></div>
-            <div style="font-size:0.8rem; color:var(--color-cyan);">PROVIDER: <b style="color:white;">${state.keys.local ? 'LOCAL/HYBRID' : 'CLOUD'}</b></div>
+            <div style="font-size:0.8rem; color:var(--color-cyan);">PROVIDER: <b style="color:white;">${providerLabel}</b></div>
         `;
         area.appendChild(configCard);
 

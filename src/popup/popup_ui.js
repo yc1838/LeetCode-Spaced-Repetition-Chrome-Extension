@@ -31,14 +31,7 @@ export function renderVectors(problemList, containerId, isInteractive) {
         const card = document.createElement('div');
         card.className = 'vector-card';
 
-        // Buttons HTML (Hidden in details)
-        const ratingHtml = isInteractive ? `
-                <div class="rating-row">
-                    <div class="rating-btn" style="border-color:#ff2a6d" data-id="${problem.slug}" data-ease="1.3">HARD</div>
-                    <div class="rating-btn" style="border-color:#f1c40f" data-id="${problem.slug}" data-ease="2.5">MED</div>
-                    <div class="rating-btn" style="border-color:#00FF41" data-id="${problem.slug}" data-ease="3.5">EASY</div>
-                </div>
-            ` : '';
+        // Rating buttons removed - FSRS 4-choice rating is handled by content_ui.js after submission detection
 
         // Determine badge style
         const diffStyle = `difficulty-${(problem.difficulty || 'medium').toLowerCase()}`;
@@ -66,7 +59,6 @@ export function renderVectors(problemList, containerId, isInteractive) {
                 <button class="tactical-btn">INITIALIZE_SEQUENCE</button>
                 
                 <div class="vector-details">
-                    ${ratingHtml}
                     <div class="mini-heatmap-label">PROJECTED_TIMELINE:</div>
                     <div class="heatmap-grid mini-heatmap" id="grid-${uniqueId}"></div>
                     ${problem.notes ? `
@@ -87,7 +79,6 @@ export function renderVectors(problemList, containerId, isInteractive) {
         // Expand Handler
         card.onclick = (e) => {
             // Prevent button click from toggling
-            if (e.target.classList.contains('rating-btn')) return;
             if (e.target.classList.contains('go-btn')) return;
 
             // Toggle
@@ -223,22 +214,7 @@ export function renderVectors(problemList, containerId, isInteractive) {
         };
         attachEditListener();
 
-        // Rating Handlers
-        if (isInteractive) {
-            card.querySelectorAll('.rating-btn').forEach(btn => {
-                btn.onclick = async (e) => {
-                    e.stopPropagation(); // Stop bubble 
-                    const slug = btn.getAttribute('data-id');
-                    const ease = parseFloat(btn.getAttribute('data-ease'));
-                    // Check if updateProblemSRS is available (it should be global)
-                    if (typeof updateProblemSRS === 'function') {
-                        await updateProblemSRS(slug, ease);
-                    } else {
-                        console.error("updateProblemSRS is not defined");
-                    }
-                };
-            });
-        }
+        // Rating handlers removed - FSRS 4-choice rating is handled by content_ui.js
 
         container.appendChild(card);
     });

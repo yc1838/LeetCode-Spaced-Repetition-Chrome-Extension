@@ -28,6 +28,8 @@ import './error_pattern_detector.js';
 import './backfill_agent.js';
 import './gemini_client.js';
 import './openai_client.js';
+import './anthropic_client.js';
+import './local_client.js';
 import './llm_gateway.js';
 import './day_log_harvester.js';
 import './digest_orchestrator.js';

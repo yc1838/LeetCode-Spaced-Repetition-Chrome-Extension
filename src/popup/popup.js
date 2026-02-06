@@ -64,10 +64,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 0. Load and apply theme from storage
     await setupTheme();
 
-    // 0.5 Load and apply AI analysis toggle from storage
-    await setupAiModeToggle();
-
-    // 0.6 Options/setup button
+    // 0.5 Options/setup button
     setupOptionsButton();
 
     // 1. Fetch data from storage and show the list of problems due for review
@@ -132,30 +129,6 @@ async function setupTheme() {
 
         applyTheme(currentTheme);
         await chrome.storage.local.set({ theme: currentTheme });
-    };
-}
-
-/**
- * Load AI analysis toggle state from storage and wire the button.
- */
-async function setupAiModeToggle() {
-    const btn = document.getElementById('ai-mode-toggle');
-    if (!btn) return;
-
-    const storage = await chrome.storage.local.get({ aiAnalysisEnabled: false });
-    let enabled = !!storage.aiAnalysisEnabled;
-
-    const render = () => {
-        btn.textContent = enabled ? 'AI_MODE: ON' : 'AI_MODE: OFF';
-        btn.classList.toggle('on', enabled);
-    };
-
-    render();
-
-    btn.onclick = async () => {
-        enabled = !enabled;
-        render();
-        await chrome.storage.local.set({ aiAnalysisEnabled: enabled });
     };
 }
 

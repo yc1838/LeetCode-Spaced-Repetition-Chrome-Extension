@@ -1,5 +1,4 @@
 (function () {
-    // Shared Model Definitions (Should ideally be in a shared file, but duplicating for now to avoid module issues)
     const MODELS = {
         gemini: [
             { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview (NEXT-GEN)', provider: 'google' },
@@ -7,7 +6,7 @@
             { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (REASONING)', provider: 'google' },
             { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (BALANCED)', provider: 'google' },
             { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite (EFFICIENT)', provider: 'google' },
-            { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (FAST)', provider: 'google' },
+            { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (FAST)', provider: 'google' }
         ],
         openai: [
             { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai' },
@@ -17,9 +16,11 @@
             { id: 'claude-3-5-sonnet-20240620', name: 'Claude 3.5 Sonnet', provider: 'anthropic' }
         ],
         local: [
-            { id: 'llama3', name: 'Llama 3 (Local)', provider: 'local' },
+            { id: 'llama3.1', name: 'Llama 3.1 (Local)', provider: 'local' },
+            { id: 'mistral-nemo', name: 'Mistral Nemo (Local)', provider: 'local' },
+            { id: 'llama3', name: 'Llama 3 (Legacy Local)', provider: 'local' },
             { id: 'deepseek-coder', name: 'DeepSeek Coder (Local)', provider: 'local' },
-            { id: 'mistral', name: 'Mistral (Local)', provider: 'local' }
+            { id: 'mistral', name: 'Mistral (Legacy Local)', provider: 'local' }
         ]
     };
 
@@ -27,87 +28,294 @@
         aiProvider: 'local',
         keys: { google: '', openai: '', anthropic: '' },
         localEndpoint: 'http://127.0.0.1:11434',
-        selectedModelId: 'gemini-2.5-flash'
+        selectedModelId: 'llama3.1',
+        aiAnalysisEnabled: true,
+        uiLanguage: 'en'
     };
+
+    const I18N = {
+        en: {
+            page_title: 'LeetCode EasyRepeat - AI Setup',
+            ai_gate_heading: 'Enable AI Analysis',
+            ai_gate_hint: 'Turn this on to unlock AI-powered mistake analysis and neural retention features.',
+            ai_gate_enable_title: 'Enable AI Analysis',
+            ai_gate_enable_subtitle: 'Allows mistake analysis, model setup, nightly digest, and drill generation.',
+            ai_gate_disable_title: 'Disable AI Analysis',
+            ai_gate_disable_subtitle: 'Hides AI setup and neural retention modules.',
+            ai_gate_features_title: 'AI-only features when enabled:',
+            ai_feature_item_1: 'Automatic wrong-answer analysis after failed submissions.',
+            ai_feature_item_2: 'Local/Cloud model configuration and connection testing.',
+            ai_feature_item_3: 'Backfill, nightly digest, and weak-skill drill generation.',
+            ai_feature_item_4: 'Agent scheduling and debug settings.',
+            model_group_local: 'Local (Ollama)',
+            model_group_google: 'Google Gemini',
+            model_group_openai: 'OpenAI',
+            model_group_anthropic: 'Anthropic',
+            status_ai_gate_enabled: 'AI analysis is enabled. AI setup and neural modules are now available.',
+            status_ai_gate_disabled: 'AI analysis is disabled. AI setup and neural modules are hidden.',
+            status_settings_saved: 'Settings Saved!',
+            status_testing: 'Testing {url}...',
+            status_test_success: 'Success! Found {count} models.',
+            status_http_error: 'Error: HTTP {status}',
+            status_connection_failed: 'Connection Failed: {message}',
+            status_processing_history: 'Processing all history...',
+            status_backfill_success: '✅ Processed {count} problems, updated {skills} skills{entries}{source}',
+            status_backfill_source: ' (source: {source})',
+            status_backfill_entries: ', {entries} events',
+            status_no_history: 'No history found',
+            status_warning_prefix: '⚠️ ',
+            status_error_prefix: '❌ ',
+            status_run_digest: 'Running digest...',
+            status_digest_complete_detailed: '✅ Digest complete at {time}! Processed {items} items, updated {skills} skills.',
+            status_digest_complete: '✅ Digest complete!',
+            status_no_data: 'No data to process',
+            status_generating_drills: 'Generating drills...',
+            status_drills_generated: '✅ Generated {count} drills!{fallback}',
+            status_drills_fallback: ' (fallback: {fallback})',
+            status_no_weak_skills: 'No weak skills found',
+            status_agent_saved: '✅ Settings saved!'
+        },
+        zh: {
+            page_title: 'LeetCode EasyRepeat - AI 设置',
+            hero_title: 'LeetCode EasyRepeat',
+            hero_subtitle: 'AI 设置',
+            language_label: '语言',
+            hero_note: '配置本地或云端 AI 提供商并验证连接。',
+            ai_gate_heading: '是否开启 AI 分析',
+            ai_gate_hint: '开启后才能使用 AI 错误分析与神经记忆相关功能。',
+            ai_gate_enable_title: '开启 AI 分析',
+            ai_gate_enable_subtitle: '可用错题分析、模型配置、夜间总结与练习生成。',
+            ai_gate_disable_title: '关闭 AI 分析',
+            ai_gate_disable_subtitle: '将隐藏 AI 配置与神经记忆模块。',
+            ai_gate_features_title: '开启后可用功能：',
+            ai_feature_item_1: '提交失败后自动进行 Wrong Answer 分析。',
+            ai_feature_item_2: '本地/云端模型配置与连接测试。',
+            ai_feature_item_3: '历史回填、夜间总结、薄弱技能练习生成。',
+            ai_feature_item_4: 'Agent 定时与调试设置。',
+            ai_configuration_heading: 'AI 配置',
+            active_model_label: '当前模型（请先选择）',
+            active_model_hint: '模型选项会根据当前模式（本地 / 云端）自动切换。',
+            choose_intelligence_source_heading: '选择智能来源',
+            local_card_title: '本地（隐私）',
+            local_card_subtitle: '私密离线，但推理可靠性较低。',
+            cloud_card_title: '云端 API',
+            cloud_card_subtitle: '逻辑能力更强，通常付费，需要 API Key。',
+            cloud_access_keys_heading: '云端访问密钥',
+            cloud_key_help_link: '不知道怎么获取 API Key？点这里。',
+            google_key_label: 'Google Gemini API Key',
+            openai_key_label: 'OpenAI API Key',
+            anthropic_key_label: 'Anthropic API Key',
+            cloud_local_endpoint_note: '在 Cloud 模式下不会使用 Local Endpoint。',
+            local_setup_heading: '本地 LLM 配置',
+            local_setup_hint: '使用 Ollama 或 LM Studio 在本地运行模型。',
+            local_quality_warning_strong: '质量提醒：',
+            local_quality_warning_rest: '本地模型可能会显著降低分析质量。',
+            local_warning_item_1: '在复杂 LeetCode 正确性判断和边界情况上，它们可能判断错误。',
+            local_warning_item_2: '夜间总结笔记可能变得泛化、不完整或不一致。',
+            local_warning_item_3: '如果你需要高置信度评分和高质量笔记，请优先使用云模型。',
+            local_endpoint_label: 'Local Endpoint',
+            local_endpoint_hint_html: '这不是自动发现的。它只在 Local 模式下生效，用于指向你的本地模型服务地址（默认 <code>http://127.0.0.1:11434</code>）。',
+            test_connection_button: '测试连接',
+            quick_setup_heading: '快速配置指南',
+            quick_setup_step_1: '安装本地模型服务。',
+            quick_setup_step_2: '启动服务并保持运行。',
+            quick_setup_step_3: '在上方填入 Endpoint 并点击“测试连接”。',
+            ollama_example_heading: 'Ollama（示例）',
+            lm_studio_heading: 'LM Studio（OpenAI 兼容）',
+            troubleshooting_heading: '故障排查',
+            troubleshooting_item_1: '如果测试显示网络错误，通常是本地服务未启动。',
+            troubleshooting_item_2: '如果看到 CORS 错误，请在本地服务中启用 CORS。',
+            save_all_settings_button: '保存全部设置',
+            neural_retention_heading: '🧠 神经记忆代理',
+            neural_retention_hint: '手动触发总结和练习生成功能用于测试。',
+            backfill_button: '📚 从全部历史回填',
+            run_digest_button: '⚡ 运行夜间总结（仅今天）',
+            generate_drills_button: '🎯 基于薄弱技能生成练习',
+            neural_note_backfill_html: '• <b>回填</b>：处理全部历史提交，构建你的 Skill DNA',
+            neural_note_nightly_html: '• <b>夜间总结</b>：只分析今天的错误',
+            neural_note_generate_html: '• <b>生成</b>：根据薄弱技能生成练习',
+            agent_settings_heading: '⚙️ Agent 设置',
+            digest_time_label: '夜间总结时间：',
+            pattern_threshold_label: '错误模式阈值：',
+            pattern_threshold_hint: '激活一个模式所需的错误次数',
+            debug_logs_label: '详细调试日志：',
+            debug_logs_hint: '启用后台调试日志',
+            save_agent_settings_button: '💾 保存 Agent 设置',
+            model_group_local: '本地（Ollama）',
+            model_group_google: 'Google Gemini',
+            model_group_openai: 'OpenAI',
+            model_group_anthropic: 'Anthropic',
+            status_ai_gate_enabled: 'AI 分析已开启。AI 配置与神经模块现已可用。',
+            status_ai_gate_disabled: 'AI 分析已关闭。AI 配置与神经模块已隐藏。',
+            status_settings_saved: '设置已保存！',
+            status_testing: '正在测试 {url}...',
+            status_test_success: '连接成功！发现 {count} 个模型。',
+            status_http_error: '错误：HTTP {status}',
+            status_connection_failed: '连接失败：{message}',
+            status_processing_history: '正在处理全部历史...',
+            status_backfill_success: '✅ 已处理 {count} 道题，更新 {skills} 个技能{entries}{source}',
+            status_backfill_source: '（来源：{source}）',
+            status_backfill_entries: '，{entries} 条事件',
+            status_no_history: '未找到历史记录',
+            status_warning_prefix: '⚠️ ',
+            status_error_prefix: '❌ ',
+            status_run_digest: '正在运行总结...',
+            status_digest_complete_detailed: '✅ 总结完成于 {time}！处理了 {items} 条记录，更新 {skills} 个技能。',
+            status_digest_complete: '✅ 总结完成！',
+            status_no_data: '没有可处理的数据',
+            status_generating_drills: '正在生成练习...',
+            status_drills_generated: '✅ 已生成 {count} 组练习！{fallback}',
+            status_drills_fallback: '（降级方案：{fallback}）',
+            status_no_weak_skills: '未找到薄弱技能',
+            status_agent_saved: '✅ 设置已保存！'
+        }
+    };
+
+    let currentLanguage = DEFAULTS.uiLanguage;
 
     const els = {};
     const statusTimers = new WeakMap();
 
-    function getEl(id) { return document.getElementById(id); }
+    function getEl(id) {
+        return document.getElementById(id);
+    }
 
-    function populateModelSelect(mode) {
+    function interpolate(template, values = {}) {
+        return String(template).replace(/\{(\w+)\}/g, (match, key) => {
+            return Object.prototype.hasOwnProperty.call(values, key) ? values[key] : match;
+        });
+    }
+
+    function t(key, values = {}) {
+        const table = I18N[currentLanguage] || I18N.en;
+        const fallback = I18N.en || {};
+        const template = table[key] ?? fallback[key] ?? key;
+        return interpolate(template, values);
+    }
+
+    function applyTranslations() {
+        document.documentElement.lang = currentLanguage === 'zh' ? 'zh-CN' : 'en';
+
+        document.querySelectorAll('[data-i18n]').forEach(node => {
+            if (node.dataset.i18nDefault === undefined) {
+                node.dataset.i18nDefault = node.textContent;
+            }
+            const key = node.dataset.i18n;
+            const translated = I18N[currentLanguage]?.[key];
+            node.textContent = translated ?? node.dataset.i18nDefault;
+        });
+
+        document.querySelectorAll('[data-i18n-html]').forEach(node => {
+            if (node.dataset.i18nDefaultHtml === undefined) {
+                node.dataset.i18nDefaultHtml = node.innerHTML;
+            }
+            const key = node.dataset.i18nHtml;
+            const translated = I18N[currentLanguage]?.[key];
+            node.innerHTML = translated ?? node.dataset.i18nDefaultHtml;
+        });
+    }
+
+    function populateModelSelect(mode, preferredModelId = '') {
         const select = els.modelSelect;
+        if (!select) return;
         select.innerHTML = '';
 
         const createGroup = (label, models) => {
             const group = document.createElement('optgroup');
             group.label = label;
-            models.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m.id;
-                opt.textContent = m.name;
-                group.appendChild(opt);
+            models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.id;
+                option.textContent = model.name;
+                group.appendChild(option);
             });
             select.appendChild(group);
         };
 
-        // Filter based on mode
         if (mode === 'local') {
-            createGroup('Local (Ollama)', MODELS.local);
+            createGroup(t('model_group_local'), MODELS.local);
         } else {
-            createGroup('Google Gemini', MODELS.gemini);
-            createGroup('OpenAI', MODELS.openai);
-            createGroup('Anthropic', MODELS.anthropic);
+            createGroup(t('model_group_google'), MODELS.gemini);
+            createGroup(t('model_group_openai'), MODELS.openai);
+            createGroup(t('model_group_anthropic'), MODELS.anthropic);
+        }
+
+        const values = Array.from(select.options).map(option => option.value);
+        if (preferredModelId && values.includes(preferredModelId)) {
+            select.value = preferredModelId;
+        } else if (values.length > 0) {
+            select.value = values[0];
         }
     }
 
-    function setModeUI(mode) {
-        // Toggle Sections
-        els.sectionLocal.style.display = mode === 'local' ? 'block' : 'none';
-        els.sectionCloud.style.display = mode === 'cloud' ? 'block' : 'none';
+    function setModeUI(mode, preferredModelId = '') {
+        if (els.sectionLocal) {
+            els.sectionLocal.style.display = mode === 'local' ? 'block' : 'none';
+        }
+        if (els.sectionCloud) {
+            els.sectionCloud.style.display = mode === 'cloud' ? 'block' : 'none';
+        }
+        populateModelSelect(mode, preferredModelId);
+    }
 
-        // Update Selector
-        populateModelSelect(mode);
+    function setAiFeatureVisibility(enabled) {
+        const display = enabled ? 'block' : 'none';
+        if (els.aiConfigCard) els.aiConfigCard.style.display = display;
+        if (els.neuralRetentionCard) els.neuralRetentionCard.style.display = display;
+        if (els.agentSettingsCard) els.agentSettingsCard.style.display = display;
+    }
+
+    async function applyAiAnalysisSetting(enabled, options = {}) {
+        const normalized = Boolean(enabled);
+        if (els.aiAnalysisEnabled) els.aiAnalysisEnabled.checked = normalized;
+        if (els.aiAnalysisDisabled) els.aiAnalysisDisabled.checked = !normalized;
+        setAiFeatureVisibility(normalized);
+
+        if (options.persist) {
+            const payload = { aiAnalysisEnabled: normalized };
+            if (!normalized) {
+                payload.agentEnabled = false;
+            }
+            await chrome.storage.local.set(payload);
+        }
+
+        if (options.notify) {
+            showStatus(
+                els.aiGateStatus,
+                normalized ? t('status_ai_gate_enabled') : t('status_ai_gate_disabled'),
+                'ok'
+            );
+        }
     }
 
     async function loadSettings() {
         const settings = await chrome.storage.local.get(DEFAULTS);
 
-        // Mode (Infer from saved provider or default)
-        // If save has "aiProvider", use it. defaults to cloud in our DEFAULTS const? No, let's default to local if recommended.
-        let mode = settings.aiProvider || 'local';
+        currentLanguage = settings.uiLanguage === 'zh' ? 'zh' : 'en';
+        if (els.langSelect) {
+            els.langSelect.value = currentLanguage;
+        }
+        applyTranslations();
+        await applyAiAnalysisSetting(settings.aiAnalysisEnabled !== false);
 
-        if (mode === 'local') els.modeLocal.checked = true;
-        else els.modeCloud.checked = true;
+        const mode = settings.aiProvider === 'cloud' ? 'cloud' : 'local';
+        if (mode === 'local') {
+            els.modeLocal.checked = true;
+        } else {
+            els.modeCloud.checked = true;
+        }
+        setModeUI(mode, settings.selectedModelId || '');
 
-        setModeUI(mode);
-
-        // Keys
         if (settings.keys) {
             els.keyGoogle.value = settings.keys.google || '';
             els.keyOpenai.value = settings.keys.openai || '';
             els.keyAnthropic.value = settings.keys.anthropic || '';
         }
 
-        // Local
         els.localEndpoint.value = settings.localEndpoint || DEFAULTS.localEndpoint;
-
-        // Model
-        // We need to make sure the selected model is actually valid for the current mode.
-        // If not, select the first available one.
-        const currentModel = settings.selectedModelId || '';
-        // Check if current model exists in the populated list (which is filtered by mode)
-        // Wait, populate is synchronous.
-        const options = Array.from(els.modelSelect.options).map(o => o.value);
-        if (options.includes(currentModel)) {
-            els.modelSelect.value = currentModel;
-        } else if (options.length > 0) {
-            els.modelSelect.value = options[0]; // Default to first available
-        }
     }
 
     async function saveSettings() {
-        // Determine mode
         const mode = els.modeLocal.checked ? 'local' : 'cloud';
 
         const payload = {
@@ -117,101 +325,128 @@
                 openai: els.keyOpenai.value.trim(),
                 anthropic: els.keyAnthropic.value.trim()
             },
+            aiAnalysisEnabled: Boolean(els.aiAnalysisEnabled?.checked),
             localEndpoint: els.localEndpoint.value.trim(),
-            selectedModelId: els.modelSelect.value
+            selectedModelId: els.modelSelect.value,
+            uiLanguage: currentLanguage
         };
 
         await chrome.storage.local.set(payload);
-        showStatus(els.saveStatus, 'Settings Saved!', 'ok');
-
-        // Also update legacy Sidecar storage if needed? 
-        // No, Sidecar will be updated to read from chrome.storage directly.
+        showStatus(els.saveStatus, t('status_settings_saved'), 'ok');
     }
 
     function showStatus(el, text, type, options = {}) {
         if (!el) return;
+
         const existing = statusTimers.get(el);
         if (existing) {
             clearTimeout(existing);
             statusTimers.delete(el);
         }
+
         el.textContent = text;
         el.className = 'status-text ' + (type || '');
-        // Loading state and sticky option should NOT auto-clear
+
         if (options.sticky || type === 'loading') return;
-        // Errors stay longer so user can read them
+
         const timeout = type === 'error' ? 8000 : 2000;
         const timerId = setTimeout(() => {
             el.textContent = '';
             el.className = 'status-text';
             statusTimers.delete(el);
         }, timeout);
+
         statusTimers.set(el, timerId);
     }
 
     function normalizeEndpoint(input) {
-        let url = input.trim();
+        let url = (input || '').trim();
 
-        // Remove trailing slash
+        if (!url) return DEFAULTS.localEndpoint;
+
         url = url.replace(/\/$/, '');
-
-        // If it starts with an IP or localhost without protocol, add http://
         if (!/^https?:\/\//i.test(url)) {
             url = 'http://' + url;
         }
-
-        // If it's just http://127.0.0.1 or http://localhost without port, suggest port?
-        // For now, let's just assume if they made that specific typo they wanted the default port.
-
         return url;
     }
 
     async function testLocalConnection() {
         const endpoint = normalizeEndpoint(els.localEndpoint.value);
-        const url = `${endpoint}/api/tags`; // Ollama specific check
-        showStatus(els.testStatus, `Testing ${url}...`, '');
+        const url = `${endpoint}/api/tags`;
+        showStatus(els.testStatus, t('status_testing', { url }), '');
 
         try {
             const res = await fetch(url);
             if (res.ok) {
                 const data = await res.json();
                 const count = data.models ? data.models.length : 0;
-                showStatus(els.testStatus, `Success! Found ${count} models.`, 'ok');
+                showStatus(els.testStatus, t('status_test_success', { count }), 'ok');
             } else {
-                showStatus(els.testStatus, `Error: HTTP ${res.status}`, 'error');
+                showStatus(els.testStatus, t('status_http_error', { status: res.status }), 'error');
             }
         } catch (e) {
-            showStatus(els.testStatus, `Connection Failed: ${e.message}`, 'error');
+            showStatus(els.testStatus, t('status_connection_failed', { message: e.message }), 'error');
         }
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
         els.modeLocal = getEl('mode-local');
         els.modeCloud = getEl('mode-cloud');
-
         els.sectionLocal = getEl('section-local');
         els.sectionCloud = getEl('section-cloud');
-
         els.keyGoogle = getEl('key-google');
         els.keyOpenai = getEl('key-openai');
         els.keyAnthropic = getEl('key-anthropic');
         els.localEndpoint = getEl('local-endpoint');
         els.modelSelect = getEl('model-select');
+        els.aiAnalysisEnabled = getEl('ai-analysis-enabled');
+        els.aiAnalysisDisabled = getEl('ai-analysis-disabled');
+        els.aiGateStatus = getEl('ai-gate-status');
+        els.aiConfigCard = getEl('ai-config-card');
+        els.neuralRetentionCard = getEl('neural-retention-card');
+        els.agentSettingsCard = getEl('agent-settings-card');
         els.saveBtn = getEl('save-settings');
         els.saveStatus = getEl('save-status');
         els.testBtn = getEl('test-local');
         els.testStatus = getEl('test-status');
+        els.langSelect = getEl('lang-select');
 
         els.saveBtn.addEventListener('click', saveSettings);
         els.testBtn.addEventListener('click', testLocalConnection);
 
-        // Mode switching listeners
         els.modeLocal.addEventListener('change', () => setModeUI('local'));
         els.modeCloud.addEventListener('change', () => setModeUI('cloud'));
 
+        if (els.aiAnalysisEnabled) {
+            els.aiAnalysisEnabled.addEventListener('change', async () => {
+                if (!els.aiAnalysisEnabled.checked) return;
+                await applyAiAnalysisSetting(true, { persist: true, notify: true });
+            });
+        }
+
+        if (els.aiAnalysisDisabled) {
+            els.aiAnalysisDisabled.addEventListener('change', async () => {
+                if (!els.aiAnalysisDisabled.checked) return;
+                await applyAiAnalysisSetting(false, { persist: true, notify: true });
+            });
+        }
+
+        if (els.langSelect) {
+            els.langSelect.addEventListener('change', async () => {
+                currentLanguage = els.langSelect.value === 'zh' ? 'zh' : 'en';
+                applyTranslations();
+
+                const mode = els.modeLocal.checked ? 'local' : 'cloud';
+                const selectedModelId = els.modelSelect.value;
+                setModeUI(mode, selectedModelId);
+
+                await chrome.storage.local.set({ uiLanguage: currentLanguage });
+            });
+        }
+
         await loadSettings();
 
-        // Neural Agent buttons
         const backfillBtn = getEl('backfill-history');
         const backfillStatus = getEl('backfill-status');
         const runDigestBtn = getEl('run-digest');
@@ -221,110 +456,108 @@
 
         if (backfillBtn) {
             backfillBtn.addEventListener('click', async () => {
-                showStatus(backfillStatus, 'Processing all history...', '');
+                showStatus(backfillStatus, t('status_processing_history'), '');
                 try {
                     const response = await chrome.runtime.sendMessage({ action: 'backfillHistory' });
                     if (response && response.success) {
-                        const skills = response.skills || 0;
-                        const source = response.source ? ` (source: ${response.source})` : '';
-                        const entries = response.historyEntries ? `, ${response.historyEntries} events` : '';
-                        showStatus(backfillStatus, `✅ Processed ${response.count || 0} problems, updated ${skills} skills${entries}${source}`, 'ok', { sticky: true });
+                        const source = response.source ? t('status_backfill_source', { source: response.source }) : '';
+                        const entries = response.historyEntries ? t('status_backfill_entries', { entries: response.historyEntries }) : '';
+                        showStatus(backfillStatus, t('status_backfill_success', {
+                            count: response.count || 0,
+                            skills: response.skills || 0,
+                            entries,
+                            source
+                        }), 'ok', { sticky: true });
                     } else {
-                        showStatus(backfillStatus, '⚠️ ' + (response?.error || 'No history found'), 'error', { sticky: true });
+                        showStatus(backfillStatus, t('status_warning_prefix') + (response?.error || t('status_no_history')), 'error', { sticky: true });
                     }
                 } catch (e) {
-                    showStatus(backfillStatus, '❌ ' + e.message, 'error');
+                    showStatus(backfillStatus, t('status_error_prefix') + e.message, 'error');
                 }
             });
         }
 
         if (runDigestBtn) {
             runDigestBtn.addEventListener('click', async () => {
-                showStatus(digestStatus, 'Running digest...', '');
+                showStatus(digestStatus, t('status_run_digest'), '');
                 try {
-                    // Send message to background script
                     const response = await chrome.runtime.sendMessage({ action: 'runDigestNow' });
-
                     if (response && response.success) {
-                        // Check for result details (either returned directly or we can fetch from storage, 
-                        // but usually the background response for runDigestNow includes what we need if we update the handler too?
-                        // Actually, looking at background.js handler, it just calls await DigestOrchestrator.runDigest() 
-                        // but returns { success: true }. We might need to update background.js handler to return the specific result.
-                        // But wait, runDigestNow handler in background.js:
-                        // await DigestOrchestrator.runDigest();
-                        // sendResponse({ success: true });
-                        // It swallows the return value!
-
-                        // Let's rely on reading the lastDigestResult from storage for details, 
-                        // or just tell the user "Digest complete! Check logs."
-                        // Better: read storage.
                         const { lastDigestResult } = await chrome.storage.local.get('lastDigestResult');
                         if (lastDigestResult) {
-                            const time = new Date(lastDigestResult.timestamp).toLocaleTimeString();
-                            const msg = `✅ Digest complete at ${time}! Processed ${lastDigestResult.submissionsProcessed} items, updated ${lastDigestResult.skillsUpdated} skills.`;
-                            showStatus(digestStatus, msg, 'ok', { sticky: true });
+                            const locale = currentLanguage === 'zh' ? 'zh-CN' : 'en-US';
+                            const time = new Date(lastDigestResult.timestamp).toLocaleTimeString(locale);
+                            showStatus(digestStatus, t('status_digest_complete_detailed', {
+                                time,
+                                items: lastDigestResult.submissionsProcessed,
+                                skills: lastDigestResult.skillsUpdated
+                            }), 'ok', { sticky: true });
                         } else {
-                            showStatus(digestStatus, '✅ Digest complete!', 'ok');
+                            showStatus(digestStatus, t('status_digest_complete'), 'ok');
                         }
                     } else {
-                        showStatus(digestStatus, '⚠️ ' + (response?.error || 'No data to process'), 'error');
+                        showStatus(digestStatus, t('status_warning_prefix') + (response?.error || t('status_no_data')), 'error');
                     }
                 } catch (e) {
-                    showStatus(digestStatus, '❌ ' + e.message, 'error');
+                    showStatus(digestStatus, t('status_error_prefix') + e.message, 'error');
                 }
             });
         }
 
         if (genDrillsBtn) {
-            // Check if there's a pending or completed generation on load
             const { drillGenerationStatus } = await chrome.storage.local.get('drillGenerationStatus');
             if (drillGenerationStatus) {
                 if (drillGenerationStatus.status === 'generating') {
-                    showStatus(drillsStatus, 'Generating drills...', 'loading');
+                    showStatus(drillsStatus, t('status_generating_drills'), 'loading');
                 } else if (drillGenerationStatus.status === 'complete') {
-                    const fallbackNote = drillGenerationStatus.fallback ? ` (fallback: ${drillGenerationStatus.fallback})` : '';
-                    showStatus(drillsStatus, `✅ Generated ${drillGenerationStatus.count || 0} drills!${fallbackNote}`, 'ok', { sticky: true });
+                    const fallback = drillGenerationStatus.fallback
+                        ? t('status_drills_fallback', { fallback: drillGenerationStatus.fallback })
+                        : '';
+                    showStatus(drillsStatus, t('status_drills_generated', {
+                        count: drillGenerationStatus.count || 0,
+                        fallback
+                    }), 'ok', { sticky: true });
                 }
             }
 
             genDrillsBtn.addEventListener('click', async () => {
-                showStatus(drillsStatus, 'Generating drills...', 'loading');
+                showStatus(drillsStatus, t('status_generating_drills'), 'loading');
                 genDrillsBtn.disabled = true;
                 try {
                     const response = await chrome.runtime.sendMessage({ action: 'generateDrillsNow' });
                     if (response && response.success) {
-                        const fallbackNote = response.fallback ? ` (fallback: ${response.fallback})` : '';
-                        showStatus(drillsStatus, `✅ Generated ${response.count || 0} drills!${fallbackNote}`, 'ok', { sticky: true });
+                        const fallback = response.fallback
+                            ? t('status_drills_fallback', { fallback: response.fallback })
+                            : '';
+                        showStatus(drillsStatus, t('status_drills_generated', {
+                            count: response.count || 0,
+                            fallback
+                        }), 'ok', { sticky: true });
                     } else {
-                        showStatus(drillsStatus, '⚠️ ' + (response?.error || 'No weak skills found'), 'error', { sticky: true });
+                        showStatus(drillsStatus, t('status_warning_prefix') + (response?.error || t('status_no_weak_skills')), 'error', { sticky: true });
                     }
                 } catch (e) {
-                    showStatus(drillsStatus, '❌ ' + e.message, 'error');
+                    showStatus(drillsStatus, t('status_error_prefix') + e.message, 'error');
                 } finally {
                     genDrillsBtn.disabled = false;
                 }
             });
         }
 
-        // Agent Settings
         const digestTimeInput = getEl('digest-time');
         const patternThresholdInput = getEl('pattern-threshold');
-        const notificationEmailInput = getEl('notification-email');
         const debugLogsInput = getEl('debug-logs');
         const saveAgentBtn = getEl('save-agent-settings');
         const agentSaveStatus = getEl('agent-save-status');
 
-        // Load agent settings
         const agentSettings = await chrome.storage.local.get({
             agentDigestTime: '02:00',
             agentPatternThreshold: 3,
-            agentNotificationEmail: '',
             agentDebugLogs: false
         });
 
         if (digestTimeInput) digestTimeInput.value = agentSettings.agentDigestTime;
         if (patternThresholdInput) patternThresholdInput.value = agentSettings.agentPatternThreshold;
-        if (notificationEmailInput) notificationEmailInput.value = agentSettings.agentNotificationEmail;
         if (debugLogsInput) debugLogsInput.checked = Boolean(agentSettings.agentDebugLogs);
 
         if (saveAgentBtn) {
@@ -332,13 +565,12 @@
                 try {
                     await chrome.storage.local.set({
                         agentDigestTime: digestTimeInput?.value || '02:00',
-                        agentPatternThreshold: parseInt(patternThresholdInput?.value || 3),
-                        agentNotificationEmail: notificationEmailInput?.value || '',
+                        agentPatternThreshold: parseInt(patternThresholdInput?.value || 3, 10),
                         agentDebugLogs: Boolean(debugLogsInput?.checked)
                     });
-                    showStatus(agentSaveStatus, '✅ Settings saved!', 'ok');
+                    showStatus(agentSaveStatus, t('status_agent_saved'), 'ok');
                 } catch (e) {
-                    showStatus(agentSaveStatus, '❌ ' + e.message, 'error');
+                    showStatus(agentSaveStatus, t('status_error_prefix') + e.message, 'error');
                 }
             });
         }

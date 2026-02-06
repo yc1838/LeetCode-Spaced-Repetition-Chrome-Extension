@@ -300,10 +300,16 @@
 
                             (async () => {
                                 // 0. Check global AI toggle
-                                let aiEnabled = false;
+                                let aiEnabled = true;
+                                let shouldAnalyze = false;
                                 try {
-                                    const aiStorage = await chrome.storage.local.get({ aiAnalysisEnabled: false });
-                                    aiEnabled = !!aiStorage.aiAnalysisEnabled;
+                                    const aiStorage = await chrome.storage.local.get({
+                                        aiAnalysisEnabled: true,
+                                        alwaysAnalyze: false
+                                    });
+                                    // Keep explicit OFF respected, but default to ON when key is missing.
+                                    aiEnabled = aiStorage.aiAnalysisEnabled !== false;
+                                    shouldAnalyze = !!aiStorage.alwaysAnalyze;
                                 } catch (e) { }
 
                                 if (!aiEnabled) return;
@@ -311,14 +317,7 @@
                                 const showAnalysisModal = getDep('showAnalysisModal');
                                 const saveNotes = getDep('saveNotes');
 
-                                // 1. Check Preference
-                                let shouldAnalyze = false;
-                                try {
-                                    const storage = await chrome.storage.local.get(['alwaysAnalyze']);
-                                    shouldAnalyze = !!storage.alwaysAnalyze;
-                                } catch (e) { }
-
-                                // 2. Ask User if not set
+                                // 1. Ask user when "always analyze" is not enabled.
                                 if (!shouldAnalyze && showAnalysisModal) {
                                     shouldAnalyze = await showAnalysisModal(data.status_msg); // 'Wrong Answer', etc.
                                 }

@@ -38,6 +38,8 @@
     const DEPRECATED_GEMINI_MODELS = new Set(['gemini-1.5-flash', 'gemini-1.5-pro']);
     const DEFAULT_MAX_RETRIES = 3;
     const RETRY_DELAY_MS = 1000;
+    const DEFAULT_TEMPERATURE = 1.0;
+    const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
 
     /**
      * Get API key from chrome storage.
@@ -89,36 +91,131 @@
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    function clampNumber(value, fallback, min, max) {
+        const num = Number(value);
+        if (!Number.isFinite(num)) return fallback;
+        if (typeof min === 'number' && num < min) return min;
+        if (typeof max === 'number' && num > max) return max;
+        return num;
+    }
+
+    function sanitizeJSONLike(text) {
+        if (!text) return '';
+        return String(text)
+            .replace(/^\uFEFF/, '')
+            .replace(/^json\s*/i, '')
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/^\s*\/\/.*$/gm, '')
+            .replace(/,\s*([}\]])/g, '$1')
+            .trim();
+    }
+
+    function extractBalancedObject(text) {
+        if (!text) return null;
+        const source = String(text);
+        const start = source.indexOf('{');
+        if (start === -1) return null;
+
+        let depth = 0;
+        let inString = false;
+        let escaped = false;
+
+        for (let i = start; i < source.length; i++) {
+            const ch = source[i];
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                    continue;
+                }
+                if (ch === '\\') {
+                    escaped = true;
+                    continue;
+                }
+                if (ch === '"') {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (ch === '"') {
+                inString = true;
+                continue;
+            }
+            if (ch === '{') {
+                depth++;
+                continue;
+            }
+            if (ch === '}') {
+                depth--;
+                if (depth === 0) {
+                    return source.slice(start, i + 1);
+                }
+            }
+        }
+        return null;
+    }
+
+    function tryParseJSONCandidate(candidate) {
+        if (!candidate) return null;
+        const raw = String(candidate).trim();
+        if (!raw) return null;
+
+        try {
+            return JSON.parse(raw);
+        } catch (e) {
+            const cleaned = sanitizeJSONLike(raw);
+            if (!cleaned || cleaned === raw) return null;
+            try {
+                return JSON.parse(cleaned);
+            } catch (inner) {
+                return null;
+            }
+        }
+    }
+
     /**
      * Extract JSON from Gemini response text.
      * Handles both raw JSON and markdown code blocks.
      */
     function extractJSON(text) {
         if (!text) return null;
+        const source = String(text);
+        const candidates = [];
+        const seen = new Set();
 
-        let jsonString = text.trim();
+        const pushCandidate = (candidate) => {
+            if (!candidate) return;
+            const normalized = String(candidate).trim();
+            if (!normalized || seen.has(normalized)) return;
+            seen.add(normalized);
+            candidates.push(normalized);
+        };
 
-        // 1. Try to extract from markdown code blocks (```json ... ``` or ``` ... ```)
-        const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-        if (codeBlockMatch) {
-            jsonString = codeBlockMatch[1].trim();
+        pushCandidate(source);
+
+        const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)```/gi;
+        let match;
+        while ((match = codeBlockRegex.exec(source)) !== null) {
+            pushCandidate(match[1]);
         }
 
-        // 2. If it still looks like it has garbage before/after, find the first '{' and last '}'
-        const firstBrace = jsonString.indexOf('{');
-        const lastBrace = jsonString.lastIndexOf('}');
+        const balanced = extractBalancedObject(source);
+        pushCandidate(balanced);
 
+        const firstBrace = source.indexOf('{');
+        const lastBrace = source.lastIndexOf('}');
         if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-            jsonString = jsonString.substring(firstBrace, lastBrace + 1);
+            pushCandidate(source.substring(firstBrace, lastBrace + 1));
         }
 
-        try {
-            return JSON.parse(jsonString);
-        } catch (e) {
-            // Last ditch effort: sometimes models put comments in JSON? 
-            // For now, just logging the failure is enough as we have a loop.
-            return null;
+        for (const candidate of candidates) {
+            const parsed = tryParseJSONCandidate(candidate);
+            if (parsed !== null) {
+                return parsed;
+            }
         }
+
+        return null;
     }
 
     /**
@@ -150,26 +247,54 @@
         const maxRetries = options.maxRetries || DEFAULT_MAX_RETRIES;
         const apiKey = await getApiKey();
         const modelId = await getModelId();
+        const temperature = clampNumber(
+            options.temperature,
+            DEFAULT_TEMPERATURE,
+            0,
+            2
+        );
+        const maxOutputTokens = Math.floor(clampNumber(
+            options.maxOutputTokens,
+            DEFAULT_MAX_OUTPUT_TOKENS,
+            256,
+            8192
+        ));
+        const responseMimeType = typeof options.responseMimeType === 'string' && options.responseMimeType.trim()
+            ? options.responseMimeType.trim()
+            : 'application/json';
 
         if (!apiKey) {
             return { error: 'No API key configured' };
+        }
+
+        const generationConfig = {
+            temperature,
+            maxOutputTokens,
+            responseMimeType
+        };
+        if (options.responseSchema && typeof options.responseSchema === 'object') {
+            generationConfig.responseSchema = options.responseSchema;
+        }
+        if (options.responseJsonSchema && typeof options.responseJsonSchema === 'object') {
+            generationConfig.responseJsonSchema = options.responseJsonSchema;
         }
 
         const requestBody = {
             contents: [{
                 parts: [{ text: prompt }]
             }],
-            generationConfig: {
-                temperature: 0.2,  // Low temperature for consistent analysis
-                maxOutputTokens: 2048,
-                "response_mime_type": "application/json"
-            }
+            generationConfig
         };
 
         let lastError = null;
         let attempts = 0;
 
-        DebugLog.log('[GeminiClient] Using model for generateContent:', modelId);
+        DebugLog.log('[GeminiClient] Using model for generateContent:', {
+            modelId,
+            temperature,
+            maxOutputTokens,
+            responseMimeType
+        });
 
         while (attempts < maxRetries) {
             attempts++;
@@ -237,12 +362,17 @@
                 }
 
                 // Extract text from Gemini response
-                const text = candidate?.content?.parts?.[0]?.text;
+                const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
+                const text = parts
+                    .map(part => (typeof part?.text === 'string' ? part.text : ''))
+                    .filter(Boolean)
+                    .join('\n')
+                    .trim();
                 if (!text) {
                     DebugLog.warn('[GeminiClient] Empty response text:', {
                         candidateCount: data.candidates?.length || 0,
                         finishReason: candidate?.finishReason,
-                        hasParts: candidate?.content?.parts?.length || 0,
+                        hasParts: parts.length,
                         rawData: JSON.stringify(data).slice(0, 500)
                     });
                     return { error: 'Empty response from Gemini' };
@@ -251,8 +381,13 @@
                 // Parse JSON from response
                 const parsed = extractJSON(text);
                 if (!parsed) {
+                    lastError = 'Failed to parse JSON from response';
                     DebugLog.warn('[GeminiClient] Failed to parse JSON. Raw text sample:', text.slice(0, 500));
-                    return { error: 'Failed to parse JSON from response', rawText: text };
+                    if (attempts < maxRetries) {
+                        await sleep(RETRY_DELAY_MS * Math.pow(2, attempts - 1));
+                        continue;
+                    }
+                    return { error: lastError, rawText: text };
                 }
 
                 // Validate response schema (for skill analysis)

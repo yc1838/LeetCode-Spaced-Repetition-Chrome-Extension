@@ -501,30 +501,6 @@ body::before {
     display: block;
 }
 
-.rating-row {
-    display: flex;
-    gap: 5px;
-    margin-bottom: 10px;
-}
-
-.rating-btn {
-    flex: 1;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--border-dim);
-    color: #fff;
-    padding: 6px;
-    font-family: var(--font-data);
-    font-size: 0.6rem;
-    cursor: pointer;
-    text-align: center;
-    transition: all 0.2s;
-}
-
-.rating-btn:hover {
-    border-color: var(--terminal);
-    background: var(--terminal);
-    color: var(--void);
-}
 
 @keyframes slideDown {
     from {
@@ -792,21 +768,6 @@ body.theme-typography .status-ready {
     font-weight: 700;
 }
 
-body.theme-typography .rating-btn {
-    color: var(--terminal);
-    background: #ffffff;
-    border-width: 2px;
-    font-weight: 700;
-    box-shadow: 2px 2px 0px rgba(0, 0, 0, 0.1);
-}
-
-body.theme-typography .rating-btn:hover {
-    background: var(--terminal);
-    color: #ffffff;
-    border-color: var(--terminal) !important;
-    /* Override inline colors on hover for Ink look */
-    box-shadow: 3px 3px 0px var(--border-dim);
-}
 
 /* ==========================================================================
    THEME OVERRIDES: BRND.OS (Minimalist Dark)
@@ -920,18 +881,6 @@ body.theme-brnd .del-btn {
     opacity: 1;
 }
 
-body.theme-brnd .rating-btn {
-    border: 1px solid #2d2d2d;
-    background: #1a1a1a;
-    color: #a0a0a0;
-    font-weight: bold;
-}
-
-body.theme-brnd .rating-btn:hover {
-    background: #f0f0f0;
-    color: #0a0a0a;
-    border-color: #f0f0f0;
-}
 
 body.theme-brnd .tag-row .tag,
 body.theme-brnd .topic-tag {

@@ -1,7 +1,7 @@
 /**
  * Insight Compressor
  * 
- * Compresses raw insights into atomic patterns using Gemini.
+ * Compresses raw insights into atomic patterns using the active user-selected model.
  * Merges similar insights and increases frequency counts.
  */
 
@@ -16,15 +16,18 @@
 }(typeof self !== 'undefined' ? self : this, function () {
 
     // Import dependencies
-    let GeminiClient, InsightsStore;
+    let LLMGateway, InsightsStore;
 
     if (typeof require !== 'undefined') {
-        GeminiClient = require('./gemini_client');
+        LLMGateway = require('./llm_gateway');
         InsightsStore = require('./insights_store');
+    } else if (typeof self !== 'undefined') {
+        LLMGateway = self.LLMGateway;
+        InsightsStore = self.InsightsStore;
     }
 
     /**
-     * Build the compression prompt for Gemini.
+     * Build the compression prompt for model-based compression.
      */
     function buildCompressionPrompt(insights) {
         if (!insights || insights.length === 0) {
@@ -70,7 +73,7 @@ Rules:
 
     /**
      * Calculate simple text similarity (Jaccard-like).
-     * Used as fallback when Gemini is unavailable.
+     * Used as fallback when model-based compression is unavailable.
      */
     function calculateSimilarity(text1, text2) {
         if (!text1 || !text2) return 0;
@@ -90,7 +93,7 @@ Rules:
     }
 
     /**
-     * Compress raw insights using Gemini.
+     * Compress raw insights using the active model.
      */
     async function compressInsights(rawInsights) {
         if (!rawInsights || rawInsights.length === 0) {
@@ -100,10 +103,19 @@ Rules:
         const prompt = buildCompressionPrompt(rawInsights);
 
         try {
-            const response = await GeminiClient.analyzeSubmissions(prompt);
+            if (!LLMGateway || typeof LLMGateway.analyzeSubmissions !== 'function') {
+                console.warn('[InsightCompressor] LLM gateway unavailable, using local fallback.');
+                return localCompress(rawInsights);
+            }
+
+            const response = await LLMGateway.analyzeSubmissions(prompt, {
+                temperature: 0.6,
+                maxRetries: 3,
+                responseMimeType: 'application/json'
+            });
 
             if (response.error) {
-                console.error('[InsightCompressor] Gemini error, using local fallback:', response.error);
+                console.error('[InsightCompressor] Model error, using local fallback:', response.error);
                 return localCompress(rawInsights);
             }
 
@@ -124,7 +136,7 @@ Rules:
     }
 
     /**
-     * Local fallback compression (no Gemini).
+     * Local fallback compression (no model call).
      * Uses simple similarity scoring to merge insights.
      */
     function localCompress(insights) {

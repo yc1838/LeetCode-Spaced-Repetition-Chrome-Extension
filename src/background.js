@@ -547,6 +547,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 let drills = [];
                 let fallback = null;
                 let apiKey = null;
+                const drillGenerationOptions = {
+                    drillsPerSkill: 3,
+                    minTotalDrills: 6,
+                    skillAttempts: 3,
+                    maxRetriesPerAttempt: 2
+                };
 
                 DebugLog.log('[DrillGen] Start:', {
                     hasLLMGateway: typeof LLMGateway !== 'undefined',
@@ -560,15 +566,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 DebugLog.log('[DrillGen] API key present:', Boolean(apiKey));
 
                 if (typeof DrillGenerator !== 'undefined' && apiKey) {
-                    DebugLog.log('[DrillGen] Using DrillGenerator.generateFromWeakSkills()');
-                    drills = await DrillGenerator.generateFromWeakSkills();
+                    DebugLog.log('[DrillGen] Using DrillGenerator.generateFromWeakSkills()', drillGenerationOptions);
+                    drills = await DrillGenerator.generateFromWeakSkills(null, drillGenerationOptions);
                     DebugLog.log('[DrillGen] DrillGenerator result:', { count: drills.length });
 
                     if (drills.length === 0) {
                         const inferred = await inferWeakSkillsFromHistory();
                         DebugLog.log('[DrillGen] Inferred weak skills:', inferred);
                         if (inferred.weakSkills.length > 0) {
-                            drills = await DrillGenerator.generateFromWeakSkills(inferred.weakSkills);
+                            drills = await DrillGenerator.generateFromWeakSkills(inferred.weakSkills, drillGenerationOptions);
                             DebugLog.log('[DrillGen] DrillGenerator result (fallback):', {
                                 count: drills.length,
                                 fallback: inferred.source

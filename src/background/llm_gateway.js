@@ -28,10 +28,19 @@
     }
 }(typeof self !== 'undefined' ? self : this, function () {
 
-    let GeminiClient, OpenAIClient;
+    let GeminiClient, OpenAIClient, AnthropicClient, LocalClient;
     const globalRoot = typeof self !== 'undefined' ? self : this;
+    const KNOWN_LOCAL_MODELS = new Set([
+        'llama3.1',
+        'llama3',
+        'mistral-nemo',
+        'mistral',
+        'deepseek-coder',
+        'qwen2.5-coder',
+        'codellama'
+    ]);
 
-    // Load dependencies if available globally (Browser)
+    // Load dependencies from globals (Browser/Worker)
     if (globalRoot.GeminiClient) {
         GeminiClient = globalRoot.GeminiClient;
         console.log('[LLMGateway] GeminiClient loaded from global');
@@ -46,92 +55,159 @@
         console.warn('[LLMGateway] OpenAIClient not found on global');
     }
 
-    // If Node.js context (testing), might need require (skipped for now as per project structure)
-
-    const DEFAULTS = {
-        provider: 'local' // Fallback
-    };
-
-    /**
-     * Get the active provider from settings.
-     */
-    async function getActiveProvider() {
-        if (typeof chrome !== 'undefined' && chrome.storage) {
-            const result = await chrome.storage.local.get(['aiProvider']);
-            return result.aiProvider || 'local'; // 'local' or 'cloud'
-        }
-        return 'local';
+    if (globalRoot.AnthropicClient) {
+        AnthropicClient = globalRoot.AnthropicClient;
+        console.log('[LLMGateway] AnthropicClient loaded from global');
+    } else {
+        console.warn('[LLMGateway] AnthropicClient not found on global');
     }
 
-    /**
-     * Get the active cloud provider based on selected model (if mode is cloud).
-     * Or explicit preference if we had one.
-     * Currently `aiProvider` is just 'local' vs 'cloud'.
-     * If 'cloud', we check the model ID to disambiguate Google vs OpenAI.
-     */
-    async function getCloudClient() {
-        if (typeof chrome !== 'undefined' && chrome.storage) {
-            const result = await chrome.storage.local.get(['selectedModelId']);
-            const modelId = result.selectedModelId || '';
+    if (globalRoot.LocalClient) {
+        LocalClient = globalRoot.LocalClient;
+        console.log('[LLMGateway] LocalClient loaded from global');
+    } else {
+        console.warn('[LLMGateway] LocalClient not found on global');
+    }
 
-            if (modelId.startsWith('gpt-')) {
-                return OpenAIClient;
-            }
-            if (modelId.startsWith('gemini-')) {
-                return GeminiClient;
-            }
-            // Fallback to Gemini if unknown
-            return GeminiClient;
+    // Load dependencies via CommonJS for tests/node.
+    if (typeof require === 'function') {
+        if (!GeminiClient) {
+            try { GeminiClient = require('./gemini_client'); } catch (e) { }
         }
-        return GeminiClient;
+        if (!OpenAIClient) {
+            try { OpenAIClient = require('./openai_client'); } catch (e) { }
+        }
+        if (!AnthropicClient) {
+            try { AnthropicClient = require('./anthropic_client'); } catch (e) { }
+        }
+        if (!LocalClient) {
+            try { LocalClient = require('./local_client'); } catch (e) { }
+        }
+    }
+
+    function inferProviderFromModelId(modelId) {
+        const normalized = typeof modelId === 'string' ? modelId.trim().toLowerCase() : '';
+        if (!normalized) return null;
+
+        if (normalized.startsWith('gemini-')) return 'google';
+        if (normalized.startsWith('gpt-') || normalized.startsWith('o1') || normalized.startsWith('o3')) return 'openai';
+        if (normalized.startsWith('claude-')) return 'anthropic';
+        if (KNOWN_LOCAL_MODELS.has(normalized)) return 'local';
+
+        return null;
+    }
+
+    function getClientForProvider(provider) {
+        if (provider === 'google') return GeminiClient;
+        if (provider === 'openai') return OpenAIClient;
+        if (provider === 'anthropic') return AnthropicClient;
+        if (provider === 'local') return LocalClient;
+        return null;
+    }
+
+    async function getSettings() {
+        if (typeof chrome !== 'undefined' && chrome.storage) {
+            return chrome.storage.local.get(['aiProvider', 'selectedModelId', 'keys', 'geminiApiKey']);
+        }
+        return {};
+    }
+
+    function inferModeFromSettings(settings) {
+        const explicitMode = settings?.aiProvider;
+        if (explicitMode === 'local' || explicitMode === 'cloud') {
+            return explicitMode;
+        }
+
+        const providerFromModel = inferProviderFromModelId(settings?.selectedModelId);
+        if (providerFromModel === 'local') return 'local';
+        if (providerFromModel) return 'cloud';
+
+        const keys = settings?.keys || {};
+        const hasCloudKey = Boolean(
+            settings?.geminiApiKey ||
+            keys.google ||
+            keys.openai ||
+            keys.anthropic
+        );
+        return hasCloudKey ? 'cloud' : 'local';
+    }
+
+    function resolveCloudProvider(settings) {
+        const providerFromModel = inferProviderFromModelId(settings?.selectedModelId);
+        if (providerFromModel && providerFromModel !== 'local') {
+            return providerFromModel;
+        }
+
+        const keys = settings?.keys || {};
+        if (keys.google || settings?.geminiApiKey) return 'google';
+        if (keys.openai) return 'openai';
+        if (keys.anthropic) return 'anthropic';
+
+        return 'google';
+    }
+
+    async function resolveClient() {
+        const settings = await getSettings();
+        const mode = inferModeFromSettings(settings);
+
+        if (mode === 'local') {
+            return {
+                mode,
+                provider: 'local',
+                client: getClientForProvider('local'),
+                selectedModelId: settings?.selectedModelId || ''
+            };
+        }
+
+        const provider = resolveCloudProvider(settings);
+        return {
+            mode,
+            provider,
+            client: getClientForProvider(provider),
+            selectedModelId: settings?.selectedModelId || ''
+        };
+    }
+
+    function providerLabel(provider) {
+        if (provider === 'google') return 'Gemini';
+        if (provider === 'openai') return 'OpenAI';
+        if (provider === 'anthropic') return 'Anthropic';
+        if (provider === 'local') return 'Local';
+        return provider || 'Unknown';
     }
 
     /**
      * Unified generation method.
      */
     async function generateContent(prompt, options = {}) {
-        const mode = await getActiveProvider();
-
-        if (mode === 'local') {
-            // TODO: Implement LocalClient / connect to Sidecar logic?
-            // For now, if local is selected but backend logic runs, we might need a LocalClient adapter.
-            // But Sprint 11.3 focus is fixing Cloud selection bug. 
-            // If user selected Local, we probably shouldn't be routing to Cloud.
-            // However, `DrillGenerator` runs in background. 
-            // Existing `GeminiClient` was hardcoded.
-            // If we lack LocalClient in background, we might fallback to Cloud or error.
-            // Let's error to be safe, or fallback to Gemini if that's the legacy behavior?
-            // User requested "Gemini token affected", implying they wanted OpenAI.
-
-            return { error: 'Local LLM not yet supported in background agents. Please select Cloud mode.' };
+        const resolved = await resolveClient();
+        if (!resolved.client) {
+            return { error: `No client available for provider "${resolved.provider}" (mode: ${resolved.mode})` };
         }
 
-        const client = await getCloudClient();
-        if (client && client.generateContent) {
-            console.log(`[LLMGateway] Routing to ${client === OpenAIClient ? 'OpenAI' : 'Gemini'}`);
-            return await client.generateContent(prompt, options);
+        if (typeof resolved.client.generateContent !== 'function') {
+            return { error: `${providerLabel(resolved.provider)} client does not support generateContent` };
         }
 
-        return { error: 'No suitable cloud client found' };
+        console.log(`[LLMGateway] Routing generateContent to ${providerLabel(resolved.provider)} (model=${resolved.selectedModelId || 'default'})`);
+        return resolved.client.generateContent(prompt, options);
     }
 
     /**
      * Unified analysis method.
      */
     async function analyzeSubmissions(prompt, options = {}) {
-        const mode = await getActiveProvider();
-
-        if (mode === 'local') {
-            return { error: 'Local LLM not yet supported in background agents.' };
+        const resolved = await resolveClient();
+        if (!resolved.client) {
+            return { error: `No client available for provider "${resolved.provider}" (mode: ${resolved.mode})` };
         }
 
-        const client = await getCloudClient();
-        if (client && client.analyzeSubmissions) {
-            console.log(`[LLMGateway] Routing analysis to ${client === OpenAIClient ? 'OpenAI' : 'Gemini'}`);
-            return await client.analyzeSubmissions(prompt, options);
+        if (typeof resolved.client.analyzeSubmissions !== 'function') {
+            return { error: `${providerLabel(resolved.provider)} client does not support analyzeSubmissions` };
         }
 
-        return { error: 'No suitable cloud client found' };
+        console.log(`[LLMGateway] Routing analyzeSubmissions to ${providerLabel(resolved.provider)} (model=${resolved.selectedModelId || 'default'})`);
+        return resolved.client.analyzeSubmissions(prompt, options);
     }
 
     /**
@@ -139,35 +215,34 @@
      * Returns the API key if present, null otherwise.
      */
     async function getApiKey() {
-        const mode = await getActiveProvider();
-        console.log('[LLMGateway] getApiKey - mode:', mode);
+        const resolved = await resolveClient();
+        console.log('[LLMGateway] getApiKey - mode/provider:', resolved.mode, resolved.provider);
 
-        if (mode === 'local') {
+        if (resolved.provider === 'local') {
             // Local mode doesn't need an API key
             console.log('[LLMGateway] getApiKey - returning "local" for local mode');
             return 'local';
         }
 
-        const client = await getCloudClient();
-        console.log('[LLMGateway] getApiKey - client:', client ? 'found' : 'null', {
-            isGemini: client === GeminiClient,
-            isOpenAI: client === OpenAIClient,
-            hasGetApiKey: client && typeof client.getApiKey === 'function'
+        console.log('[LLMGateway] getApiKey - client:', resolved.client ? 'found' : 'null', {
+            provider: resolved.provider,
+            hasGetApiKey: resolved.client && typeof resolved.client.getApiKey === 'function'
         });
 
-        if (client && typeof client.getApiKey === 'function') {
-            const key = await client.getApiKey();
+        if (resolved.client && typeof resolved.client.getApiKey === 'function') {
+            const key = await resolved.client.getApiKey();
             console.log('[LLMGateway] getApiKey - retrieved key:', key ? `${key.substring(0, 10)}...` : 'null');
             return key;
         }
 
-        console.warn('[LLMGateway] getApiKey - no suitable client found');
+        console.warn('[LLMGateway] getApiKey - no suitable client found for provider:', resolved.provider);
         return null;
     }
 
     return {
         generateContent,
         analyzeSubmissions,
-        getApiKey
+        getApiKey,
+        inferProviderFromModelId
     };
 }));

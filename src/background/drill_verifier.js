@@ -12,14 +12,14 @@
     }
 }(typeof self !== 'undefined' ? self : this, function () {
 
-    let DrillTypes, GeminiClient;
+    let DrillTypes, LLMGateway;
 
     if (typeof require !== 'undefined') {
         DrillTypes = require('./drill_types');
-        GeminiClient = require('./gemini_client');
+        LLMGateway = require('./llm_gateway');
     } else if (typeof window !== 'undefined') {
         DrillTypes = window.DrillTypes;
-        GeminiClient = window.GeminiClient;
+        LLMGateway = window.LLMGateway;
     }
 
     /**
@@ -66,7 +66,7 @@
     }
 
     /**
-     * Grade a response using Gemini AI.
+     * Grade a response using the active user-selected model.
      */
     async function gradeWithAI(drill, userResponse) {
         let gradingData;
@@ -80,7 +80,15 @@
         const prompt = buildGradingPrompt(drill.type, gradingData);
 
         try {
-            const response = await GeminiClient.analyzeSubmissions(prompt);
+            if (!LLMGateway || typeof LLMGateway.analyzeSubmissions !== 'function') {
+                return { correct: null, error: 'LLM gateway unavailable' };
+            }
+
+            const response = await LLMGateway.analyzeSubmissions(prompt, {
+                temperature: 0.4,
+                maxRetries: 2,
+                responseMimeType: 'application/json'
+            });
 
             if (response.error) {
                 console.error('[DrillVerifier] AI grading failed:', response.error);
@@ -99,7 +107,7 @@
     }
 
     /**
-     * Build the grading prompt for Gemini.
+     * Build the grading prompt for model-based grading.
      */
     function buildGradingPrompt(type, data) {
         if (type === 'critique') {

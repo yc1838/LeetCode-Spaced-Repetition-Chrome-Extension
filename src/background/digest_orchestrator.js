@@ -4,7 +4,7 @@
  * Coordinates the nightly digest pipeline:
  * 1. Check if already run today
  * 2. Harvest today's submissions
- * 3. Send to Gemini for analysis
+ * 3. Send to active user-selected model for analysis
  * 4. Apply skill updates to Skill DNA
  * 5. Mark as completed
  */
@@ -20,11 +20,11 @@
 }(typeof self !== 'undefined' ? self : this, function () {
 
     // Import dependencies (handle both browser and Node.js)
-    let DayLogHarvester, GeminiClient, SkillMatrix;
+    let DayLogHarvester, LLMGateway, SkillMatrix;
 
     if (typeof require !== 'undefined') {
         DayLogHarvester = require('./day_log_harvester');
-        GeminiClient = require('./gemini_client');
+        LLMGateway = require('./llm_gateway');
         SkillMatrix = require('./skill_matrix').SkillMatrix;
     } else {
         const browserRoot = typeof self !== 'undefined'
@@ -32,8 +32,39 @@
             : (typeof window !== 'undefined' ? window : globalThis);
 
         DayLogHarvester = browserRoot.DayLogHarvester;
-        GeminiClient = browserRoot.GeminiClient;
+        LLMGateway = browserRoot.LLMGateway;
         SkillMatrix = browserRoot.SkillMatrix?.SkillMatrix;
+    }
+
+    function buildAnalysisPrompt(formattedSubmissions) {
+        return `You are a coding skill analyst for a LeetCode practice extension.
+
+${formattedSubmissions}
+
+Skill Taxonomy Reference (use these skill IDs):
+- binary_search_basic, binary_search_bounds, search_rotated
+- two_pointer_opposite, two_pointer_same, fast_slow
+- sliding_fixed, sliding_variable
+- bfs, dfs, dijkstra, topological_sort, union_find
+- dp_1d, dp_2d, dp_knapsack, dp_memoization
+- off_by_one, edge_empty, edge_boundary, null_check
+- (and more from the full taxonomy)
+
+Respond ONLY with valid JSON matching this schema:
+{
+  "skillUpdates": [
+    { "skillId": "string (from taxonomy)", "delta": number (-15 to +10), "reason": "brief explanation" }
+  ],
+  "insights": ["array of 1-3 key observations about the user's mistakes"],
+  "recommendedDrills": [
+    { "skillId": "string", "type": "fill-in-blank|spot-bug|critique" }
+  ]
+}
+
+Rules:
+- delta should be negative for mistakes (-5 to -15), positive for successes (+3 to +10)
+- Focus on the ROOT CAUSE of mistakes, not just symptoms
+- Recommend 1-3 drills max, targeting the weakest identified skills`;
     }
 
     /**
@@ -149,20 +180,27 @@
 
         console.log(`[DigestOrchestrator] Harvested ${submissions.length} submissions.`);
 
-        // Step 3: Format for Gemini
+        if (!LLMGateway || typeof LLMGateway.analyzeSubmissions !== 'function') {
+            return { success: false, error: 'LLM gateway unavailable in digest orchestrator' };
+        }
+
+        // Step 3: Format for model analysis
         const prompt = DayLogHarvester.formatForGemini(submissions);
 
-        // Step 4: Analyze with Gemini
-        const analysis = await GeminiClient.analyzeSubmissions(
-            GeminiClient.buildAnalysisPrompt(prompt)
-        );
+        // Step 4: Analyze with active provider/model
+        const analysis = await LLMGateway.analyzeSubmissions(buildAnalysisPrompt(prompt), {
+            temperature: 0.6,
+            maxRetries: 3,
+            maxOutputTokens: 3072,
+            responseMimeType: 'application/json'
+        });
 
         if (analysis.error) {
-            console.error('[DigestOrchestrator] Gemini analysis failed:', analysis.error);
+            console.error('[DigestOrchestrator] Model analysis failed:', analysis.error);
             return { success: false, error: analysis.error };
         }
 
-        console.log('[DigestOrchestrator] Received analysis from Gemini.');
+        console.log('[DigestOrchestrator] Received analysis from active model.');
 
         // Step 5: Apply skill updates
         const updateResult = await applySkillUpdates(analysis.skillUpdates || []);

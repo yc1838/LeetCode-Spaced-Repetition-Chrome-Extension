@@ -180,10 +180,49 @@ describe('Drill Generator', () => {
                 { skillId: 'off_by_one', confidence: 0.4 }
             ];
 
-            const result = await DrillGenerator.generateFromWeakSkills(weakSkills);
+            const result = await DrillGenerator.generateFromWeakSkills(weakSkills, {
+                drillsPerSkill: 1,
+                minTotalDrills: 2,
+                skillAttempts: 1
+            });
 
             // Result is now an array of drills, not { generated: N }
             expect(result.length).toBe(2);
+        });
+
+        it('should default to generating 3 drills per skill', async () => {
+            LLMGateway.analyzeSubmissions.mockResolvedValueOnce({
+                drills: [
+                    { type: 'fill-in-blank', content: 'Q1', answer: 'A1', difficulty: 'easy' },
+                    { type: 'spot-bug', content: 'Q2', answer: 'line 2', difficulty: 'easy' },
+                    { type: 'critique', content: 'Q3', answer: null, difficulty: 'medium' }
+                ]
+            });
+
+            const weakSkills = [{ skillId: 'binary_search_basic', confidence: 0.3 }];
+            const result = await DrillGenerator.generateFromWeakSkills(weakSkills, {
+                minTotalDrills: 3,
+                skillAttempts: 1
+            });
+
+            expect(result.length).toBe(3);
+            expect(LLMGateway.analyzeSubmissions).toHaveBeenCalled();
+            const firstPrompt = LLMGateway.analyzeSubmissions.mock.calls[0][0];
+            expect(firstPrompt).toContain('EXACTLY 3');
+        });
+
+        it('should backfill with template drills when model keeps failing', async () => {
+            LLMGateway.analyzeSubmissions.mockResolvedValue({ error: 'Failed to parse JSON from response' });
+
+            const weakSkills = [{ skillId: 'off_by_one', insight: 'boundary mistakes' }];
+            const result = await DrillGenerator.generateFromWeakSkills(weakSkills, {
+                drillsPerSkill: 3,
+                minTotalDrills: 3,
+                skillAttempts: 1
+            });
+
+            expect(result.length).toBe(3);
+            expect(result.every(d => d.skillId === 'off_by_one')).toBe(true);
         });
     });
 });

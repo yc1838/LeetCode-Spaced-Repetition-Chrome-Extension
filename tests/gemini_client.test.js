@@ -49,6 +49,9 @@ describe('Gemini API Client', () => {
             const [url, options] = global.fetch.mock.calls[0];
             expect(url).toContain('generativelanguage.googleapis.com');
             expect(options.method).toBe('POST');
+            const body = JSON.parse(options.body);
+            expect(body.generationConfig.temperature).toBe(1);
+            expect(body.generationConfig.responseMimeType).toBe('application/json');
         });
 
         it('should parse skill updates from response', async () => {
@@ -86,7 +89,7 @@ describe('Gemini API Client', () => {
                 statusText: 'Internal Server Error'
             });
 
-            const result = await GeminiClient.analyzeSubmissions('test');
+            const result = await GeminiClient.analyzeSubmissions('test', { maxRetries: 1 });
 
             expect(result).toHaveProperty('error');
         });
@@ -103,9 +106,30 @@ describe('Gemini API Client', () => {
                 })
             });
 
-            const result = await GeminiClient.analyzeSubmissions('test');
+            const result = await GeminiClient.analyzeSubmissions('test', { maxRetries: 1 });
 
             expect(result).toHaveProperty('error');
+            expect(global.fetch).toHaveBeenCalledTimes(1);
+        });
+
+        it('should retry when first response JSON is malformed', async () => {
+            global.fetch
+                .mockResolvedValueOnce({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        candidates: [{ content: { parts: [{ text: 'not valid json' }] } }]
+                    })
+                })
+                .mockResolvedValueOnce({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        candidates: [{ content: { parts: [{ text: '{"skillUpdates":[],"insights":[]}' }] } }]
+                    })
+                });
+
+            const result = await GeminiClient.analyzeSubmissions('test', { maxRetries: 2 });
+            expect(global.fetch).toHaveBeenCalledTimes(2);
+            expect(Array.isArray(result.skillUpdates)).toBe(true);
         });
     });
 
@@ -143,6 +167,29 @@ describe('Gemini API Client', () => {
             await GeminiClient.analyzeSubmissions('test', { maxRetries: 3 });
 
             expect(global.fetch).toHaveBeenCalledTimes(3);
+        });
+
+        it('should apply caller-provided temperature and token limits', async () => {
+            global.fetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({
+                    candidates: [{
+                        content: {
+                            parts: [{ text: '{"skillUpdates": [], "insights": []}' }]
+                        }
+                    }]
+                })
+            });
+
+            await GeminiClient.analyzeSubmissions('test', {
+                temperature: 0.7,
+                maxOutputTokens: 3000
+            });
+
+            const [, options] = global.fetch.mock.calls[0];
+            const body = JSON.parse(options.body);
+            expect(body.generationConfig.temperature).toBe(0.7);
+            expect(body.generationConfig.maxOutputTokens).toBe(3000);
         });
     });
 

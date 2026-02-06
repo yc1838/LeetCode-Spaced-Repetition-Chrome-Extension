@@ -1,6 +1,6 @@
 # Privacy Policy for LeetCode EasyRepeat
 
-**Last Updated:** January 20, 2026
+**Last Updated:** February 6, 2026
 
 ## 1. Introduction
 LeetCode EasyRepeat ("the Extension") is a Chrome extension designed to help users practice LeetCode problems using spaced repetition. We respect your privacy and are committed to protecting it. This Privacy Policy explains our practices regarding data collection, use, and disclosure.
@@ -27,9 +27,10 @@ The Extension may offer features to analyze your code or mistakes using Artifici
 *   **Bring Your Own Key (BYOK)**: If you choose to use third-party AI providers (e.g., Gemini, OpenAI) by providing your own API Key, the Extension will send code snippets specifically selected by you to that provider for analysis. This data is subject to the privacy policy of the respective AI provider. We do not have access to these keys or the data sent.
 
 ## 5. Changes to This Policy
-We may update our Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page.
+We may update our Privacy Policy from time to time. We will notify you of any changes by posting the updated policy in this repository:
+- https://github.com/yc1838/LeetCode-Spaced-Repetition-Chrome-Extension
 
 ## 6. Contact Us
 If you have any questions about this Privacy Policy, please contact us at:
-*   [Your Email Address]
-*   [Link to GitHub Repository Issues]
+*   yc1838@nyu.edu
+*   https://github.com/yc1838/LeetCode-Spaced-Repetition-Chrome-Extension/issues

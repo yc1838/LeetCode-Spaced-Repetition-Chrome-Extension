@@ -1,7 +1,7 @@
 /**
  * Drill Generator
  * 
- * Generates personalized drills using Gemini based on weak skills.
+ * Generates personalized drills using the active user-selected model based on weak skills.
  */
 
 (function (root, factory) {
@@ -52,27 +52,128 @@
     }
 
     const DRILL_TYPES = ['fill-in-blank', 'spot-bug', 'critique', 'muscle-memory'];
+    const DEFAULT_DRILLS_PER_SKILL = 3;
+    const DEFAULT_MIN_TOTAL_DRILLS = 6;
+    const DEFAULT_SKILL_ATTEMPTS = 3;
+    const DEFAULT_MAX_RETRIES_PER_ATTEMPT = 2;
+    const DEFAULT_DRILL_TEMPERATURE = 1.0;
+    const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
+
+    function toPositiveInt(value, fallback) {
+        const num = Number(value);
+        if (!Number.isFinite(num) || num <= 0) return fallback;
+        return Math.floor(num);
+    }
+
+    function dedupeWeakSkills(weakSkills) {
+        const map = new Map();
+        for (const item of weakSkills || []) {
+            const skillId = typeof item?.skillId === 'string' ? item.skillId.trim() : '';
+            if (!skillId) continue;
+            const insight = typeof item?.insight === 'string' ? item.insight.trim() : '';
+            if (!map.has(skillId)) {
+                map.set(skillId, { skillId, insight });
+                continue;
+            }
+
+            if (!insight) continue;
+            const existing = map.get(skillId);
+            if (!existing.insight) {
+                existing.insight = insight;
+            } else if (!existing.insight.includes(insight)) {
+                existing.insight = `${existing.insight}; ${insight}`;
+            }
+        }
+        return Array.from(map.values());
+    }
+
+    function buildRepairHint({ count, attempt }) {
+        return `\nPrevious response was invalid or incomplete (attempt ${attempt - 1}). Retry and output STRICT JSON with EXACTLY ${count} drill objects. No markdown, no prose, no comments.`;
+    }
+
+    function buildTemplateDrills(weakSkills, neededCount = 0) {
+        const needed = toPositiveInt(neededCount, 0);
+        if (needed <= 0 || !Array.isArray(weakSkills) || weakSkills.length === 0) {
+            return [];
+        }
+
+        const drills = [];
+        for (let i = 0; i < needed; i++) {
+            const skill = weakSkills[i % weakSkills.length];
+            const skillId = skill.skillId || 'general';
+            const insight = skill.insight ? `Weakness: ${skill.insight}` : 'Weakness: recurring mistakes.';
+            const variant = i % 4;
+
+            if (variant === 0) {
+                drills.push({
+                    type: 'fill-in-blank',
+                    skillId,
+                    content: `Skill: ${skillId}\n${insight}\nComplete the blank:\ndef solve(nums):\n    if not nums:\n        return ___\n    return len(nums)`,
+                    answer: '0',
+                    explanation: 'Return 0 for an empty list to avoid boundary bugs.',
+                    difficulty: 'easy'
+                });
+                continue;
+            }
+
+            if (variant === 1) {
+                drills.push({
+                    type: 'spot-bug',
+                    skillId,
+                    content: `Skill: ${skillId}\n${insight}\n1 def solve(nums):\n2     return nums[len(nums)]\n3 # identify the buggy line`,
+                    answer: 'line 2',
+                    explanation: 'Valid indices end at len(nums) - 1.',
+                    difficulty: 'easy'
+                });
+                continue;
+            }
+
+            if (variant === 2) {
+                drills.push({
+                    type: 'muscle-memory',
+                    skillId,
+                    content: `Skill: ${skillId}\n${insight}\nWrite a minimal template for this skill from memory, including boundary checks.`,
+                    answer: null,
+                    explanation: 'Focus on a reusable skeleton and edge-case guard clauses.',
+                    difficulty: 'medium'
+                });
+                continue;
+            }
+
+            drills.push({
+                type: 'critique',
+                skillId,
+                content: `Skill: ${skillId}\n${insight}\nCritique this code and suggest one improvement:\ndef solve(nums):\n    out = []\n    for i in range(len(nums)):\n        out.append(nums[i])\n    return out`,
+                answer: null,
+                explanation: 'Look for unnecessary work and missing edge-case handling.',
+                difficulty: 'medium'
+            });
+        }
+        return drills;
+    }
 
     /**
-     * Build the drill generation prompt for Gemini.
+     * Build the drill generation prompt.
      */
     function buildGenerationPrompt(skillId, options = {}) {
         const insight = options.insight || '';
-        const count = options.count || 1;
+        const count = toPositiveInt(options.count, DEFAULT_DRILLS_PER_SKILL);
         const types = options.types || DRILL_TYPES;
+        const repairHint = options.repairHint || '';
 
         return `You are a coding drill generator for a LeetCode study extension.
 
-Generate ${count} micro-drill(s) for the skill: "${skillId}"
+Generate EXACTLY ${count} micro-drill(s) for the skill: "${skillId}".
 ${insight ? `\nUser's weakness: ${insight}` : ''}
+${repairHint}
 
-Drill types to use: ${types.join(', ')}
+Preferred drill types: ${types.join(', ')}
 
-For each drill type:
-- **fill-in-blank**: Code snippet with a blank (___) to fill in. Answer is the missing code.
-- **spot-bug**: Buggy code snippet. Answer is the line number or description of the bug.
-- **critique**: Code that works but could be improved. Answer is null (graded by AI).
-- **muscle-memory**: Prompt to write code from memory. Answer is null (graded by AI).
+Type definitions:
+- fill-in-blank: snippet with ___ to fill in (answer required)
+- spot-bug: buggy snippet (answer required: line number or bug description)
+- critique: improvement feedback (answer must be null)
+- muscle-memory: write code from memory (answer must be null)
 
 Respond with JSON ONLY:
 {
@@ -89,8 +190,11 @@ Respond with JSON ONLY:
 }
 
 Rules:
+- Return EXACTLY ${count} entries in drills array
+- Do not include markdown code fences
+- Do not include explanatory prose outside JSON
 - Keep content concise (max 15 lines of code)
-- **CRITICAL**: The code MUST be self-contained. Do not use undefined variables like '#' or 'root' without defining them or explaining them in comments.
+- The code MUST be self-contained
 - Focus on the identified weakness
 - Make answers unambiguous for fill-in-blank and spot-bug`;
     }
@@ -103,14 +207,15 @@ Rules:
         if (!drill.type || !DRILL_TYPES.includes(drill.type)) return false;
         if (!drill.content) return false;
         // fill-in-blank and spot-bug require an answer
-        if ((drill.type === 'fill-in-blank' || drill.type === 'spot-bug') && drill.answer === undefined) {
+        if ((drill.type === 'fill-in-blank' || drill.type === 'spot-bug')
+            && (drill.answer === undefined || drill.answer === null || String(drill.answer).trim() === '')) {
             return false;
         }
         return true;
     }
 
     /**
-     * Generate drills for a specific skill using Gemini.
+     * Generate drills for a specific skill using the active model.
      */
     async function generateDrillsForSkill(skillId, options = {}) {
         if (!LLMGateway || typeof LLMGateway.analyzeSubmissions !== 'function') {
@@ -118,56 +223,109 @@ Rules:
             return [];
         }
 
-        DebugLog.log('[DrillGenerator] Generating drills:', {
-            skillId,
-            count: options.count || 1,
-            insight: options.insight || null
-        });
+        const count = toPositiveInt(options.count, DEFAULT_DRILLS_PER_SKILL);
+        const maxAttempts = toPositiveInt(options.attempts, DEFAULT_SKILL_ATTEMPTS);
+        const maxRetriesPerAttempt = toPositiveInt(options.maxRetriesPerAttempt, DEFAULT_MAX_RETRIES_PER_ATTEMPT);
+        const maxOutputTokens = toPositiveInt(options.maxOutputTokens, DEFAULT_MAX_OUTPUT_TOKENS);
+        const temperature = typeof options.temperature === 'number'
+            ? options.temperature
+            : DEFAULT_DRILL_TEMPERATURE;
 
-        const prompt = buildGenerationPrompt(skillId, options);
+        let bestDrills = [];
+        let lastError = null;
 
-        try {
-            const response = await LLMGateway.analyzeSubmissions(prompt);
-
-            if (response.error || !response.drills) {
-                console.error('[DrillGenerator] Generation failed:', response.error);
-                return [];
-            }
-
-            // Validate and attach skillId
-            const rawDrills = Array.isArray(response.drills) ? response.drills : [];
-            const validDrills = rawDrills
-                .filter(d => validateDrill(d))
-                .map(d => ({
-                    ...d,
-                    skillId
-                }));
-
-            const invalidCount = rawDrills.length - validDrills.length;
-            DebugLog.log('[DrillGenerator] Response summary:', {
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            DebugLog.log('[DrillGenerator] Generating drills:', {
                 skillId,
-                total: rawDrills.length,
-                valid: validDrills.length,
-                invalid: invalidCount
+                count,
+                attempt,
+                maxAttempts,
+                insight: options.insight || null
             });
 
-            if (invalidCount > 0) {
-                const invalidSample = rawDrills
-                    .filter(d => !validateDrill(d))
-                    .slice(0, 2)
-                    .map(d => ({
-                        type: d?.type || null,
-                        hasContent: Boolean(d?.content),
-                        hasAnswer: d?.answer !== undefined
-                    }));
-                DebugLog.warn('[DrillGenerator] Invalid drill sample:', invalidSample);
-            }
+            const prompt = buildGenerationPrompt(skillId, {
+                ...options,
+                count,
+                repairHint: attempt > 1 ? buildRepairHint({ count, attempt }) : ''
+            });
 
-            return validDrills;
-        } catch (e) {
-            console.error('[DrillGenerator] Error:', e);
-            return [];
+            try {
+                const response = await LLMGateway.analyzeSubmissions(prompt, {
+                    maxRetries: maxRetriesPerAttempt,
+                    temperature,
+                    maxOutputTokens,
+                    responseMimeType: 'application/json'
+                });
+
+                if (!response || response.error || !response.drills) {
+                    lastError = response?.error || 'Missing drills in response';
+                    DebugLog.warn('[DrillGenerator] Generation attempt failed:', {
+                        skillId,
+                        attempt,
+                        error: lastError
+                    });
+                    continue;
+                }
+
+                const rawDrills = Array.isArray(response.drills) ? response.drills : [];
+                const validDrills = rawDrills
+                    .filter(d => validateDrill(d))
+                    .map(d => ({
+                        ...d,
+                        skillId
+                    }));
+
+                const limited = validDrills.slice(0, count);
+                const invalidCount = rawDrills.length - validDrills.length;
+                DebugLog.log('[DrillGenerator] Response summary:', {
+                    skillId,
+                    attempt,
+                    total: rawDrills.length,
+                    valid: validDrills.length,
+                    used: limited.length,
+                    invalid: invalidCount
+                });
+
+                if (invalidCount > 0) {
+                    const invalidSample = rawDrills
+                        .filter(d => !validateDrill(d))
+                        .slice(0, 2)
+                        .map(d => ({
+                            type: d?.type || null,
+                            hasContent: Boolean(d?.content),
+                            hasAnswer: d?.answer !== undefined && d?.answer !== null
+                        }));
+                    DebugLog.warn('[DrillGenerator] Invalid drill sample:', invalidSample);
+                }
+
+                if (limited.length > bestDrills.length) {
+                    bestDrills = limited;
+                }
+                if (bestDrills.length >= count) {
+                    break;
+                }
+            } catch (e) {
+                lastError = e.message;
+                DebugLog.warn('[DrillGenerator] Generation attempt threw:', {
+                    skillId,
+                    attempt,
+                    error: e.message
+                });
+            }
         }
+
+        if (bestDrills.length < count) {
+            DebugLog.warn('[DrillGenerator] Returning partial drill set:', {
+                skillId,
+                requested: count,
+                returned: bestDrills.length,
+                error: lastError
+            });
+        }
+        if (bestDrills.length === 0 && lastError) {
+            console.error('[DrillGenerator] Generation failed:', lastError);
+        }
+        return bestDrills;
     }
 
     /**
@@ -214,13 +372,23 @@ Rules:
      * If weakSkills not provided, fetches from SkillMatrix storage.
      */
     async function generateFromWeakSkills(weakSkills, options = {}) {
-        const drillsPerSkill = options.drillsPerSkill || 1;
+        const drillsPerSkill = toPositiveInt(options.drillsPerSkill, DEFAULT_DRILLS_PER_SKILL);
+        const skillAttempts = toPositiveInt(options.skillAttempts, DEFAULT_SKILL_ATTEMPTS);
+        const maxRetriesPerAttempt = toPositiveInt(options.maxRetriesPerAttempt, DEFAULT_MAX_RETRIES_PER_ATTEMPT);
+        const defaultMinTotalDrills = Math.max(
+            drillsPerSkill,
+            Math.min((Array.isArray(weakSkills) ? weakSkills.length : 2) * drillsPerSkill, DEFAULT_MIN_TOTAL_DRILLS)
+        );
+        const minTotalDrills = toPositiveInt(options.minTotalDrills, defaultMinTotalDrills);
         let totalGenerated = 0;
-        let allDrills = [];
+        const allDrills = [];
+        const generatedBySkill = {};
 
         DebugLog.log('[DrillGenerator] generateFromWeakSkills called:', {
             providedWeakSkills: Array.isArray(weakSkills) ? weakSkills.length : 0,
-            drillsPerSkill
+            drillsPerSkill,
+            minTotalDrills,
+            skillAttempts
         });
 
         // If no weakSkills provided, fetch from storage
@@ -267,6 +435,12 @@ Rules:
             return [];
         }
 
+        weakSkills = dedupeWeakSkills(weakSkills);
+        if (weakSkills.length === 0) {
+            DebugLog.log('[DrillGenerator] Weak skill list empty after dedupe');
+            return [];
+        }
+
         for (const skill of weakSkills) {
             DebugLog.log('[DrillGenerator] Generating for skill:', {
                 skillId: skill.skillId,
@@ -274,13 +448,16 @@ Rules:
             });
             const drills = await generateDrillsForSkill(skill.skillId, {
                 count: drillsPerSkill,
-                insight: skill.insight
+                insight: skill.insight,
+                attempts: skillAttempts,
+                maxRetriesPerAttempt
             });
 
             if (drills.length > 0) {
                 await saveDrills(drills);
                 totalGenerated += drills.length;
-                allDrills = allDrills.concat(drills);
+                allDrills.push(...drills);
+                generatedBySkill[skill.skillId] = (generatedBySkill[skill.skillId] || 0) + drills.length;
                 DebugLog.log('[DrillGenerator] Generated drills for skill:', {
                     skillId: skill.skillId,
                     count: drills.length
@@ -288,6 +465,53 @@ Rules:
             } else {
                 DebugLog.warn('[DrillGenerator] No drills generated for skill:', {
                     skillId: skill.skillId
+                });
+            }
+        }
+
+        let remaining = minTotalDrills - allDrills.length;
+        if (remaining > 0) {
+            DebugLog.warn('[DrillGenerator] Total drills below target; running supplement pass:', {
+                current: allDrills.length,
+                target: minTotalDrills,
+                remaining
+            });
+
+            const prioritizedSkills = [...weakSkills]
+                .sort((a, b) => (generatedBySkill[a.skillId] || 0) - (generatedBySkill[b.skillId] || 0));
+
+            for (const skill of prioritizedSkills) {
+                if (remaining <= 0) break;
+
+                const supplementCount = Math.min(drillsPerSkill, remaining);
+                const supplemental = await generateDrillsForSkill(skill.skillId, {
+                    count: supplementCount,
+                    insight: skill.insight,
+                    attempts: Math.max(1, skillAttempts - 1),
+                    maxRetriesPerAttempt
+                });
+
+                if (supplemental.length > 0) {
+                    await saveDrills(supplemental);
+                    totalGenerated += supplemental.length;
+                    allDrills.push(...supplemental);
+                    generatedBySkill[skill.skillId] = (generatedBySkill[skill.skillId] || 0) + supplemental.length;
+                    remaining -= supplemental.length;
+                }
+            }
+        }
+
+        remaining = minTotalDrills - allDrills.length;
+        if (remaining > 0) {
+            const templateDrills = buildTemplateDrills(weakSkills, remaining);
+            if (templateDrills.length > 0) {
+                await saveDrills(templateDrills);
+                totalGenerated += templateDrills.length;
+                allDrills.push(...templateDrills);
+                DebugLog.warn('[DrillGenerator] Added template fallback drills to hit minimum target:', {
+                    added: templateDrills.length,
+                    target: minTotalDrills,
+                    final: allDrills.length
                 });
             }
         }
