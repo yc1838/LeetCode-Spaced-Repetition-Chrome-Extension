@@ -3,7 +3,9 @@
     "version": "1.0.1",
     "description": "LeetCode SRS Extension",
     "scripts": {
-        "test": "jest",
+        "test": "jest --testPathIgnorePatterns=browser_e2e",
+        "test:e2e": "jest tests/browser_e2e.test.js --runInBand",
+        "test:all": "npm run test && npm run test:e2e",
         "build": "vite build"
     },
     "devDependencies": {

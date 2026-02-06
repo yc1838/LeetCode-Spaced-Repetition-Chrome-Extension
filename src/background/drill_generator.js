@@ -5,12 +5,19 @@
  */
 
 (function (root, factory) {
+    console.log('[DrillGenerator] UMD wrapper executing');
+
+    const exports = factory();
+
+    // Always attach to self in browser contexts (including ES modules)
+    if (typeof self !== 'undefined') {
+        self.DrillGenerator = exports;
+        console.log('[DrillGenerator] Attached to self.DrillGenerator');
+    }
+
+    // Also support CommonJS for tests
     if (typeof module === 'object' && module.exports) {
-        // Node.js (for testing)
-        module.exports = factory();
-    } else {
-        // Browser
-        root.DrillGenerator = factory();
+        module.exports = exports;
     }
 }(typeof self !== 'undefined' ? self : this, function () {
 

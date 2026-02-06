@@ -1,18 +1,56 @@
 /**
  * Skill Matrix
- * 
+ *
  * Manages the Skill DNA - a persistent profile of the user's coding abilities.
  * Includes confidence scoring, decay over time, and trend calculation.
  */
 
+console.log('[SkillMatrix] Module file executing...');
+
+// ============================================================================
+// ⚠️ CRITICAL: DO NOT MODIFY THIS UMD WRAPPER PATTERN ⚠️
+// ============================================================================
+// This UMD wrapper has been fixed multiple times to work with Vite's ES module
+// bundling. The pattern MUST:
+// 1. ALWAYS attach to `self` in browser contexts (not just when module.exports is undefined)
+// 2. Support both ES modules (Vite bundling) AND CommonJS (Jest tests)
+// 3. Execute factory() once and reuse the exports
+//
+// WHY: When Vite bundles as ES modules, the traditional UMD pattern fails because
+// it checks for module.exports first, which may exist in the bundle context but
+// doesn't properly attach to the global scope.
+//
+// BREAKING THIS WILL CAUSE:
+// - "SkillMatrix not loaded" errors in backfill
+// - Drill generation failures
+// - Extension service worker crashes
+//
+// This has been fixed 3+ times. DO NOT CHANGE unless you fully understand the
+// implications and test thoroughly with `npm run build` + manual extension testing.
+// ============================================================================
 (function (root, factory) {
-    if (typeof module === 'object' && module.exports) {
-        // Node.js (for testing)
-        module.exports = factory();
-    } else {
-        // Browser
-        root.SkillMatrix = factory();
+    console.log('[SkillMatrix] UMD wrapper executing, root type:', typeof root, 'is self?', root === self);
+    console.log('[SkillMatrix] module check:', typeof module, 'module.exports?', typeof module !== 'undefined' && module.exports);
+
+    const exports = factory();
+
+    // Always attach to self in browser contexts (including ES modules)
+    if (typeof self !== 'undefined') {
+        self.SkillMatrix = exports;
+        console.log('[SkillMatrix] Attached to self.SkillMatrix');
     }
+
+    // Also support CommonJS for tests
+    if (typeof module === 'object' && module.exports) {
+        console.log('[SkillMatrix] Also exporting via module.exports for Node.js');
+        module.exports = exports;
+    }
+
+    console.log('[SkillMatrix] Module loaded. Verification:', {
+        hasSelfSkillMatrix: typeof self !== 'undefined' && !!self.SkillMatrix,
+        hasSkillMatrixClass: typeof self !== 'undefined' && !!(self.SkillMatrix && self.SkillMatrix.SkillMatrix),
+        keys: typeof self !== 'undefined' && self.SkillMatrix ? Object.keys(self.SkillMatrix) : []
+    });
 }(typeof self !== 'undefined' ? self : this, function () {
 
     // --- Constants ---
@@ -467,7 +505,7 @@
         }
     }
 
-    return {
+    const exports = {
         SkillMatrix,
         calculateConfidence,
         applyDecay,
@@ -480,4 +518,6 @@
         MIN_SCORE,
         BASE_SCORE
     };
+
+    return exports;
 }));

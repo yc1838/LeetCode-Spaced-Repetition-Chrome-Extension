@@ -549,12 +549,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 let apiKey = null;
 
                 DebugLog.log('[DrillGen] Start:', {
-                    hasGeminiClient: typeof GeminiClient !== 'undefined',
+                    hasLLMGateway: typeof LLMGateway !== 'undefined',
                     hasDrillGenerator: typeof DrillGenerator !== 'undefined'
                 });
 
-                if (typeof GeminiClient !== 'undefined' && typeof GeminiClient.getApiKey === 'function') {
-                    apiKey = await GeminiClient.getApiKey();
+                // Check for API key using LLMGateway (provider-agnostic)
+                if (typeof LLMGateway !== 'undefined' && typeof LLMGateway.getApiKey === 'function') {
+                    apiKey = await LLMGateway.getApiKey();
                 }
                 DebugLog.log('[DrillGen] API key present:', Boolean(apiKey));
 
@@ -703,12 +704,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 });
 
                 // Initialize SkillMatrix and build index
-                if (typeof SkillMatrix === 'undefined' || !SkillMatrix.SkillMatrix) {
+                console.log('[Backfill] Checking SkillMatrix availability:', {
+                    hasSelf: typeof self !== 'undefined',
+                    hasSelfSkillMatrix: typeof self.SkillMatrix !== 'undefined',
+                    selfSkillMatrixType: typeof self.SkillMatrix,
+                    hasSkillMatrixClass: typeof self.SkillMatrix !== 'undefined' && !!self.SkillMatrix.SkillMatrix,
+                    selfKeys: typeof self !== 'undefined' ? Object.keys(self).filter(k => k.includes('Skill')) : [],
+                    globalKeys: typeof globalThis !== 'undefined' ? Object.keys(globalThis).filter(k => k.includes('Skill')) : []
+                });
+
+                if (typeof self.SkillMatrix === 'undefined' || !self.SkillMatrix.SkillMatrix) {
+                    console.error('[Backfill] SkillMatrix not loaded. Available globals:', Object.keys(self).slice(0, 20));
                     sendResponse({ success: false, error: 'SkillMatrix not loaded' });
                     return;
                 }
 
-                const matrix = new SkillMatrix.SkillMatrix();
+                const matrix = new self.SkillMatrix.SkillMatrix();
                 await matrix.init();
                 DebugLog.log('[Backfill] SkillMatrix initialized:', {
                     skills: Object.keys(matrix.dna?.skills || {}).length,
@@ -716,9 +727,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 });
 
                 // Rebuild DNA for idempotent backfill; preserve drill completion counts if present
-                if (typeof SkillMatrix.createSkillDNA === 'function') {
+                if (typeof self.SkillMatrix.createSkillDNA === 'function') {
                     const previousDNA = matrix.dna;
-                    matrix.dna = SkillMatrix.createSkillDNA();
+                    matrix.dna = self.SkillMatrix.createSkillDNA();
                     if (previousDNA?.skills) {
                         for (const [skillId, prevSkill] of Object.entries(previousDNA.skills)) {
                             if (matrix.dna.skills[skillId] && typeof prevSkill.drillsCompleted === 'number') {
@@ -784,8 +795,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         skill.lastSeen = lastSeen[skillId];
                     }
 
-                    if (typeof SkillMatrix.calculateConfidence === 'function') {
-                        skill.score = SkillMatrix.calculateConfidence({
+                    if (typeof self.SkillMatrix.calculateConfidence === 'function') {
+                        skill.score = self.SkillMatrix.calculateConfidence({
                             correct: skill.correct,
                             mistakes: skill.mistakes,
                             drillsCompleted: skill.drillsCompleted

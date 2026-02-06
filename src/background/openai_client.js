@@ -6,12 +6,19 @@
  */
 
 (function (root, factory) {
+    console.log('[OpenAIClient] UMD wrapper executing');
+
+    const exports = factory();
+
+    // Always attach to self in browser contexts (including ES modules)
+    if (typeof self !== 'undefined') {
+        self.OpenAIClient = exports;
+        console.log('[OpenAIClient] Attached to self.OpenAIClient');
+    }
+
+    // Also support CommonJS for tests
     if (typeof module === 'object' && module.exports) {
-        // Node.js
-        module.exports = factory();
-    } else {
-        // Browser
-        root.OpenAIClient = factory();
+        module.exports = exports;
     }
 }(typeof self !== 'undefined' ? self : this, function () {
 

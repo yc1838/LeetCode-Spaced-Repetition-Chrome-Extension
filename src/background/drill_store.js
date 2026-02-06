@@ -6,17 +6,24 @@
  */
 
 (function (root, factory) {
-    var exported = factory();
-    if (typeof module === 'object' && module.exports) {
-        // Node.js (for testing)
-        module.exports = exported;
-    } else {
-        // Browser
-        root.DrillStore = exported;
+    console.log('[DrillStore] UMD wrapper executing');
+
+    const exports = factory();
+
+    // Always attach to self in browser contexts (including ES modules)
+    if (typeof self !== 'undefined') {
+        self.DrillStore = exports;
+        console.log('[DrillStore] Attached to self.DrillStore');
     }
-    // Also set on window for bundled contexts
+
+    // Also support CommonJS for tests
+    if (typeof module === 'object' && module.exports) {
+        module.exports = exports;
+    }
+
+    // Also set on window for bundled contexts (legacy support)
     if (typeof window !== 'undefined') {
-        window.DrillStore = exported;
+        window.DrillStore = exports;
     }
 }(typeof self !== 'undefined' ? self : this, function () {
 

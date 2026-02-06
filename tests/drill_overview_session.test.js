@@ -79,7 +79,7 @@ describe('drill_overview start session', () => {
             }
         };
 
-        global.DrillStore = {
+        global.window.DrillStore = {
             DrillStore: class {
                 async init() { }
                 async getAll() {
