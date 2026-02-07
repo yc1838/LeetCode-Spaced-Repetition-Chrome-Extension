@@ -212,25 +212,25 @@ Use the server URL shown in the UI (usually http://localhost:1234)</code></pre>
             <div class="grid" style="gap: 15px; margin-top: 15px;">
                 <div class="field">
                     <button id="backfill-history" class="btn primary" style="width: 100%;"
-                        data-i18n="backfill_button">📚 Backfill from ALL History</button>
+                        data-i18n="backfill_button">📚 Rebuild Skill Profile from History (One-Time)</button>
                     <span id="backfill-status" class="status-text"></span>
                 </div>
                 <div class="field">
                     <button id="run-digest" class="btn" style="width: 100%;" data-i18n="run_digest_button">⚡ Run
-                        Nightly Digest (Today Only)</button>
+                        Today's Analysis + Weak-Skill Update</button>
                     <span id="digest-status" class="status-text"></span>
                 </div>
                 <div class="field">
                     <button id="gen-drills" class="btn" style="width: 100%;" data-i18n="generate_drills_button">🎯
-                        Generate Drills from Weak Skills</button>
+                        Refill Drill Queue from Weak Skills</button>
                     <span id="drills-status" class="status-text"></span>
                 </div>
             </div>
             <div class="notes" style="margin-top: 15px; font-size: 0.85em; opacity: 0.7;">
-                <p data-i18n-html="neural_note_backfill_html">• <b>Backfill</b>: Process ALL past submissions to build
-                    your Skill DNA</p>
-                <p data-i18n-html="neural_note_nightly_html">• <b>Nightly</b>: Analyze only today's mistakes</p>
-                <p data-i18n-html="neural_note_generate_html">• <b>Generate</b>: Create drills based on weak skills</p>
+                <p data-i18n-html="neural_note_backfill_html">• <b>Rebuild</b>: Scan all past submissions to rebuild your Skill DNA</p>
+                <p data-i18n-html="neural_note_nightly_html">• <b>Today's Analysis</b>: Analyze today's data and refresh weak skills</p>
+                <p data-i18n-html="neural_note_generate_html">• <b>Refill Queue</b>: Top up pending drills to the queue target</p>
+                <p data-i18n-html="neural_note_generate_cap_html">• <b>Cap</b>: Max 9 drills per weak skill (up to 3 per drill type)</p>
             </div>
         </section>
 

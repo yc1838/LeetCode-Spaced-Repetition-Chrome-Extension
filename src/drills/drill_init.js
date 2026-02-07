@@ -11,13 +11,18 @@
     let sessionDrills = []; // Store all drills for navigation
 
     if (!drillId) {
+        const overviewUrl = chrome.runtime.getURL('dist/src/drills/drill_overview.html');
         document.getElementById('drill-content').innerHTML = `
             <div class="error-state">
                 <div class="error-icon">⚠️</div>
                 <div class="error-message">No drill specified</div>
-                <a href="#" onclick="window.close()">Return to Extension</a>
+                <a href="#" id="btn-return-to-overview">Return to Extension</a>
             </div>
         `;
+        document.getElementById('btn-return-to-overview').addEventListener('click', (e) => {
+            e.preventDefault();
+            window.location.href = overviewUrl;
+        });
         return;
     }
 
@@ -57,16 +62,31 @@
      * Show session completion screen.
      */
     function showCompletionScreen() {
+        console.log('[DrillInit] Showing completion screen');
         // Replace drill UI with a simple "done" message and a close button.
+        const overviewUrl = chrome.runtime.getURL('dist/src/drills/drill_overview.html');
+        console.log('[DrillInit] Overview URL:', overviewUrl);
+
         document.getElementById('drill-content').innerHTML = `
             <div class="completion-state">
                 <div class="completion-icon">🎉</div>
                 <div class="completion-title">Session Complete!</div>
                 <div class="completion-subtitle">You've finished all drills in this session.</div>
-                <button onclick="window.close()" class="btn-primary">Close</button>
+                <button id="btn-close-session" class="btn-primary">Close</button>
             </div>
         `;
         document.getElementById('drill-result').style.display = 'none';
+
+        // Wire up close button to navigate to overview page
+        const closeBtn = document.getElementById('btn-close-session');
+        console.log('[DrillInit] Close button element:', closeBtn);
+
+        closeBtn.addEventListener('click', () => {
+            console.log('[DrillInit] Close button clicked, navigating to:', overviewUrl);
+            window.location.href = overviewUrl;
+        });
+
+        console.log('[DrillInit] Completion screen setup complete');
     }
 
     // Load drill session from storage (set by popup or overview page).

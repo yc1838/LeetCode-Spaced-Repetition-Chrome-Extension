@@ -114,15 +114,19 @@
     }
 
     /**
-     * Calculate circular layout positions.
+     * Calculate bar chart layout positions.
      */
-    function calculateCircularLayout(count, centerX, centerY, radius) {
+    function calculateBarLayout(count, width, height, padding = 20) {
         const positions = [];
+        const barHeight = (height - padding * 2) / count;
+        const maxBarWidth = width - padding * 2 - 80; // Leave space for labels
+
         for (let i = 0; i < count; i++) {
-            const angle = (2 * Math.PI * i) / count - Math.PI / 2;
             positions.push({
-                x: centerX + radius * Math.cos(angle),
-                y: centerY + radius * Math.sin(angle)
+                x: padding,
+                y: padding + i * barHeight + barHeight / 2,
+                barHeight: barHeight * 0.7, // 70% of available space for visual separation
+                maxWidth: maxBarWidth
             });
         }
         return positions;
@@ -160,55 +164,68 @@
     }
 
     /**
-     * Render the complete skill graph.
+     * Render the complete skill graph as a horizontal bar chart.
      */
     function renderGraph(skillData, options = {}) {
         const width = options.width || DEFAULT_WIDTH;
         const height = options.height || DEFAULT_HEIGHT;
-        const centerX = width / 2;
-        const centerY = height / 2;
-        const layoutRadius = Math.min(width, height) / 2 - 50;
 
         const svg = createSVG({ width, height });
         const families = skillData.families || [];
 
-        // Calculate positions
-        const positions = calculateCircularLayout(families.length, centerX, centerY, layoutRadius);
+        // Sort by confidence (lowest first, so weakest skills are most visible)
+        const sortedFamilies = [...families].sort((a, b) => a.confidence - b.confidence);
 
-        // Draw edges from center
-        families.forEach((family, i) => {
-            const edge = createEdge({
-                fromX: centerX,
-                fromY: centerY,
-                toX: positions[i].x,
-                toY: positions[i].y
-            });
-            svg.appendChild(edge);
-        });
+        // Calculate bar positions
+        const positions = calculateBarLayout(sortedFamilies.length, width, height);
 
-        // Draw nodes
-        families.forEach((family, i) => {
-            const node = createNode({
-                id: family.id,
-                label: family.name,
-                x: positions[i].x,
-                y: positions[i].y,
-                confidence: family.confidence,
-                isFamily: true
-            });
-            svg.appendChild(node);
-        });
+        // Draw bars
+        sortedFamilies.forEach((family, i) => {
+            const pos = positions[i];
+            const barWidth = pos.maxWidth * family.confidence;
+            const color = getConfidenceColor(family.confidence);
 
-        // Center node (brain icon placeholder)
-        const centerNode = createNode({
-            id: 'center',
-            label: 'DNA',
-            x: centerX,
-            y: centerY,
-            confidence: 1,
-            isFamily: true
+            // Background bar (gray)
+            const bgBar = document.createElementNS(SVG_NS, 'rect');
+            bgBar.setAttribute('x', pos.x);
+            bgBar.setAttribute('y', pos.y - pos.barHeight / 2);
+            bgBar.setAttribute('width', pos.maxWidth);
+            bgBar.setAttribute('height', pos.barHeight);
+            bgBar.setAttribute('fill', 'rgba(255, 255, 255, 0.1)');
+            bgBar.setAttribute('rx', '4');
+            svg.appendChild(bgBar);
+
+            // Actual strength bar
+            const bar = document.createElementNS(SVG_NS, 'rect');
+            bar.setAttribute('x', pos.x);
+            bar.setAttribute('y', pos.y - pos.barHeight / 2);
+            bar.setAttribute('width', barWidth);
+            bar.setAttribute('height', pos.barHeight);
+            bar.setAttribute('fill', color);
+            bar.setAttribute('rx', '4');
+            bar.setAttribute('class', 'skill-bar');
+            svg.appendChild(bar);
+
+            // Label (algorithm name)
+            const label = document.createElementNS(SVG_NS, 'text');
+            label.setAttribute('x', pos.x + 5);
+            label.setAttribute('y', pos.y + 4);
+            label.setAttribute('font-size', '11');
+            label.setAttribute('fill', '#fff');
+            label.setAttribute('font-weight', 'bold');
+            label.textContent = family.name;
+            svg.appendChild(label);
+
+            // Percentage text
+            const percentage = document.createElementNS(SVG_NS, 'text');
+            percentage.setAttribute('x', pos.x + pos.maxWidth + 5);
+            percentage.setAttribute('y', pos.y + 4);
+            percentage.setAttribute('font-size', '10');
+            percentage.setAttribute('fill', color);
+            percentage.setAttribute('text-anchor', 'start');
+            percentage.textContent = `${Math.round(family.confidence * 100)}%`;
+            svg.appendChild(percentage);
         });
-        svg.appendChild(centerNode);
 
         return svg;
     }
@@ -218,19 +235,13 @@
         .skill-graph {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
-        
-        .skill-node circle {
-            cursor: pointer;
-            transition: transform 0.2s, opacity 0.2s;
+
+        .skill-bar {
+            transition: opacity 0.2s;
         }
-        
-        .skill-node:hover circle {
+
+        .skill-bar:hover {
             opacity: 0.8;
-            transform: scale(1.1);
-        }
-        
-        .skill-node text {
-            pointer-events: none;
         }
     `;
 
@@ -241,7 +252,7 @@
         getConfidenceColor,
         renderGraph,
         aggregateFamilyConfidence,
-        calculateCircularLayout,
+        calculateBarLayout,
         styles
     };
 }));

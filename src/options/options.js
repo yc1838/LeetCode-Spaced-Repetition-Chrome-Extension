@@ -69,10 +69,24 @@
             status_digest_complete_detailed: '✅ Digest complete at {time}! Processed {items} items, updated {skills} skills.',
             status_digest_complete: '✅ Digest complete!',
             status_no_data: 'No data to process',
-            status_generating_drills: 'Generating drills...',
-            status_drills_generated: '✅ Generated {count} drills!{fallback}',
-            status_drills_fallback: ' (fallback: {fallback})',
+            status_generating_drills: 'Refilling drill queue...',
+            status_drills_generated: '✅ Refilled +{count}. Queue now {pending}/{target} pending.{rotated}{fallback}',
+            status_drills_queue_full: '✅ Queue is full: {pending}/{target} pending. Finish some drills before refilling.{cleanup}',
+            status_drills_target_met: '✅ Queue is at target: {pending}/{target} pending.{cleanup}',
+            status_drills_queue_snapshot: 'Queue status: {pending}/{target} pending.',
+            status_drills_fallback: ' Reason: {fallback}.',
+            status_drills_cleanup: ' Auto-cleaned {count} stale drill(s).',
+            status_drills_rotated: ' Replaced {count} oldest pending drill(s) to make room.',
             status_no_weak_skills: 'No weak skills found',
+            status_drills_cooldown: 'Please wait {seconds}s before refilling again.',
+            status_fallback_queue_full: 'queue is already full',
+            status_fallback_queue_target_met: 'queue already at target',
+            status_fallback_cooldown: 'cooldown active',
+            status_fallback_no_weak_skills: 'no weak skills detected',
+            status_fallback_missing_api_key: 'no model key configured; used template drills',
+            status_fallback_history_low_ratings: 'used low-rating history as weak-skill fallback',
+            status_fallback_history_topics: 'used topic history as weak-skill fallback',
+            status_fallback_no_history: 'no history available for weak-skill fallback',
             status_agent_saved: '✅ Settings saved!'
         },
         zh: {
@@ -128,12 +142,13 @@
             save_all_settings_button: '保存全部设置',
             neural_retention_heading: '🧠 神经记忆代理',
             neural_retention_hint: '手动触发总结和练习生成功能用于测试。',
-            backfill_button: '📚 从全部历史回填',
-            run_digest_button: '⚡ 运行夜间总结（仅今天）',
-            generate_drills_button: '🎯 基于薄弱技能生成练习',
-            neural_note_backfill_html: '• <b>回填</b>：处理全部历史提交，构建你的 Skill DNA',
-            neural_note_nightly_html: '• <b>夜间总结</b>：只分析今天的错误',
-            neural_note_generate_html: '• <b>生成</b>：根据薄弱技能生成练习',
+            backfill_button: '📚 从历史重建技能画像（一次性）',
+            run_digest_button: '⚡ 分析今天记录并更新弱项',
+            generate_drills_button: '🎯 补满练习队列（基于弱项）',
+            neural_note_backfill_html: '• <b>历史重建</b>：扫描全部历史提交，重建你的 Skill DNA',
+            neural_note_nightly_html: '• <b>今日分析</b>：只分析今天的数据并更新弱项',
+            neural_note_generate_html: '• <b>补队列</b>：把待练习队列补到目标上限',
+            neural_note_generate_cap_html: '• <b>上限</b>：同一弱项最多 9 题（每种题型最多 3 题）',
             agent_settings_heading: '⚙️ Agent 设置',
             digest_time_label: '夜间总结时间：',
             pattern_threshold_label: '错误模式阈值：',
@@ -163,15 +178,31 @@
             status_digest_complete_detailed: '✅ 总结完成于 {time}！处理了 {items} 条记录，更新 {skills} 个技能。',
             status_digest_complete: '✅ 总结完成！',
             status_no_data: '没有可处理的数据',
-            status_generating_drills: '正在生成练习...',
-            status_drills_generated: '✅ 已生成 {count} 组练习！{fallback}',
-            status_drills_fallback: '（降级方案：{fallback}）',
+            status_generating_drills: '正在补充练习队列...',
+            status_drills_generated: '✅ 已补充 {count} 题。当前队列 {pending}/{target}（待练习/目标）。{rotated}{fallback}',
+            status_drills_queue_full: '✅ 队列已满：{pending}/{target}（待练习/目标）。请先完成一些题目再补充。{cleanup}',
+            status_drills_target_met: '✅ 队列已达目标：{pending}/{target}（待练习/目标）。{cleanup}',
+            status_drills_queue_snapshot: '队列状态：{pending}/{target}（待练习/目标）。',
+            status_drills_fallback: '原因：{fallback}。',
+            status_drills_cleanup: ' 已自动清理 {count} 条旧练习。',
+            status_drills_rotated: ' 已移除最旧的 {count} 条待练习以腾出位置。',
             status_no_weak_skills: '未找到薄弱技能',
+            status_drills_cooldown: '请等待 {seconds} 秒后再补充。',
+            status_fallback_queue_full: '队列已经满了',
+            status_fallback_queue_target_met: '队列已达到目标',
+            status_fallback_cooldown: '冷却中',
+            status_fallback_no_weak_skills: '未识别到可用弱项',
+            status_fallback_missing_api_key: '未配置可用模型，已使用模板练习',
+            status_fallback_history_low_ratings: '使用了低分历史作为弱项兜底',
+            status_fallback_history_topics: '使用了题目主题历史作为弱项兜底',
+            status_fallback_no_history: '没有可用历史记录用于弱项兜底',
             status_agent_saved: '✅ 设置已保存！'
         }
     };
 
     let currentLanguage = DEFAULTS.uiLanguage;
+    let latestDrillGenerationState = null;
+    const DRILL_STATUS_PRESERVE_MS = 15000;
 
     const els = {};
     const statusTimers = new WeakMap();
@@ -191,6 +222,156 @@
         const fallback = I18N.en || {};
         const template = table[key] ?? fallback[key] ?? key;
         return interpolate(template, values);
+    }
+
+    const DRILL_QUEUE_DEFAULT_TARGET = 12;
+
+    function formatDrillFallback(fallbackCode) {
+        if (!fallbackCode) return '';
+        const reasonKey = {
+            queue_full: 'status_fallback_queue_full',
+            queue_target_met: 'status_fallback_queue_target_met',
+            cooldown: 'status_fallback_cooldown',
+            no_weak_skills: 'status_fallback_no_weak_skills',
+            missing_api_key: 'status_fallback_missing_api_key',
+            history_low_ratings: 'status_fallback_history_low_ratings',
+            history_topics: 'status_fallback_history_topics',
+            no_history: 'status_fallback_no_history'
+        }[fallbackCode];
+
+        return reasonKey ? t(reasonKey) : fallbackCode;
+    }
+
+    function buildDrillStatusMessage(payload = {}) {
+        const pending = payload.pendingCount || 0;
+        const target = payload.targetPending || DRILL_QUEUE_DEFAULT_TARGET;
+        const fallbackCode = payload.fallback || '';
+        const cleanupCount = payload.queueCleanupRemoved || 0;
+        const rotatedCount = payload.queueRotatedOut || 0;
+        const cleanup = cleanupCount > 0
+            ? t('status_drills_cleanup', { count: cleanupCount })
+            : '';
+        const rotated = rotatedCount > 0
+            ? t('status_drills_rotated', { count: rotatedCount })
+            : '';
+
+        if (fallbackCode === 'queue_full') {
+            return t('status_drills_queue_full', { pending, target, cleanup });
+        }
+
+        if (fallbackCode === 'queue_target_met') {
+            return t('status_drills_target_met', { pending, target, cleanup });
+        }
+
+        const fallbackReason = fallbackCode === 'queue_rotated' ? '' : formatDrillFallback(payload.fallback);
+        const fallback = fallbackReason
+            ? t('status_drills_fallback', { fallback: fallbackReason })
+            : '';
+
+        return t('status_drills_generated', {
+            count: payload.count || 0,
+            pending,
+            target,
+            rotated,
+            fallback
+        });
+    }
+
+    function shouldStickyDrillStatus(payload = {}) {
+        const count = Number(payload.count || 0);
+        const fallbackCode = payload.fallback || '';
+        if (fallbackCode === 'queue_full' || fallbackCode === 'queue_target_met') return true;
+        if (count <= 0) return false;
+        return true;
+    }
+
+    function getDrillStatusTimestamp(status = {}) {
+        const candidates = [
+            Number(status._renderedAt || 0),
+            Number(status.completedAt || 0),
+            Number(status.startedAt || 0)
+        ];
+
+        for (const candidate of candidates) {
+            if (Number.isFinite(candidate) && candidate > 0) return candidate;
+        }
+        return 0;
+    }
+
+    function shouldPreserveDrillStatus(status = {}) {
+        if (!status || !status.status) return false;
+        if (status.status === 'snapshot') return false;
+
+        const timestamp = getDrillStatusTimestamp(status);
+        if (timestamp > 0 && (Date.now() - timestamp) > DRILL_STATUS_PRESERVE_MS) {
+            return false;
+        }
+
+        if (status.status === 'generating') return true;
+        if (status.status === 'cooldown' || status.status === 'error') return true;
+        if (status.status === 'complete' && shouldStickyDrillStatus(status)) return true;
+        return false;
+    }
+
+    function renderDrillGenerationStatus(status, drillsStatusEl, triggerBtn) {
+        if (triggerBtn) {
+            triggerBtn.disabled = status?.status === 'generating';
+        }
+
+        if (!drillsStatusEl || !status || !status.status) return;
+        latestDrillGenerationState = {
+            ...status,
+            _renderedAt: Date.now()
+        };
+
+        if (status.status === 'generating') {
+            showStatus(drillsStatusEl, t('status_generating_drills'), 'loading');
+            return;
+        }
+
+        if (status.status === 'snapshot') {
+            showStatus(drillsStatusEl, t('status_drills_queue_snapshot', {
+                pending: status.pendingCount || 0,
+                target: status.targetPending || DRILL_QUEUE_DEFAULT_TARGET
+            }), 'ok', { sticky: true });
+            return;
+        }
+
+        if (status.status === 'cooldown') {
+            showStatus(drillsStatusEl, t('status_warning_prefix') + t('status_drills_cooldown', {
+                seconds: status.waitSeconds || 0
+            }), 'error', { sticky: true });
+            return;
+        }
+
+        if (status.status === 'complete') {
+            showStatus(
+                drillsStatusEl,
+                buildDrillStatusMessage(status),
+                'ok',
+                { sticky: shouldStickyDrillStatus(status) }
+            );
+            return;
+        }
+
+        if (status.status === 'error') {
+            showStatus(
+                drillsStatusEl,
+                t('status_error_prefix') + (status.error || t('status_no_weak_skills')),
+                'error',
+                { sticky: true }
+            );
+        }
+    }
+
+    async function fetchDrillQueueStatus() {
+        try {
+            const response = await chrome.runtime.sendMessage({ action: 'getDrillQueueStatus' });
+            if (!response || !response.success) return null;
+            return response;
+        } catch (e) {
+            return null;
+        }
     }
 
     function applyTranslations() {
@@ -505,41 +686,88 @@
         }
 
         if (genDrillsBtn) {
+            let queuePollInFlight = false;
+            let queuePollTimer = null;
+
+            const refreshQueueSnapshot = async () => {
+                if (queuePollInFlight) return;
+                if (shouldPreserveDrillStatus(latestDrillGenerationState)) return;
+
+                queuePollInFlight = true;
+                try {
+                    const snapshot = await fetchDrillQueueStatus();
+                    if (!snapshot) return;
+                    renderDrillGenerationStatus(
+                        {
+                            status: 'snapshot',
+                            pendingCount: snapshot.pendingCount,
+                            targetPending: snapshot.targetPending
+                        },
+                        drillsStatus,
+                        genDrillsBtn
+                    );
+                } finally {
+                    queuePollInFlight = false;
+                }
+            };
+
             const { drillGenerationStatus } = await chrome.storage.local.get('drillGenerationStatus');
             if (drillGenerationStatus) {
-                if (drillGenerationStatus.status === 'generating') {
-                    showStatus(drillsStatus, t('status_generating_drills'), 'loading');
-                } else if (drillGenerationStatus.status === 'complete') {
-                    const fallback = drillGenerationStatus.fallback
-                        ? t('status_drills_fallback', { fallback: drillGenerationStatus.fallback })
-                        : '';
-                    showStatus(drillsStatus, t('status_drills_generated', {
-                        count: drillGenerationStatus.count || 0,
-                        fallback
-                    }), 'ok', { sticky: true });
-                }
+                renderDrillGenerationStatus(drillGenerationStatus, drillsStatus, genDrillsBtn);
+            }
+            await refreshQueueSnapshot();
+
+            if (chrome.storage?.onChanged) {
+                chrome.storage.onChanged.addListener((changes, area) => {
+                    if (area !== 'local' || !changes.drillGenerationStatus) return;
+                    renderDrillGenerationStatus(
+                        changes.drillGenerationStatus.newValue,
+                        drillsStatus,
+                        genDrillsBtn
+                    );
+                    if (changes.drillGenerationStatus.newValue?.status === 'complete') {
+                        setTimeout(() => {
+                            refreshQueueSnapshot();
+                        }, 200);
+                    }
+                });
             }
 
+            queuePollTimer = setInterval(() => {
+                refreshQueueSnapshot();
+            }, 3000);
+            window.addEventListener('beforeunload', () => {
+                if (queuePollTimer) clearInterval(queuePollTimer);
+            }, { once: true });
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) {
+                    refreshQueueSnapshot();
+                }
+            });
+
             genDrillsBtn.addEventListener('click', async () => {
-                showStatus(drillsStatus, t('status_generating_drills'), 'loading');
+                renderDrillGenerationStatus({ status: 'generating' }, drillsStatus, genDrillsBtn);
                 genDrillsBtn.disabled = true;
                 try {
                     const response = await chrome.runtime.sendMessage({ action: 'generateDrillsNow' });
                     if (response && response.success) {
-                        const fallback = response.fallback
-                            ? t('status_drills_fallback', { fallback: response.fallback })
-                            : '';
-                        showStatus(drillsStatus, t('status_drills_generated', {
-                            count: response.count || 0,
-                            fallback
-                        }), 'ok', { sticky: true });
+                        renderDrillGenerationStatus({ ...response, status: 'complete' }, drillsStatus, genDrillsBtn);
+                    } else if (response?.error === 'cooldown') {
+                        renderDrillGenerationStatus({ ...response, status: 'cooldown' }, drillsStatus, genDrillsBtn);
                     } else {
-                        showStatus(drillsStatus, t('status_warning_prefix') + (response?.error || t('status_no_weak_skills')), 'error', { sticky: true });
+                        const fallbackReason = response?.fallback ? formatDrillFallback(response.fallback) : '';
+                        renderDrillGenerationStatus(
+                            { status: 'error', error: fallbackReason || response?.error || t('status_no_weak_skills') },
+                            drillsStatus,
+                            genDrillsBtn
+                        );
                     }
                 } catch (e) {
-                    showStatus(drillsStatus, t('status_error_prefix') + e.message, 'error');
+                    renderDrillGenerationStatus({ status: 'error', error: e.message }, drillsStatus, genDrillsBtn);
                 } finally {
-                    genDrillsBtn.disabled = false;
+                    if (genDrillsBtn && genDrillsBtn.disabled) {
+                        genDrillsBtn.disabled = false;
+                    }
                 }
             });
         }

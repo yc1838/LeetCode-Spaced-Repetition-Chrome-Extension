@@ -67,6 +67,18 @@ function normalizeSkillId(raw) {
         .replace(/^_+|_+$/g, '');
 }
 
+const DRILL_QUEUE_TARGET_PENDING = 12;
+const DRILL_QUEUE_MAX_PENDING = 12;
+const DRILL_GENERATION_COOLDOWN_MS = 60 * 1000;
+const DRILL_QUEUE_ROTATE_ON_FULL = 4;
+const MANUAL_DRILL_TYPES = ['fill-in-blank', 'spot-bug', 'muscle-memory'];
+const MANUAL_MAX_DRILLS_PER_SKILL = 9;
+const MANUAL_MAX_DRILLS_PER_SKILL_TYPE = 3;
+
+function getDrillQueueTargetPending() {
+    return Math.min(DRILL_QUEUE_TARGET_PENDING, DRILL_QUEUE_MAX_PENDING);
+}
+
 async function inferWeakSkillsFromHistory() {
     const { problems } = await chrome.storage.local.get({ problems: {} });
     const problemValues = Object.values(problems);
@@ -133,11 +145,11 @@ async function inferWeakSkillsFromHistory() {
     return { weakSkills: [], source: 'no_history' };
 }
 
-function buildDemoDrills() {
+function buildDemoDrills(count = 3) {
     const stamp = Date.now();
-    return [
+    const requested = Math.max(1, Number.isFinite(Number(count)) ? Math.floor(Number(count)) : 3);
+    const templates = [
         {
-            id: `demo_${stamp}_1`,
             type: 'fill-in-blank',
             skillId: 'binary_search',
             content: 'def binary_search(arr, target):\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // ___',
@@ -145,7 +157,6 @@ function buildDemoDrills() {
             difficulty: 'easy'
         },
         {
-            id: `demo_${stamp}_2`,
             type: 'spot-bug',
             skillId: 'arrays',
             content: "arr[len(arr)] = value  # What's wrong?",
@@ -153,7 +164,6 @@ function buildDemoDrills() {
             difficulty: 'easy'
         },
         {
-            id: `demo_${stamp}_3`,
             type: 'muscle-memory',
             skillId: 'two_pointers',
             content: 'Write the two-pointer template for finding a pair that sums to target',
@@ -161,6 +171,258 @@ function buildDemoDrills() {
             difficulty: 'medium'
         }
     ];
+
+    const drills = [];
+    for (let i = 0; i < requested; i++) {
+        const template = templates[i % templates.length];
+        drills.push({
+            ...template,
+            id: `demo_${stamp}_${i + 1}`
+        });
+    }
+
+    return drills;
+}
+
+function normalizeDrillSignatureValue(value) {
+    if (value === undefined || value === null) return '';
+    return String(value)
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+}
+
+function buildDrillSignature(drill) {
+    return [
+        normalizeDrillSignatureValue(drill?.type),
+        normalizeDrillSignatureValue(drill?.skillId),
+        normalizeDrillSignatureValue(drill?.content),
+        normalizeDrillSignatureValue(drill?.answer)
+    ].join('::');
+}
+
+function getDrillCreatedAtMs(drill) {
+    const parsed = Date.parse(drill?.createdAt || '');
+    if (Number.isFinite(parsed)) return parsed;
+    return 0;
+}
+
+function sortDrillsNewestFirst(drills) {
+    return [...(Array.isArray(drills) ? drills : [])]
+        .sort((a, b) => getDrillCreatedAtMs(b) - getDrillCreatedAtMs(a));
+}
+
+function isAllowedManualDrillType(type) {
+    return MANUAL_DRILL_TYPES.includes(type);
+}
+
+function isDrillStoreAvailable() {
+    return typeof DrillStore !== 'undefined' && Boolean(DrillStore.DrillStore);
+}
+
+async function getPendingDrillsFromStore() {
+    if (!isDrillStoreAvailable()) {
+        return [];
+    }
+
+    try {
+        const store = new DrillStore.DrillStore();
+        await store.init();
+        return await store.getPending();
+    } catch (e) {
+        console.warn('[Background] Failed to load pending drills:', e.message);
+        return [];
+    }
+}
+
+async function getDrillQueueStatusSnapshot() {
+    const pending = await getPendingDrillsFromStore();
+    const pendingCount = pending.length;
+    const targetPending = getDrillQueueTargetPending();
+    return {
+        pendingCount,
+        targetPending,
+        maxPending: DRILL_QUEUE_MAX_PENDING,
+        isFull: pendingCount >= DRILL_QUEUE_MAX_PENDING,
+        canRefill: pendingCount < targetPending
+    };
+}
+
+async function normalizePendingQueue(limit = DRILL_QUEUE_MAX_PENDING) {
+    if (!isDrillStoreAvailable()) {
+        return { pending: [], removedDuplicates: 0, removedOverflow: 0 };
+    }
+
+    const store = new DrillStore.DrillStore();
+    await store.init();
+    const pending = await store.getPending();
+    if (!Array.isArray(pending) || pending.length === 0) {
+        return { pending: [], removedDuplicates: 0, removedOverflow: 0 };
+    }
+
+    const sorted = sortDrillsNewestFirst(pending);
+    const signatures = new Set();
+    const keep = [];
+    const duplicateIds = [];
+    const unsupportedTypeIds = [];
+    const cappedIds = [];
+    const skillCounts = new Map();
+    const skillTypeCounts = new Map();
+
+    for (const drill of sorted) {
+        if (!isAllowedManualDrillType(drill.type)) {
+            unsupportedTypeIds.push(drill.id);
+            continue;
+        }
+
+        const signature = buildDrillSignature(drill);
+        if (signatures.has(signature)) {
+            duplicateIds.push(drill.id);
+            continue;
+        }
+
+        const skillId = normalizeSkillId(drill.skillId) || 'general';
+        const typeKey = `${skillId}::${drill.type}`;
+        const skillCount = skillCounts.get(skillId) || 0;
+        const skillTypeCount = skillTypeCounts.get(typeKey) || 0;
+
+        if (skillCount >= MANUAL_MAX_DRILLS_PER_SKILL || skillTypeCount >= MANUAL_MAX_DRILLS_PER_SKILL_TYPE) {
+            cappedIds.push(drill.id);
+            continue;
+        }
+
+        signatures.add(signature);
+        keep.push(drill);
+        skillCounts.set(skillId, skillCount + 1);
+        skillTypeCounts.set(typeKey, skillTypeCount + 1);
+    }
+
+    for (const id of [...duplicateIds, ...unsupportedTypeIds, ...cappedIds]) {
+        await store.delete(id);
+    }
+
+    let overflow = [];
+    if (keep.length > limit) {
+        overflow = keep.slice(limit);
+        for (const drill of overflow) {
+            await store.delete(drill.id);
+        }
+    }
+
+    return {
+        pending: keep.slice(0, limit),
+        removedDuplicates: duplicateIds.length,
+        removedOverflow: overflow.length + unsupportedTypeIds.length + cappedIds.length
+    };
+}
+
+async function rotateOldestPendingDrills(count = DRILL_QUEUE_ROTATE_ON_FULL) {
+    if (!isDrillStoreAvailable()) {
+        return { removed: 0, pending: [] };
+    }
+
+    const requested = Math.max(1, Math.floor(Number(count) || 0));
+    const store = new DrillStore.DrillStore();
+    await store.init();
+
+    const pending = await store.getPending();
+    const sorted = sortDrillsNewestFirst(pending);
+    if (sorted.length === 0) {
+        return { removed: 0, pending: [] };
+    }
+
+    const removable = sorted.slice(Math.max(0, sorted.length - requested));
+    for (const drill of removable) {
+        await store.delete(drill.id);
+    }
+
+    const after = await store.getPending();
+    return {
+        removed: removable.length,
+        pending: sortDrillsNewestFirst(after)
+    };
+}
+
+async function persistDrillsToStore(drills) {
+    if (!Array.isArray(drills) || drills.length === 0) {
+        return { saved: 0, skippedDuplicates: 0 };
+    }
+
+    if (typeof DrillGenerator !== 'undefined' && typeof DrillGenerator.saveDrills === 'function') {
+        return DrillGenerator.saveDrills(drills, {
+            allowedTypes: MANUAL_DRILL_TYPES,
+            maxPerSkill: MANUAL_MAX_DRILLS_PER_SKILL,
+            maxPerSkillType: MANUAL_MAX_DRILLS_PER_SKILL_TYPE
+        });
+    }
+
+    if (!isDrillStoreAvailable() || typeof DrillStore.createDrill !== 'function') {
+        return { saved: 0, skippedDuplicates: 0, error: 'DrillStore unavailable' };
+    }
+
+    const store = new DrillStore.DrillStore();
+    await store.init();
+    const existing = await store.getAll();
+    const signatures = new Set(existing.map(buildDrillSignature));
+    const pendingExisting = existing.filter(d => d.status === 'pending' && isAllowedManualDrillType(d.type));
+    const skillCounts = new Map();
+    const skillTypeCounts = new Map();
+
+    for (const drill of pendingExisting) {
+        const skillId = normalizeSkillId(drill.skillId) || 'general';
+        const typeKey = `${skillId}::${drill.type}`;
+        skillCounts.set(skillId, (skillCounts.get(skillId) || 0) + 1);
+        skillTypeCounts.set(typeKey, (skillTypeCounts.get(typeKey) || 0) + 1);
+    }
+
+    let saved = 0;
+    let skippedDuplicates = 0;
+    let skippedByType = 0;
+    let skippedBySkillCap = 0;
+    let skippedByTypeCap = 0;
+
+    for (const drill of drills) {
+        if (!isAllowedManualDrillType(drill.type)) {
+            skippedByType++;
+            continue;
+        }
+
+        const signature = buildDrillSignature(drill);
+        if (signatures.has(signature)) {
+            skippedDuplicates++;
+            continue;
+        }
+
+        const skillId = normalizeSkillId(drill.skillId) || 'general';
+        const typeKey = `${skillId}::${drill.type}`;
+        const skillCount = skillCounts.get(skillId) || 0;
+        const skillTypeCount = skillTypeCounts.get(typeKey) || 0;
+
+        if (skillCount >= MANUAL_MAX_DRILLS_PER_SKILL) {
+            skippedBySkillCap++;
+            continue;
+        }
+        if (skillTypeCount >= MANUAL_MAX_DRILLS_PER_SKILL_TYPE) {
+            skippedByTypeCap++;
+            continue;
+        }
+
+        const entity = DrillStore.createDrill({
+            type: drill.type,
+            skillId: drill.skillId,
+            content: drill.content,
+            answer: drill.answer,
+            explanation: drill.explanation,
+            difficulty: drill.difficulty || 'medium'
+        });
+        await store.add(entity);
+        signatures.add(signature);
+        skillCounts.set(skillId, skillCount + 1);
+        skillTypeCounts.set(typeKey, skillTypeCount + 1);
+        saved++;
+    }
+
+    return { saved, skippedDuplicates, skippedByType, skippedBySkillCap, skippedByTypeCap };
 }
 
 // --- History Backfill Helpers ---
@@ -531,32 +793,183 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    // Handler: Realtime Drill Queue Status (for options UI polling)
+    if (request.action === "getDrillQueueStatus") {
+        (async () => {
+            try {
+                const snapshot = await getDrillQueueStatusSnapshot();
+                sendResponse({ success: true, ...snapshot });
+            } catch (e) {
+                sendResponse({ success: false, error: e.message });
+            }
+        })();
+        return true;
+    }
+
     // Handler: Manual Drill Generation (from Settings page)
     if (request.action === "generateDrillsNow") {
         console.log("[Background] Manual drill generation trigger received.");
         (async () => {
+            const now = Date.now();
             try {
+                let drills = [];
+                let fallback = null;
+                let apiKey = null;
+                let persistedByGenerator = false;
+                const drillStoreAvailable = isDrillStoreAvailable();
+                let queueCleanupRemoved = 0;
+                let queueRotatedOut = 0;
+                let pendingBefore = await getPendingDrillsFromStore();
+                if (drillStoreAvailable) {
+                    const normalizedQueue = await normalizePendingQueue(DRILL_QUEUE_MAX_PENDING);
+                    pendingBefore = normalizedQueue.pending;
+                    queueCleanupRemoved = (normalizedQueue.removedDuplicates || 0) + (normalizedQueue.removedOverflow || 0);
+                    if (queueCleanupRemoved > 0) {
+                        DebugLog.log('[DrillGen] Normalized pending queue before refill:', {
+                            removedDuplicates: normalizedQueue.removedDuplicates,
+                            removedOverflow: normalizedQueue.removedOverflow,
+                            remaining: pendingBefore.length
+                        });
+                    }
+                }
+                let pendingBeforeCount = pendingBefore.length;
+                const targetPending = getDrillQueueTargetPending();
+
+                if (pendingBeforeCount >= DRILL_QUEUE_MAX_PENDING && drillStoreAvailable) {
+                    const rotated = await rotateOldestPendingDrills(
+                        Math.min(DRILL_QUEUE_ROTATE_ON_FULL, DRILL_QUEUE_MAX_PENDING)
+                    );
+                    queueRotatedOut = rotated.removed || 0;
+                    pendingBefore = rotated.pending || [];
+                    pendingBeforeCount = pendingBefore.length;
+                    if (queueRotatedOut > 0) {
+                        fallback = 'queue_rotated';
+                        DebugLog.log('[DrillGen] Queue full; rotated oldest pending drills:', {
+                            removed: queueRotatedOut,
+                            pendingAfterRotate: pendingBeforeCount
+                        });
+                    }
+                }
+
+                if (pendingBeforeCount >= DRILL_QUEUE_MAX_PENDING) {
+                    fallback = 'queue_full';
+                    await chrome.storage.local.set({
+                        drillGenerationStatus: {
+                            status: 'complete',
+                            count: 0,
+                            fallback,
+                            pendingCount: pendingBeforeCount,
+                            targetPending,
+                            queueCleanupRemoved,
+                            queueRotatedOut,
+                            completedAt: now
+                        }
+                    });
+                    sendResponse({
+                        success: true,
+                        count: 0,
+                        fallback,
+                        pendingCount: pendingBeforeCount,
+                        targetPending,
+                        queueCleanupRemoved,
+                        queueRotatedOut
+                    });
+                    return;
+                }
+
+                const { drillGenerationStatus: previousStatus } = await chrome.storage.local.get({
+                    drillGenerationStatus: null
+                });
+                const previousCompletedAt = Number(previousStatus?.completedAt || 0);
+                const elapsedMs = previousCompletedAt > 0 ? now - previousCompletedAt : null;
+                if (elapsedMs !== null && elapsedMs < DRILL_GENERATION_COOLDOWN_MS) {
+                    const waitSeconds = Math.ceil((DRILL_GENERATION_COOLDOWN_MS - elapsedMs) / 1000);
+                    fallback = 'cooldown';
+                    await chrome.storage.local.set({
+                        drillGenerationStatus: {
+                            status: 'cooldown',
+                            count: 0,
+                            fallback,
+                            waitSeconds,
+                            pendingCount: pendingBeforeCount,
+                            targetPending,
+                            queueCleanupRemoved,
+                            queueRotatedOut,
+                            completedAt: now
+                        }
+                    });
+                    sendResponse({
+                        success: false,
+                        error: 'cooldown',
+                        fallback,
+                        waitSeconds,
+                        pendingCount: pendingBeforeCount,
+                        targetPending,
+                        queueCleanupRemoved,
+                        queueRotatedOut
+                    });
+                    return;
+                }
+
+                const needed = Math.max(0, targetPending - pendingBeforeCount);
+                if (needed <= 0) {
+                    fallback = 'queue_target_met';
+                    await chrome.storage.local.set({
+                        drillGenerationStatus: {
+                            status: 'complete',
+                            count: 0,
+                            fallback,
+                            pendingCount: pendingBeforeCount,
+                            targetPending,
+                            queueCleanupRemoved,
+                            queueRotatedOut,
+                            completedAt: now
+                        }
+                    });
+                    sendResponse({
+                        success: true,
+                        count: 0,
+                        fallback,
+                        pendingCount: pendingBeforeCount,
+                        targetPending,
+                        queueCleanupRemoved,
+                        queueRotatedOut
+                    });
+                    return;
+                }
+
                 // Track generation status for UI persistence
                 await chrome.storage.local.set({
                     drillGenerationStatus: {
                         status: 'generating',
-                        startedAt: Date.now()
+                        startedAt: now,
+                        requestedCount: needed,
+                        pendingCount: pendingBeforeCount,
+                        queueCleanupRemoved,
+                        queueRotatedOut,
+                        targetPending
                     }
                 });
 
-                let drills = [];
-                let fallback = null;
-                let apiKey = null;
                 const drillGenerationOptions = {
-                    drillsPerSkill: 3,
-                    minTotalDrills: 6,
+                    drillsPerSkill: Math.max(1, Math.min(3, needed)),
+                    minTotalDrills: needed,
+                    maxTotalDrills: needed,
+                    allowedTypes: MANUAL_DRILL_TYPES,
+                    maxPerSkill: MANUAL_MAX_DRILLS_PER_SKILL,
+                    maxPerSkillType: MANUAL_MAX_DRILLS_PER_SKILL_TYPE,
                     skillAttempts: 3,
                     maxRetriesPerAttempt: 2
                 };
 
                 DebugLog.log('[DrillGen] Start:', {
                     hasLLMGateway: typeof LLMGateway !== 'undefined',
-                    hasDrillGenerator: typeof DrillGenerator !== 'undefined'
+                    hasDrillGenerator: typeof DrillGenerator !== 'undefined',
+                    pendingBefore: pendingBeforeCount,
+                    queueCleanupRemoved,
+                    queueRotatedOut,
+                    targetPending,
+                    needed
                 });
 
                 // Check for API key using LLMGateway (provider-agnostic)
@@ -568,6 +981,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 if (typeof DrillGenerator !== 'undefined' && apiKey) {
                     DebugLog.log('[DrillGen] Using DrillGenerator.generateFromWeakSkills()', drillGenerationOptions);
                     drills = await DrillGenerator.generateFromWeakSkills(null, drillGenerationOptions);
+                    persistedByGenerator = drills.length > 0;
                     DebugLog.log('[DrillGen] DrillGenerator result:', { count: drills.length });
 
                     if (drills.length === 0) {
@@ -575,10 +989,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         DebugLog.log('[DrillGen] Inferred weak skills:', inferred);
                         if (inferred.weakSkills.length > 0) {
                             drills = await DrillGenerator.generateFromWeakSkills(inferred.weakSkills, drillGenerationOptions);
+                            persistedByGenerator = drills.length > 0;
                             DebugLog.log('[DrillGen] DrillGenerator result (fallback):', {
                                 count: drills.length,
                                 fallback: inferred.source
                             });
+                            fallback = inferred.source;
+                        } else {
                             fallback = inferred.source;
                         }
                     }
@@ -594,7 +1011,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         const weakPatterns = Object.values(result.skillDNA.patterns)
                             .filter(p => p.mistakes >= 1)
                             .sort((a, b) => a.score - b.score)
-                            .slice(0, 5);
+                            .slice(0, Math.max(needed, 1));
 
                         DebugLog.log('[DrillGen] Weak patterns selected:', {
                             count: weakPatterns.length,
@@ -612,7 +1029,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                             content: `Practice: "${p.patternId.replace(/-/g, ' ')}" - You've made ${p.mistakes} mistake(s) in this area.`,
                             answer: `Avoid ${p.patternId}`,
                             difficulty: p.score < 30 ? 'hard' : p.score < 50 ? 'medium' : 'easy'
-                        }));
+                        })).slice(0, needed);
                         console.log(`[Background] Generated ${drills.length} drills from weak patterns`);
                         DebugLog.log('[DrillGen] Weak-pattern drills sample:', drills.slice(0, 3).map(d => ({
                             id: d.id,
@@ -621,15 +1038,39 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                             difficulty: d.difficulty
                         })));
                     }
+
+                    fallback = fallback || (apiKey ? null : 'missing_api_key');
                 }
 
                 // Fallback demo if no drills were generated
                 if (drills.length === 0) {
-                    drills = buildDemoDrills();
+                    drills = buildDemoDrills(needed);
                     fallback = fallback || (apiKey ? 'no_weak_skills' : 'missing_api_key');
                     console.warn('[Background] No drills generated; using demo drills.', { fallback });
                     DebugLog.warn('[DrillGen] Using demo drills fallback:', { fallback });
                 }
+
+                if (drills.length > needed) {
+                    drills = drills.slice(0, needed);
+                }
+
+                if (!persistedByGenerator && drills.length > 0) {
+                    const persisted = await persistDrillsToStore(drills);
+                    if (persisted.error) {
+                        DebugLog.warn('[DrillGen] Could not persist drills:', persisted.error);
+                    } else {
+                        DebugLog.log('[DrillGen] Persisted fallback drills:', persisted);
+                    }
+                }
+
+                const pendingAfter = await getPendingDrillsFromStore();
+                const pendingAfterCount = pendingAfter.length;
+                const addedCount = drillStoreAvailable
+                    ? Math.max(0, pendingAfterCount - pendingBeforeCount)
+                    : drills.length;
+                const effectivePendingCount = drillStoreAvailable
+                    ? pendingAfterCount
+                    : pendingBeforeCount + addedCount;
 
                 DebugLog.groupCollapsed(`[Background] Drill list (${drills.length}) fallback=${fallback || 'none'}`);
                 if (drills.length > 0) {
@@ -651,13 +1092,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 await chrome.storage.local.set({
                     drillGenerationStatus: {
                         status: 'complete',
-                        count: drills.length,
+                        count: addedCount,
                         fallback: fallback,
+                        pendingCount: effectivePendingCount,
+                        targetPending,
+                        queueCleanupRemoved,
+                        queueRotatedOut,
+                        requestedCount: needed,
                         completedAt: Date.now()
                     }
                 });
                 DebugLog.log('[DrillGen] Stored generatedDrills:', {
-                    count: drills.length,
+                    count: addedCount,
+                    pendingCount: effectivePendingCount,
                     fallback,
                     sample: drills.slice(0, 3).map(d => ({
                         id: d.id,
@@ -665,7 +1112,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         type: d.type
                     }))
                 });
-                sendResponse({ success: true, count: drills.length, fallback });
+                sendResponse({
+                    success: true,
+                    count: addedCount,
+                    fallback,
+                    pendingCount: effectivePendingCount,
+                    targetPending,
+                    queueCleanupRemoved,
+                    queueRotatedOut,
+                    requestedCount: needed
+                });
             } catch (e) {
                 console.error("[Background] Drill generation error:", e);
                 // Update generation status to error

@@ -29,6 +29,9 @@
 
     // Valid drill types
     const DRILL_TYPES = ['fill-in-blank', 'spot-bug', 'critique', 'muscle-memory'];
+    let sharedDb = null;
+    let sharedInitPromise = null;
+    let loggedSharedInit = false;
 
     /**
      * Generate a unique ID for a drill.
@@ -79,28 +82,50 @@
          * Initialize the database.
          */
         async init() {
-            if (this.initialized) return;
+            if (this.initialized && this.db) return;
+            if (sharedDb) {
+                this.db = sharedDb;
+                this.initialized = true;
+                return;
+            }
+
+            if (sharedInitPromise) {
+                this.db = await sharedInitPromise;
+                this.initialized = true;
+                return;
+            }
 
             try {
-                const Dexie = (typeof globalThis !== 'undefined' && globalThis.Dexie) ||
-                    (typeof window !== 'undefined' && window.Dexie) ||
-                    (typeof self !== 'undefined' && self.Dexie) ||
-                    (typeof global !== 'undefined' && global.Dexie);
+                sharedInitPromise = (async () => {
+                    const Dexie = (typeof globalThis !== 'undefined' && globalThis.Dexie) ||
+                        (typeof window !== 'undefined' && window.Dexie) ||
+                        (typeof self !== 'undefined' && self.Dexie) ||
+                        (typeof global !== 'undefined' && global.Dexie);
 
-                if (!Dexie) {
-                    throw new Error('Dexie not found. Ensure dexie.min.js is imported.');
-                }
+                    if (!Dexie) {
+                        throw new Error('Dexie not found. Ensure dexie.min.js is imported.');
+                    }
 
-                this.db = new Dexie('DrillsDB');
-                this.db.version(1).stores({
-                    drills: 'id, type, skillId, status, createdAt, difficulty'
-                });
-                await this.db.open();
+                    const db = new Dexie('DrillsDB');
+                    db.version(1).stores({
+                        drills: 'id, type, skillId, status, createdAt, difficulty'
+                    });
+                    await db.open();
+                    if (!loggedSharedInit) {
+                        console.log('[DrillStore] Database initialized.');
+                        loggedSharedInit = true;
+                    }
+                    return db;
+                })();
+
+                sharedDb = await sharedInitPromise;
+                this.db = sharedDb;
                 this.initialized = true;
-                console.log('[DrillStore] Database initialized.');
             } catch (e) {
                 console.error('[DrillStore] Failed to initialize:', e);
                 throw e;
+            } finally {
+                sharedInitPromise = null;
             }
         }
 

@@ -1,5 +1,14 @@
 # Change Log
 
+## 2026-02-07
+- Timestamp: 2026-02-07T15:59:33-0500
+- Change: Refactored manual drill generation into a queue-refill flow (targeted pending count, cooldown, queue cleanup/rotation, dedupe, and per-skill/per-type caps), and updated options UI/status copy to match the new behavior.
+- Reason: Prevent queue bloat and duplicate drills while making refill results predictable and visible to users.
+- Impact: Refill now tops up to queue target instead of blind bulk generation, stale/duplicate pending drills are cleaned, and settings UI shows realtime queue state plus explicit fallback reasons.
+- Scope Decision: in-scope
+
+---
+
 ## 2026-02-06
 - Timestamp: 2026-02-06T16:55:21-0500
 - Change: Updated privacy policy metadata and contact section with concrete support channels.

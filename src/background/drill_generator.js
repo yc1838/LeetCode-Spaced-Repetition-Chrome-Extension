@@ -58,6 +58,9 @@
     const DEFAULT_MAX_RETRIES_PER_ATTEMPT = 2;
     const DEFAULT_DRILL_TEMPERATURE = 1.0;
     const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
+    const DEFAULT_ALLOWED_TYPES = ['fill-in-blank', 'spot-bug', 'muscle-memory'];
+    const DEFAULT_MAX_PER_SKILL = 9;
+    const DEFAULT_MAX_PER_SKILL_TYPE = 3;
 
     function toPositiveInt(value, fallback) {
         const num = Number(value);
@@ -85,6 +88,12 @@
             }
         }
         return Array.from(map.values());
+    }
+
+    function normalizeAllowedTypes(types) {
+        const source = Array.isArray(types) && types.length > 0 ? types : DEFAULT_ALLOWED_TYPES;
+        const filtered = source.filter(type => DRILL_TYPES.includes(type));
+        return filtered.length > 0 ? Array.from(new Set(filtered)) : DEFAULT_ALLOWED_TYPES;
     }
 
     function buildRepairHint({ count, attempt }) {
@@ -214,6 +223,23 @@ Rules:
         return true;
     }
 
+    function normalizeSignatureValue(value) {
+        if (value === undefined || value === null) return '';
+        return String(value)
+            .trim()
+            .replace(/\s+/g, ' ')
+            .toLowerCase();
+    }
+
+    function buildDrillSignature(drill) {
+        return [
+            normalizeSignatureValue(drill?.type),
+            normalizeSignatureValue(drill?.skillId),
+            normalizeSignatureValue(drill?.content),
+            normalizeSignatureValue(drill?.answer)
+        ].join('::');
+    }
+
     /**
      * Generate drills for a specific skill using the active model.
      */
@@ -331,7 +357,7 @@ Rules:
     /**
      * Save generated drills to the store.
      */
-    async function saveDrills(drills) {
+    async function saveDrills(drills, options = {}) {
         DebugLog.log('[DrillGenerator] Saving drills:', {
             count: Array.isArray(drills) ? drills.length : 0,
             sample: (Array.isArray(drills) ? drills : []).slice(0, 3).map(d => ({
@@ -349,8 +375,56 @@ Rules:
         const store = new DrillStore.DrillStore();
         await store.init();
 
+        const allowedTypes = normalizeAllowedTypes(options.allowedTypes);
+        const maxPerSkill = toPositiveInt(options.maxPerSkill, DEFAULT_MAX_PER_SKILL);
+        const maxPerSkillType = toPositiveInt(options.maxPerSkillType, DEFAULT_MAX_PER_SKILL_TYPE);
+
+        const existing = await store.getAll();
+        const signatures = new Set(existing.map(buildDrillSignature));
+        const pendingExisting = existing.filter(d => d.status === 'pending' && allowedTypes.includes(d.type));
+        const skillCounts = new Map();
+        const skillTypeCounts = new Map();
+
+        for (const drill of pendingExisting) {
+            const skillId = normalizeSignatureValue(drill.skillId) || 'general';
+            const typeKey = `${skillId}::${drill.type}`;
+            skillCounts.set(skillId, (skillCounts.get(skillId) || 0) + 1);
+            skillTypeCounts.set(typeKey, (skillTypeCounts.get(typeKey) || 0) + 1);
+        }
+
         let saved = 0;
+        let skippedDuplicates = 0;
+        let skippedByTypeFilter = 0;
+        let skippedBySkillCap = 0;
+        let skippedByTypeCap = 0;
+        const savedDrills = [];
+
         for (const drill of drills) {
+            if (!allowedTypes.includes(drill.type)) {
+                skippedByTypeFilter++;
+                continue;
+            }
+
+            const signature = buildDrillSignature(drill);
+            if (signatures.has(signature)) {
+                skippedDuplicates++;
+                continue;
+            }
+
+            const skillId = normalizeSignatureValue(drill.skillId) || 'general';
+            const typeKey = `${skillId}::${drill.type}`;
+            const skillCount = skillCounts.get(skillId) || 0;
+            const skillTypeCount = skillTypeCounts.get(typeKey) || 0;
+
+            if (skillCount >= maxPerSkill) {
+                skippedBySkillCap++;
+                continue;
+            }
+            if (skillTypeCount >= maxPerSkillType) {
+                skippedByTypeCap++;
+                continue;
+            }
+
             const entity = DrillStore.createDrill({
                 type: drill.type,
                 skillId: drill.skillId,
@@ -360,11 +434,31 @@ Rules:
                 difficulty: drill.difficulty || 'medium'
             });
             await store.add(entity);
+            signatures.add(signature);
+            skillCounts.set(skillId, skillCount + 1);
+            skillTypeCounts.set(typeKey, skillTypeCount + 1);
+            savedDrills.push(drill);
             saved++;
         }
 
-        DebugLog.log(`[DrillGenerator] Saved ${saved} drills.`);
-        return { saved };
+        DebugLog.log('[DrillGenerator] Save summary:', {
+            saved,
+            skippedDuplicates,
+            skippedByTypeFilter,
+            skippedBySkillCap,
+            skippedByTypeCap,
+            maxPerSkill,
+            maxPerSkillType,
+            allowedTypes
+        });
+        return {
+            saved,
+            skippedDuplicates,
+            skippedByTypeFilter,
+            skippedBySkillCap,
+            skippedByTypeCap,
+            savedDrills
+        };
     }
 
     /**
@@ -375,11 +469,19 @@ Rules:
         const drillsPerSkill = toPositiveInt(options.drillsPerSkill, DEFAULT_DRILLS_PER_SKILL);
         const skillAttempts = toPositiveInt(options.skillAttempts, DEFAULT_SKILL_ATTEMPTS);
         const maxRetriesPerAttempt = toPositiveInt(options.maxRetriesPerAttempt, DEFAULT_MAX_RETRIES_PER_ATTEMPT);
+        const allowedTypes = normalizeAllowedTypes(options.allowedTypes);
+        const maxPerSkill = toPositiveInt(options.maxPerSkill, DEFAULT_MAX_PER_SKILL);
+        const maxPerSkillType = toPositiveInt(options.maxPerSkillType, DEFAULT_MAX_PER_SKILL_TYPE);
+        const maxTotalCandidate = toPositiveInt(options.maxTotalDrills, 0);
+        const maxTotalDrills = maxTotalCandidate > 0 ? maxTotalCandidate : null;
         const defaultMinTotalDrills = Math.max(
             drillsPerSkill,
             Math.min((Array.isArray(weakSkills) ? weakSkills.length : 2) * drillsPerSkill, DEFAULT_MIN_TOTAL_DRILLS)
         );
         const minTotalDrills = toPositiveInt(options.minTotalDrills, defaultMinTotalDrills);
+        const targetTotalDrills = maxTotalDrills
+            ? Math.min(minTotalDrills, maxTotalDrills)
+            : minTotalDrills;
         let totalGenerated = 0;
         const allDrills = [];
         const generatedBySkill = {};
@@ -387,8 +489,12 @@ Rules:
         DebugLog.log('[DrillGenerator] generateFromWeakSkills called:', {
             providedWeakSkills: Array.isArray(weakSkills) ? weakSkills.length : 0,
             drillsPerSkill,
-            minTotalDrills,
-            skillAttempts
+            minTotalDrills: targetTotalDrills,
+            maxTotalDrills,
+            skillAttempts,
+            allowedTypes,
+            maxPerSkill,
+            maxPerSkillType
         });
 
         // If no weakSkills provided, fetch from storage
@@ -442,25 +548,46 @@ Rules:
         }
 
         for (const skill of weakSkills) {
+            if (maxTotalDrills && allDrills.length >= maxTotalDrills) {
+                break;
+            }
+
+            const remainingBudget = maxTotalDrills
+                ? Math.max(0, maxTotalDrills - allDrills.length)
+                : drillsPerSkill;
+            const requestedCount = Math.min(drillsPerSkill, remainingBudget);
+            if (requestedCount <= 0) break;
+
             DebugLog.log('[DrillGenerator] Generating for skill:', {
                 skillId: skill.skillId,
                 insight: skill.insight || null
             });
             const drills = await generateDrillsForSkill(skill.skillId, {
-                count: drillsPerSkill,
+                count: requestedCount,
                 insight: skill.insight,
                 attempts: skillAttempts,
-                maxRetriesPerAttempt
+                maxRetriesPerAttempt,
+                types: allowedTypes
             });
 
-            if (drills.length > 0) {
-                await saveDrills(drills);
-                totalGenerated += drills.length;
-                allDrills.push(...drills);
-                generatedBySkill[skill.skillId] = (generatedBySkill[skill.skillId] || 0) + drills.length;
+            const cappedDrills = maxTotalDrills
+                ? drills.slice(0, Math.max(0, maxTotalDrills - allDrills.length))
+                : drills;
+
+            if (cappedDrills.length > 0) {
+                const persisted = await saveDrills(cappedDrills, {
+                    allowedTypes,
+                    maxPerSkill,
+                    maxPerSkillType
+                });
+                const savedDrills = persisted.savedDrills || [];
+                totalGenerated += savedDrills.length;
+                allDrills.push(...savedDrills);
+                generatedBySkill[skill.skillId] = (generatedBySkill[skill.skillId] || 0) + savedDrills.length;
                 DebugLog.log('[DrillGenerator] Generated drills for skill:', {
                     skillId: skill.skillId,
-                    count: drills.length
+                    requested: cappedDrills.length,
+                    saved: savedDrills.length
                 });
             } else {
                 DebugLog.warn('[DrillGenerator] No drills generated for skill:', {
@@ -469,11 +596,11 @@ Rules:
             }
         }
 
-        let remaining = minTotalDrills - allDrills.length;
+        let remaining = targetTotalDrills - allDrills.length;
         if (remaining > 0) {
             DebugLog.warn('[DrillGenerator] Total drills below target; running supplement pass:', {
                 current: allDrills.length,
-                target: minTotalDrills,
+                target: targetTotalDrills,
                 remaining
             });
 
@@ -482,35 +609,56 @@ Rules:
 
             for (const skill of prioritizedSkills) {
                 if (remaining <= 0) break;
+                if (maxTotalDrills && allDrills.length >= maxTotalDrills) break;
 
-                const supplementCount = Math.min(drillsPerSkill, remaining);
+                const remainingBudget = maxTotalDrills
+                    ? Math.max(0, maxTotalDrills - allDrills.length)
+                    : remaining;
+                const supplementCount = Math.min(drillsPerSkill, remaining, remainingBudget);
+                if (supplementCount <= 0) break;
                 const supplemental = await generateDrillsForSkill(skill.skillId, {
                     count: supplementCount,
                     insight: skill.insight,
                     attempts: Math.max(1, skillAttempts - 1),
-                    maxRetriesPerAttempt
+                    maxRetriesPerAttempt,
+                    types: allowedTypes
                 });
 
-                if (supplemental.length > 0) {
-                    await saveDrills(supplemental);
-                    totalGenerated += supplemental.length;
-                    allDrills.push(...supplemental);
-                    generatedBySkill[skill.skillId] = (generatedBySkill[skill.skillId] || 0) + supplemental.length;
-                    remaining -= supplemental.length;
+                const cappedSupplemental = maxTotalDrills
+                    ? supplemental.slice(0, Math.max(0, maxTotalDrills - allDrills.length))
+                    : supplemental;
+
+                if (cappedSupplemental.length > 0) {
+                    const persisted = await saveDrills(cappedSupplemental, {
+                        allowedTypes,
+                        maxPerSkill,
+                        maxPerSkillType
+                    });
+                    const savedDrills = persisted.savedDrills || [];
+                    totalGenerated += savedDrills.length;
+                    allDrills.push(...savedDrills);
+                    generatedBySkill[skill.skillId] = (generatedBySkill[skill.skillId] || 0) + savedDrills.length;
+                    remaining -= savedDrills.length;
                 }
             }
         }
 
-        remaining = minTotalDrills - allDrills.length;
+        remaining = targetTotalDrills - allDrills.length;
         if (remaining > 0) {
             const templateDrills = buildTemplateDrills(weakSkills, remaining);
             if (templateDrills.length > 0) {
-                await saveDrills(templateDrills);
-                totalGenerated += templateDrills.length;
-                allDrills.push(...templateDrills);
+                const persisted = await saveDrills(templateDrills, {
+                    allowedTypes,
+                    maxPerSkill,
+                    maxPerSkillType
+                });
+                const savedDrills = persisted.savedDrills || [];
+                totalGenerated += savedDrills.length;
+                allDrills.push(...savedDrills);
                 DebugLog.warn('[DrillGenerator] Added template fallback drills to hit minimum target:', {
-                    added: templateDrills.length,
-                    target: minTotalDrills,
+                    requested: templateDrills.length,
+                    added: savedDrills.length,
+                    target: targetTotalDrills,
                     final: allDrills.length
                 });
             }

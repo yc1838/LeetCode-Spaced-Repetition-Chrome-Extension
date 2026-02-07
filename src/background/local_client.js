@@ -150,7 +150,8 @@
         let result = await callOllama(prompt, modelId, endpoint);
 
         // Fallback to OpenAI-compatible route for LM Studio-style servers.
-        if (result.error && result.status === 404) {
+        // Some local gateways return 401/403/405 instead of 404 for unknown routes.
+        if (result.error && [401, 403, 404, 405].includes(result.status)) {
             result = await callOpenAICompatible(prompt, modelId, endpoint);
         }
 
