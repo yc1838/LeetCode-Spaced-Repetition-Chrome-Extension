@@ -419,16 +419,23 @@ export function renderGlobalHeatmap() {
         const cell = document.createElement('div');
         cell.className = 'cell';
 
+        // Give cells random initial colors so heatmap is visible immediately
+        const initialColor = Math.random();
+        if (initialColor > 0.95) cell.classList.add('v-4');
+        else if (initialColor > 0.85) cell.classList.add('v-3');
+        else if (initialColor > 0.70) cell.classList.add('v-2');
+        else if (initialColor > 0.50) cell.classList.add('v-1');
+
         // Randomly choose one of 5 animation patterns for variety
         const animationType = Math.floor(Math.random() * 5);
         cell.classList.add(`pulse-${animationType + 1}`);
 
         // Add random animation delay for natural staggered effect
-        const delay = Math.random() * 8; // 0-8 seconds
+        const delay = Math.random() * 3; // 0-3 seconds
         cell.style.animationDelay = `${delay}s`;
 
         // Add random animation duration for varied pacing
-        const duration = 4 + Math.random() * 6; // 4-10 seconds
+        const duration = 3 + Math.random() * 3; // 3-6 seconds
         cell.style.animationDuration = `${duration}s`;
 
         grid.appendChild(cell);

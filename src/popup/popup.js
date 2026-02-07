@@ -73,9 +73,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 1.5 Live refresh when notes update in storage
     setupStorageListeners();
 
-    // 2. Enable Test Mode logic (simulation date picker)
-    await setupTestMode();
-
     // 3. Enable sidebar tools (Purge, Sync buttons)
     setupManualTools();
 });
@@ -359,7 +356,7 @@ function setupSidebar(dueProblems, allProblems) {
 
     tabDash.onclick = () => {
         updateTabUI(tabDash, [tabAll, tabStats, tabNeural]);
-        title.innerText = "ACTIVE_PROBLEM_VECTORS";
+        title.innerText = "PROBLEMS DUE TODAY";
         toggleViews('dashboard');
         renderVectors(dueProblems, 'vector-list', true);
     };
@@ -384,7 +381,7 @@ function setupSidebar(dueProblems, allProblems) {
 
     tabAll.onclick = () => {
         updateTabUI(tabAll, [tabDash, tabStats, tabNeural]);
-        title.innerText = "ALL_ARCHIVED_VECTORS";
+        title.innerText = "ALL PROBLEMS";
         toggleViews('dashboard');
         renderVectors(allProblems, 'vector-list', false);
     };
@@ -508,11 +505,6 @@ function renderStatsChart(container, stats) {
     // 1. Group Tags by Family
     let html = '<div style="display:flex; flex-direction:column; gap:15px;">';
 
-    // Add Fix Button if legacy data detected (determined by 'UNSPECIFIED' presence usually, but let's just add it at bottom or top)
-    html += `<div style="display:flex; justify-content:flex-end;">
-       <button id="btn-fix-stats" style="background:none; border:1px solid rgba(255,255,255,0.2); color:rgba(255,255,255,0.6); font-size:0.6em; padding:2px 5px; cursor:pointer;">⚡ REPAIR DATA</button>
-    </div>`;
-
     html += '<div style="font-size:0.7em; opacity:0.7; letter-spacing:1px; margin-bottom:5px;">WEAKNESS_TOPOLOGY // HIERARCHY</div>';
     // We already have stats.byFamily (counts) and stats.byTag (counts). 
     // But we need to know WHICH tag belongs to WHICH family. 
@@ -589,12 +581,6 @@ function renderStatsChart(container, stats) {
     html += '</div>';
 
     container.innerHTML = html;
-
-    // Bind Repair Button
-    const repairBtn = document.getElementById('btn-fix-stats');
-    if (repairBtn) {
-        repairBtn.onclick = () => runMigrationInPopup(repairBtn);
-    }
 }
 
 // renderVectors moved to popup_ui.js
@@ -711,65 +697,8 @@ function setupManualTools() {
 
 // showNotification moved to popup_ui.js
 
-// --- Test Mode Logic ---
-let isTestMode = false;
-let testDate = null;
-
-async function setupTestMode() {
-    const toggle = document.getElementById('test-mode-toggle');
-    const dateInput = document.getElementById('test-mode-date');
-    const controls = document.getElementById('sim-controls');
-
-    // Load saved state
-    const storage = await chrome.storage.local.get({ testMode: false, testDate: null });
-    isTestMode = storage.testMode;
-    testDate = storage.testDate;
-
-    // Set initial UI state
-    if (toggle) toggle.checked = isTestMode;
-    if (dateInput) dateInput.value = testDate || new Date().toISOString().split('T')[0];
-
-    // Show/Hide controls based on mode
-    if (controls) controls.style.display = isTestMode ? 'block' : 'none';
-
-    // Toggle Change Listener
-    if (toggle) {
-        toggle.onchange = async () => {
-            isTestMode = toggle.checked;
-            if (controls) controls.style.display = isTestMode ? 'block' : 'none'; // UI Update
-
-            // If enabling and no date set, default to today
-            if (isTestMode && dateInput && !dateInput.value) {
-                dateInput.value = new Date().toISOString().split('T')[0];
-                testDate = dateInput.value;
-            }
-
-            await chrome.storage.local.set({ testMode: isTestMode, testDate: dateInput ? dateInput.value : null });
-            await updateDashboard();
-        };
-    }
-
-    // Date Change Listener
-    if (dateInput) {
-        dateInput.onchange = async () => {
-            testDate = dateInput.value;
-            await chrome.storage.local.set({ testDate: testDate });
-            // Only refresh if test mode is actually on
-            if (isTestMode) {
-                await updateDashboard();
-            }
-        };
-    }
-}
-
 function getCurrentDate() {
-    // In Test Mode, use the selected date at 23:59:59
-    if (isTestMode && testDate) {
-        const [year, month, day] = testDate.split('-').map(Number);
-        return new Date(year, month - 1, day, 23, 59, 59);
-    }
-
-    // In Normal Mode, ALSO use today at 23:59:59
+    // Use today at 23:59:59
     // This ensures that any Card due "Today" (even if due at 10pm and it's 9am)
     // shows up in the "Due" list. Standard SRS behavior: "Due" = "Due Today".
     const now = new Date();

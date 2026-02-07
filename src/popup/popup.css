@@ -383,26 +383,12 @@ body::before {
     animation: colorPulse5 6.5s ease-in-out infinite;
 }
 
-/* Animation 1: Dim to Magenta to Dim */
+/* Animation 1: Magenta to Pink cycle */
 @keyframes colorPulse1 {
     0%, 100% {
-        background: rgba(255, 255, 255, 0.04);
-        border-color: rgba(255, 255, 255, 0.08);
-        box-shadow: none;
-    }
-    50% {
         background: var(--cell-1);
         border-color: var(--cell-1);
         box-shadow: 0 0 4px var(--cell-1);
-    }
-}
-
-/* Animation 2: Dim to Pink to Dim */
-@keyframes colorPulse2 {
-    0%, 100% {
-        background: rgba(255, 255, 255, 0.04);
-        border-color: rgba(255, 255, 255, 0.08);
-        box-shadow: none;
     }
     50% {
         background: var(--cell-2);
@@ -411,12 +397,12 @@ body::before {
     }
 }
 
-/* Animation 3: Dim to Peach to Dim */
-@keyframes colorPulse3 {
+/* Animation 2: Pink to Peach cycle */
+@keyframes colorPulse2 {
     0%, 100% {
-        background: rgba(255, 255, 255, 0.04);
-        border-color: rgba(255, 255, 255, 0.08);
-        box-shadow: none;
+        background: var(--cell-2);
+        border-color: var(--cell-2);
+        box-shadow: 0 0 6px var(--cell-2);
     }
     50% {
         background: var(--cell-3);
@@ -425,12 +411,12 @@ body::before {
     }
 }
 
-/* Animation 4: Dim to Bright Orange to Dim (Brightest!) */
-@keyframes colorPulse4 {
+/* Animation 3: Peach to Orange cycle */
+@keyframes colorPulse3 {
     0%, 100% {
-        background: rgba(255, 255, 255, 0.04);
-        border-color: rgba(255, 255, 255, 0.08);
-        box-shadow: none;
+        background: var(--cell-3);
+        border-color: var(--cell-3);
+        box-shadow: 0 0 8px var(--cell-3);
     }
     50% {
         background: var(--cell-4);
@@ -439,24 +425,33 @@ body::before {
     }
 }
 
-/* Animation 5: Gradient through all colors */
-@keyframes colorPulse5 {
+/* Animation 4: Bright Orange pulsing */
+@keyframes colorPulse4 {
     0%, 100% {
-        background: rgba(255, 255, 255, 0.04);
-        border-color: rgba(255, 255, 255, 0.08);
-        box-shadow: none;
-    }
-    25% {
-        background: var(--cell-1);
-        border-color: var(--cell-1);
-        box-shadow: 0 0 4px var(--cell-1);
+        background: var(--cell-4);
+        border-color: var(--cell-4);
+        box-shadow: 0 0 12px var(--cell-4), 0 0 24px var(--cell-4);
     }
     50% {
         background: var(--cell-3);
         border-color: var(--cell-3);
         box-shadow: 0 0 8px var(--cell-3);
     }
-    75% {
+}
+
+/* Animation 5: Full spectrum cycle */
+@keyframes colorPulse5 {
+    0%, 100% {
+        background: var(--cell-1);
+        border-color: var(--cell-1);
+        box-shadow: 0 0 4px var(--cell-1);
+    }
+    33% {
+        background: var(--cell-3);
+        border-color: var(--cell-3);
+        box-shadow: 0 0 8px var(--cell-3);
+    }
+    66% {
         background: var(--cell-4);
         border-color: var(--cell-4);
         box-shadow: 0 0 12px var(--cell-4), 0 0 24px var(--cell-4);

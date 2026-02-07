@@ -103,31 +103,17 @@
             <!-- COGNITIVE MAP (Global Stats) -->
             <section class="heatmap-container">
                 <div class="heatmap-header">
-                    <span id="welcome-message">WELCOME BACK, CODER</span>
+                    <span id="welcome-message">WELCOME! READY FOR SOME LEETCODE?</span>
                 </div>
                 <div class="heatmap-grid" id="global-heatmap">
                     <!-- JS Generated Cells -->
                 </div>
             </section>
 
-            <!-- Test Mode (Hidden unless toggled) -->
-            <div class="sim-controls" id="sim-controls"
-                style="display:none; border:1px solid var(--electric); padding:10px; margin-bottom:15px; background: rgba(45, 226, 230, 0.05);">
-                <div class="heatmap-header">SIMULATION_MODE_ACTIVE</div>
-                <input type="date" id="test-mode-date"
-                    style="background:transparent; border:none; color:var(--electric); font-family:inherit; width:100%;">
-            </div>
-
             <!-- ACTIVE VECTORS (Queue) -->
             <section>
-                <div class="heatmap-header" style="margin-bottom: 15px; display:flex; justify-content:space-between;">
-                    <span id="queue-title">ACTIVE_PROBLEM_VECTORS</span>
-
-                    <!-- Custom Switch for Test Mode -->
-                    <label style="cursor:pointer; display:flex; align-items:center; gap:5px; font-size:0.6rem;">
-                        <input type="checkbox" id="test-mode-toggle" style="display:none;">
-                        <span style="color:var(--terminal);">[SIM_MODE]</span>
-                    </label>
+                <div class="heatmap-header" style="margin-bottom: 15px;">
+                    <span id="queue-title">PROBLEMS DUE TODAY</span>
                 </div>
 
                 <div class="vector-list" id="vector-list">
@@ -138,7 +124,7 @@
 
             <!-- STATS VIEW (Hidden by default) -->
             <section id="stats-container" style="display:none; padding:15px;">
-                <div class="heatmap-header">WEAKNESS_RADAR</div>
+                <div class="heatmap-header">WEAKNESS RADAR</div>
                 <div id="stats-content" style="margin-top:20px; color: var(--electric);">
                     <div class="stat-loading">Connecting to LeetCode Neural Link...</div>
                 </div>
