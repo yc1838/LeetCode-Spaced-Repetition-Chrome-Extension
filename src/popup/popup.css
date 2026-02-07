@@ -362,6 +362,107 @@ body::before {
     box-shadow: 0 0 12px var(--cell-4), 0 0 24px var(--cell-4);
 }
 
+/* Animated Heatmap Cells - Multiple Variations */
+.pulse-1 {
+    animation: colorPulse1 5s ease-in-out infinite;
+}
+
+.pulse-2 {
+    animation: colorPulse2 6s ease-in-out infinite;
+}
+
+.pulse-3 {
+    animation: colorPulse3 7s ease-in-out infinite;
+}
+
+.pulse-4 {
+    animation: colorPulse4 5.5s ease-in-out infinite;
+}
+
+.pulse-5 {
+    animation: colorPulse5 6.5s ease-in-out infinite;
+}
+
+/* Animation 1: Dim to Magenta to Dim */
+@keyframes colorPulse1 {
+    0%, 100% {
+        background: rgba(255, 255, 255, 0.04);
+        border-color: rgba(255, 255, 255, 0.08);
+        box-shadow: none;
+    }
+    50% {
+        background: var(--cell-1);
+        border-color: var(--cell-1);
+        box-shadow: 0 0 4px var(--cell-1);
+    }
+}
+
+/* Animation 2: Dim to Pink to Dim */
+@keyframes colorPulse2 {
+    0%, 100% {
+        background: rgba(255, 255, 255, 0.04);
+        border-color: rgba(255, 255, 255, 0.08);
+        box-shadow: none;
+    }
+    50% {
+        background: var(--cell-2);
+        border-color: var(--cell-2);
+        box-shadow: 0 0 6px var(--cell-2);
+    }
+}
+
+/* Animation 3: Dim to Peach to Dim */
+@keyframes colorPulse3 {
+    0%, 100% {
+        background: rgba(255, 255, 255, 0.04);
+        border-color: rgba(255, 255, 255, 0.08);
+        box-shadow: none;
+    }
+    50% {
+        background: var(--cell-3);
+        border-color: var(--cell-3);
+        box-shadow: 0 0 8px var(--cell-3);
+    }
+}
+
+/* Animation 4: Dim to Bright Orange to Dim (Brightest!) */
+@keyframes colorPulse4 {
+    0%, 100% {
+        background: rgba(255, 255, 255, 0.04);
+        border-color: rgba(255, 255, 255, 0.08);
+        box-shadow: none;
+    }
+    50% {
+        background: var(--cell-4);
+        border-color: var(--cell-4);
+        box-shadow: 0 0 12px var(--cell-4), 0 0 24px var(--cell-4);
+    }
+}
+
+/* Animation 5: Gradient through all colors */
+@keyframes colorPulse5 {
+    0%, 100% {
+        background: rgba(255, 255, 255, 0.04);
+        border-color: rgba(255, 255, 255, 0.08);
+        box-shadow: none;
+    }
+    25% {
+        background: var(--cell-1);
+        border-color: var(--cell-1);
+        box-shadow: 0 0 4px var(--cell-1);
+    }
+    50% {
+        background: var(--cell-3);
+        border-color: var(--cell-3);
+        box-shadow: 0 0 8px var(--cell-3);
+    }
+    75% {
+        background: var(--cell-4);
+        border-color: var(--cell-4);
+        box-shadow: 0 0 12px var(--cell-4), 0 0 24px var(--cell-4);
+    }
+}
+
 /* PROBLEM VECTORS (CARDS) */
 .vector-list {
     display: flex;

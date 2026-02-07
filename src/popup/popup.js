@@ -284,13 +284,6 @@ async function updateDashboard() {
     // Sort All Problems: Sort exactly like dueProblems (Ascending Review Date)
     problems.sort((a, b) => new Date(a.nextReviewDate) - new Date(b.nextReviewDate));
 
-    // Update stats
-    const streakEl = document.getElementById('streak-display');
-    if (streakEl) {
-        const count = await calculateStreakFn();
-        streakEl.innerText = `STREAK: ${count}`;
-    }
-
     // Initial Render
     // 'dashboard' view = Due Problems
     renderVectors(dueProblems, 'vector-list', true);

@@ -414,16 +414,23 @@ export function renderGlobalHeatmap() {
     if (!grid) return;
     grid.innerHTML = '';
 
-    // random decorative data for "Vibes"
+    // Create animated cells with natural color transitions
     for (let i = 0; i < 140; i++) {
         const cell = document.createElement('div');
         cell.className = 'cell';
-        const rand = Math.random();
-        // Weighted towards empty/low
-        if (rand > 0.95) cell.classList.add('v-4');
-        else if (rand > 0.85) cell.classList.add('v-3');
-        else if (rand > 0.70) cell.classList.add('v-2');
-        else if (rand > 0.50) cell.classList.add('v-1');
+
+        // Randomly choose one of 5 animation patterns for variety
+        const animationType = Math.floor(Math.random() * 5);
+        cell.classList.add(`pulse-${animationType + 1}`);
+
+        // Add random animation delay for natural staggered effect
+        const delay = Math.random() * 8; // 0-8 seconds
+        cell.style.animationDelay = `${delay}s`;
+
+        // Add random animation duration for varied pacing
+        const duration = 4 + Math.random() * 6; // 4-10 seconds
+        cell.style.animationDuration = `${duration}s`;
+
         grid.appendChild(cell);
     }
 }
