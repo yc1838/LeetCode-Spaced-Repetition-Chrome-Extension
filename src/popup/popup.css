@@ -235,6 +235,11 @@ body::before {
     stroke: var(--void);
 }
 
+.nav-icon-setup svg {
+    width: 18px;
+    height: 18px;
+}
+
 /* MAIN CONTENT AREA */
 .viewport {
     padding: 15px;
