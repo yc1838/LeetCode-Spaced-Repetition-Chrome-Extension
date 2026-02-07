@@ -7,13 +7,17 @@
   - Updated options UI (`options.html` / `options.js`) to queue-refill terminology plus richer status messages (snapshot, cooldown, queue-full, fallback reasons).
   - Improved drill flow UX in `drill_init.js` (return-to-overview navigation) and broadened local gateway fallback handling in `local_client.js`.
   - Switched skill graph rendering in `skill_graph.js` to weakest-first bar chart layout for faster read of low-confidence families.
+  - Moved streak repair from popup to options page as a dedicated tool section (date input + repair action + localized status messaging) and removed the popup streak-repair button/handler.
+  - Ran `npm run build` successfully after the popup/options tool relocation.
+  - Ran `npm test`; failures are currently in existing Jest/module-compat suites (`self is not defined` in `skill_matrix.js` and ESM/CommonJS parsing mismatches in popup tests).
 - Next:
-  - Run `npm run build` and `npm test` to validate refill/queue refactor stability.
+  - Unblock Jest environment/module compatibility issues, then rerun `npm test` for full validation.
   - Smoke test manual refill scenarios end-to-end (queue full, cooldown, missing key, no weak skills).
+  - Smoke test streak repair in options and confirm popup no longer shows the streak-repair control.
   - Continue Chrome Web Store readiness work (icons, manifest/package checklist, hosted privacy-policy URL).
 - Blockers:
   - Hosted public URL for privacy policy is still missing.
-  - Latest refill changes are not yet validated by full build/test pass.
+  - Full test pass is blocked by existing Jest environment/module compatibility issues (`self` global expectation + ESM/CommonJS parsing setup).
 - Risk: at-risk
 
 ---

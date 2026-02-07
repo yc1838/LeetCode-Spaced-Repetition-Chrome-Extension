@@ -678,34 +678,6 @@ async function calculateStreakFn() {
 
 // --- Manual Tools Logic ---
 function setupManualTools() {
-    // "Repair Streak" button
-    const btnRepair = document.getElementById('btn-repair');
-    if (btnRepair) {
-        btnRepair.onclick = async () => {
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            const defaultDate = yesterday.toISOString().split('T')[0];
-
-            const input = prompt("Streak broken? Enter a date (YYYY-MM-DD) to mark as 'Active':", defaultDate);
-            if (input) {
-                // Basic Validation
-                if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
-                    showNotification('error', 'INVALID_DATE', 'Format must be YYYY-MM-DD');
-                    return;
-                }
-
-                // Call storage.js function
-                if (typeof logActivity === 'function') {
-                    await logActivity(input);
-                    showNotification('success', 'STREAK_REPAIRED', `Activity logged for ${input}.`);
-                    await updateDashboard(); // Refund UI
-                } else {
-                    showNotification('error', 'ERROR', 'Storage module not loaded.');
-                }
-            }
-        };
-    }
-
     // "Sync" button (Manual Scan)
     document.getElementById('btn-sync').onclick = async () => {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });

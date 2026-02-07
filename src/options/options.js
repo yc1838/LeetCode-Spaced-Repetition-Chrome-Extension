@@ -87,7 +87,15 @@
             status_fallback_history_low_ratings: 'used low-rating history as weak-skill fallback',
             status_fallback_history_topics: 'used topic history as weak-skill fallback',
             status_fallback_no_history: 'no history available for weak-skill fallback',
-            status_agent_saved: '✅ Settings saved!'
+            status_agent_saved: '✅ Settings saved!',
+            tools_heading: '🧰 Tools',
+            tools_hint: 'Manual maintenance utilities.',
+            streak_repair_date_label: 'Date to mark active (YYYY-MM-DD)',
+            streak_repair_hint: 'Use this when a streak day was missed because activity was not logged.',
+            streak_repair_button: 'Repair Streak Day',
+            status_streak_invalid_date: 'Invalid date. Use YYYY-MM-DD.',
+            status_streak_repair_saved: '✅ Streak activity logged for {date}.',
+            status_streak_repair_exists: 'ℹ️ {date} is already in your streak log.'
         },
         zh: {
             page_title: 'LeetCode EasyRepeat - AI 设置',
@@ -196,7 +204,15 @@
             status_fallback_history_low_ratings: '使用了低分历史作为弱项兜底',
             status_fallback_history_topics: '使用了题目主题历史作为弱项兜底',
             status_fallback_no_history: '没有可用历史记录用于弱项兜底',
-            status_agent_saved: '✅ 设置已保存！'
+            status_agent_saved: '✅ 设置已保存！',
+            tools_heading: '🧰 工具',
+            tools_hint: '用于手动维护的实用工具。',
+            streak_repair_date_label: '补记活跃日期（YYYY-MM-DD）',
+            streak_repair_hint: '当某天活动未被记录导致断签时，可在这里补记。',
+            streak_repair_button: '补记连续天数',
+            status_streak_invalid_date: '日期格式错误，请使用 YYYY-MM-DD。',
+            status_streak_repair_saved: '✅ 已记录 {date} 的活跃状态。',
+            status_streak_repair_exists: 'ℹ️ {date} 已存在于连续记录中。'
         }
     };
 
@@ -464,7 +480,8 @@
             showStatus(
                 els.aiGateStatus,
                 normalized ? t('status_ai_gate_enabled') : t('status_ai_gate_disabled'),
-                'ok'
+                'ok',
+                { sticky: true }
             );
         }
     }
@@ -477,7 +494,7 @@
             els.langSelect.value = currentLanguage;
         }
         applyTranslations();
-        await applyAiAnalysisSetting(settings.aiAnalysisEnabled !== false);
+        await applyAiAnalysisSetting(settings.aiAnalysisEnabled !== false, { notify: true });
 
         const mode = settings.aiProvider === 'cloud' ? 'cloud' : 'local';
         if (mode === 'local') {
@@ -538,6 +555,43 @@
         }, timeout);
 
         statusTimers.set(el, timerId);
+    }
+
+    function getYesterdayDateString() {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    function isValidDateString(value) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+        const parsed = new Date(`${value}T00:00:00`);
+        if (Number.isNaN(parsed.getTime())) return false;
+        const normalized = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+        return normalized === value;
+    }
+
+    async function repairStreakForDate(dateValue, statusEl) {
+        if (!isValidDateString(dateValue)) {
+            showStatus(statusEl, t('status_streak_invalid_date'), 'error', { sticky: true });
+            return;
+        }
+
+        const { activityLog } = await chrome.storage.local.get({ activityLog: [] });
+        const log = Array.isArray(activityLog) ? [...activityLog] : [];
+
+        if (log.includes(dateValue)) {
+            showStatus(statusEl, t('status_streak_repair_exists', { date: dateValue }), 'ok', { sticky: true });
+            return;
+        }
+
+        log.push(dateValue);
+        log.sort();
+        await chrome.storage.local.set({ activityLog: log });
+        showStatus(statusEl, t('status_streak_repair_saved', { date: dateValue }), 'ok', { sticky: true });
     }
 
     function normalizeEndpoint(input) {
@@ -621,6 +675,7 @@
                 const mode = els.modeLocal.checked ? 'local' : 'cloud';
                 const selectedModelId = els.modelSelect.value;
                 setModeUI(mode, selectedModelId);
+                await applyAiAnalysisSetting(Boolean(els.aiAnalysisEnabled?.checked), { notify: true });
 
                 await chrome.storage.local.set({ uiLanguage: currentLanguage });
             });
@@ -777,6 +832,9 @@
         const debugLogsInput = getEl('debug-logs');
         const saveAgentBtn = getEl('save-agent-settings');
         const agentSaveStatus = getEl('agent-save-status');
+        const streakRepairDateInput = getEl('streak-repair-date');
+        const streakRepairBtn = getEl('streak-repair-btn');
+        const streakRepairStatus = getEl('streak-repair-status');
 
         const agentSettings = await chrome.storage.local.get({
             agentDigestTime: '02:00',
@@ -799,6 +857,24 @@
                     showStatus(agentSaveStatus, t('status_agent_saved'), 'ok');
                 } catch (e) {
                     showStatus(agentSaveStatus, t('status_error_prefix') + e.message, 'error');
+                }
+            });
+        }
+
+        if (streakRepairDateInput && !streakRepairDateInput.value) {
+            streakRepairDateInput.value = getYesterdayDateString();
+        }
+
+        if (streakRepairBtn) {
+            streakRepairBtn.addEventListener('click', async () => {
+                const dateValue = (streakRepairDateInput?.value || '').trim();
+                try {
+                    streakRepairBtn.disabled = true;
+                    await repairStreakForDate(dateValue, streakRepairStatus);
+                } catch (e) {
+                    showStatus(streakRepairStatus, t('status_error_prefix') + e.message, 'error', { sticky: true });
+                } finally {
+                    streakRepairBtn.disabled = false;
                 }
             });
         }

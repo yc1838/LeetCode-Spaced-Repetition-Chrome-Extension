@@ -1,6 +1,14 @@
 # Change Log
 
 ## 2026-02-07
+- Timestamp: 2026-02-07T16:32:16-0500
+- Change: Moved the streak-fix tool from popup sidebar into the options/setup page as a dedicated tool card at the end, and removed popup streak-repair wiring.
+- Reason: Keep popup focused on daily review/scan flow while keeping manual maintenance actions in setup.
+- Impact: Popup is less cluttered, and streak repair is now available in options with explicit date input, validation, and status feedback.
+- Scope Decision: in-scope
+
+---
+
 - Timestamp: 2026-02-07T15:59:33-0500
 - Change: Refactored manual drill generation into a queue-refill flow (targeted pending count, cooldown, queue cleanup/rotation, dedupe, and per-skill/per-type caps), and updated options UI/status copy to match the new behavior.
 - Reason: Prevent queue bloat and duplicate drills while making refill results predictable and visible to users.

@@ -262,6 +262,22 @@ Use the server URL shown in the UI (usually http://localhost:1234)</code></pre>
             </div>
         </section>
 
+        <section class="card" id="tools-card">
+            <h2 data-i18n="tools_heading">🧰 Tools</h2>
+            <p class="hint" data-i18n="tools_hint">Manual maintenance utilities.</p>
+            <div class="grid" style="gap: 15px; margin-top: 15px;">
+                <div class="field">
+                    <label for="streak-repair-date" data-i18n="streak_repair_date_label">Date to mark active (YYYY-MM-DD)</label>
+                    <input type="date" id="streak-repair-date">
+                    <span class="hint" data-i18n="streak_repair_hint">Use this when a streak day was missed because activity was not logged.</span>
+                </div>
+            </div>
+            <div class="actions">
+                <button id="streak-repair-btn" class="btn" data-i18n="streak_repair_button">Repair Streak Day</button>
+                <span id="streak-repair-status" class="status-text"></span>
+            </div>
+        </section>
+
     </div>
 
     <script type="module" src="options.entry.js"></script>
