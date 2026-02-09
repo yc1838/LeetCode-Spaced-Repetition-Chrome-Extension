@@ -102,8 +102,12 @@
 
             <!-- COGNITIVE MAP (Global Stats) -->
             <section class="heatmap-container">
-                <div class="heatmap-header">
+                <div class="heatmap-header heatmap-header-welcome">
                     <span id="welcome-message">WELCOME! READY FOR SOME LEETCODE?</span>
+                    <span id="streak-display" aria-live="polite">
+                        <span class="streak-label">STREAK DAYS:</span>
+                        <span id="streak-value" class="streak-value">--</span>
+                    </span>
                 </div>
                 <div class="heatmap-grid" id="global-heatmap">
                     <!-- JS Generated Cells -->
@@ -132,12 +136,8 @@
 
             <!-- NEURAL AGENT VIEW (Hidden by default) -->
             <section id="neural-container" style="display:none; padding:15px;">
-                <div class="heatmap-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <div class="heatmap-header">
                     <span>NEURAL_RETENTION_AGENT</span>
-                    <label class="agent-toggle-switch">
-                        <input type="checkbox" id="agent-enabled-toggle">
-                        <span class="toggle-slider"></span>
-                    </label>
                 </div>
 
                 <!-- Skill DNA Graph -->

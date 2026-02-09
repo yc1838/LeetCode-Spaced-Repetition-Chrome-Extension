@@ -1,5 +1,14 @@
 # Change Log
 
+## 2026-02-09
+- Timestamp: 2026-02-09T16:26:11-0500
+- Change: Restored popup streak display in the heatmap header, reconnected streak calculation rendering, and updated header layout so long welcome text wraps on the left while streak stays visible on the right.
+- Reason: User-facing regression where streak value disappeared after popup header text refactors and custom welcome copy changes.
+- Impact: Popup now consistently shows streak days again and supports long welcome messages without hiding streak information.
+- Scope Decision: in-scope
+
+---
+
 ## 2026-02-07
 - Timestamp: 2026-02-07T16:32:16-0500
 - Change: Moved the streak-fix tool from popup sidebar into the options/setup page as a dedicated tool card at the end, and removed popup streak-repair wiring.

@@ -267,6 +267,46 @@ body::before {
     color: var(--electric);
 }
 
+.heatmap-header-welcome {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    column-gap: 8px;
+}
+
+#welcome-message {
+    min-width: 0;
+    line-height: 1.35;
+    white-space: normal;
+    word-break: break-word;
+}
+
+#streak-display {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    text-align: right;
+}
+
+#streak-display .streak-label {
+    font-size: 0.55rem;
+    letter-spacing: 0.7px;
+    line-height: 1;
+    opacity: 0.85;
+}
+
+#streak-display .streak-value {
+    min-width: 2ch;
+    text-align: right;
+    font-family: 'Space Mono', monospace;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--terminal);
+    text-shadow: 0 0 10px var(--border-glow);
+}
+
 .heatmap-grid {
     display: grid;
     /* 5 rows, auto columns */

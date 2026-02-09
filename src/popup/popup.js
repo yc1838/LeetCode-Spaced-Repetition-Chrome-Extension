@@ -281,6 +281,19 @@ async function updateDashboard() {
     // Sort All Problems: Sort exactly like dueProblems (Ascending Review Date)
     problems.sort((a, b) => new Date(a.nextReviewDate) - new Date(b.nextReviewDate));
 
+    // Update streak display in the heatmap header
+    const streakValueEl = document.getElementById('streak-value');
+    if (streakValueEl) {
+        const streakCount = await calculateStreakFn();
+        streakValueEl.innerText = String(streakCount);
+    } else {
+        const streakEl = document.getElementById('streak-display');
+        if (streakEl) {
+            const streakCount = await calculateStreakFn();
+            streakEl.innerText = `STREAK DAYS: ${streakCount}`;
+        }
+    }
+
     // Initial Render
     // 'dashboard' view = Due Problems
     renderVectors(dueProblems, 'vector-list', true);
@@ -444,32 +457,6 @@ async function loadStats() {
  */
 async function loadNeuralAgent() {
     const graphContainer = document.getElementById('skill-graph-container');
-    const queueContainer = document.getElementById('drill-queue-list');
-    const toggle = document.getElementById('agent-enabled-toggle');
-
-    // Check if agent is enabled
-    const storage = await chrome.storage.local.get({ agentEnabled: false });
-    if (toggle) toggle.checked = storage.agentEnabled;
-
-    // Toggle handler
-    if (toggle) {
-        toggle.onchange = async () => {
-            await chrome.storage.local.set({ agentEnabled: toggle.checked });
-            await loadNeuralAgent(); // Re-render
-        };
-    }
-
-    if (!storage.agentEnabled) {
-        graphContainer.innerHTML = `
-            <div style="text-align:center; color:var(--terminal); opacity:0.7;">
-                <div style="font-size:24px; margin-bottom:10px;">🧠</div>
-                <div>Neural Agent is disabled.</div>
-                <div style="font-size:0.7em; margin-top:5px;">Enable it above to visualize your Skill DNA.</div>
-            </div>
-        `;
-        queueContainer.innerHTML = '';
-        return;
-    }
 
     // Render Skill Graph (demo data for now)
     if (typeof window.SkillGraph !== 'undefined') {
@@ -492,8 +479,6 @@ async function loadNeuralAgent() {
     } else {
         graphContainer.innerHTML = '<div style="color:var(--accent)">SkillGraph not loaded</div>';
     }
-
-    // Drill queue feature removed per user request
 }
 
 function renderStatsChart(container, stats) {
