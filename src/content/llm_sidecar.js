@@ -41,6 +41,7 @@
     const CHAT_MODELS = ALL_MODELS.filter(m => m.type !== 'embedding');
     const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
     const DEPRECATED_GEMINI_MODELS = new Set(['gemini-1.5-flash', 'gemini-1.5-pro']);
+    const NEURAL_LINK_UI_ENABLED = false;
 
     function normalizeGeminiModelId(modelId) {
         if (!modelId || typeof modelId !== 'string') return DEFAULT_GEMINI_MODEL;
@@ -678,7 +679,6 @@
         }
 
         return displayAdvice;
-        return displayAdvice;
     }
 
     async function reclassifyMistakes(onProgress) {
@@ -1007,12 +1007,22 @@
     // --- Initialization ---
 
     function init() {
+        // Remove any stale UI from previous injections, then keep logic APIs active.
+        const existingRoot = document.getElementById('llm-sidecar-root');
+        if (existingRoot) existingRoot.remove();
+        container = null;
+        loadState();
+
+        if (!NEURAL_LINK_UI_ENABLED) {
+            state.isOpen = false;
+            console.log("[LLMSidecar] Neural Link UI disabled. Analysis APIs remain active.");
+            return;
+        }
+
         // Create root container
         container = createElement('div', 'llm-sidecar-container');
         container.id = 'llm-sidecar-root';
         document.body.appendChild(container);
-
-        loadState();
         render();
         console.log("[LLMSidecar] Neural Link Active.");
     }

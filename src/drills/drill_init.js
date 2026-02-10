@@ -182,6 +182,15 @@
         const index = sessionDrills.findIndex(d => d.id === drill.id);
         const current = index + 1;
 
+        if (drill.type === 'muscle-memory') {
+            console.log('[DrillAI] Rendering muscle-memory drill', {
+                drillId: drill.id,
+                skillId: drill.skillId,
+                sessionIndex: current,
+                sessionTotal: total
+            });
+        }
+
         const progressText = document.getElementById('drill-progress');
         const progressFill = document.getElementById('progress-fill');
 
@@ -238,8 +247,27 @@
         // Submit handler: verify answer, show result, then wire Next/Finish.
         document.getElementById('btn-submit').onclick = async () => {
             const answer = DrillPage.getUserAnswer(drill.type);
+            const answerLineCount = answer ? answer.split('\n').length : 0;
+
+            if (drill.type === 'muscle-memory') {
+                console.log('[DrillAI] Submit clicked', {
+                    drillId: drill.id,
+                    skillId: drill.skillId,
+                    answerLength: answer.length,
+                    answerLineCount,
+                    hasCodeGenerator: typeof CodeGeneratorAgent !== 'undefined',
+                    hasInputHandler: typeof DrillInputHandler !== 'undefined',
+                    hasHallucinationChecker: typeof HallucinationChecker !== 'undefined',
+                    hasAsyncNotifier: typeof AsyncNotifier !== 'undefined'
+                });
+            }
 
             if (!answer.trim()) {
+                if (drill.type === 'muscle-memory') {
+                    console.warn('[DrillAI] Empty answer blocked', {
+                        drillId: drill.id
+                    });
+                }
                 alert('Please enter an answer');
                 return;
             }
@@ -255,6 +283,7 @@
                     drillId: drill.id,
                     skillId: drill.skillId,
                     inputLength: answer.length,
+                    inputLineCount: answerLineCount,
                     inputPreview: answerPreview
                 });
 
@@ -281,10 +310,22 @@
                     const inputInfo = typeof DrillInputHandler !== 'undefined'
                         ? DrillInputHandler.parseInput(answer)
                         : { type: 'pseudo-code', content: answer };
+                    const inputValidation = typeof DrillInputHandler !== 'undefined'
+                        ? DrillInputHandler.validate(answer)
+                        : { valid: true, errors: [] };
                     console.log('[DrillAI] Parsed input type', {
                         drillId: drill.id,
-                        inputType: inputInfo.type
+                        inputType: inputInfo.type,
+                        valid: Boolean(inputInfo.valid && inputValidation.valid),
+                        validationErrors: inputValidation.errors || []
                     });
+
+                    if (!inputValidation.valid) {
+                        console.warn('[DrillAI] Input quality warning', {
+                            drillId: drill.id,
+                            errors: inputValidation.errors
+                        });
+                    }
 
                     // Generate code from pseudo-code/natural language.
                     console.log('[DrillAI] Calling CodeGeneratorAgent.generateCode', {
@@ -325,6 +366,10 @@
                             if (halluCheck.isHallucination) {
                                 hallucinationWarning = `⚠️ Warning: ${halluCheck.reason}`;
                             }
+                        } else {
+                            console.log('[DrillAI] HallucinationChecker unavailable, skipping check', {
+                                drillId: drill.id
+                            });
                         }
 
                         // AI successfully generated code (consider hallucination).
@@ -343,6 +388,10 @@
                                 skillId: drill.skillId,
                                 passedCount: result.correct ? 1 : 0,
                                 totalCount: 1
+                            });
+                        } else {
+                            console.log('[DrillAI] AsyncNotifier unavailable, skip notify', {
+                                drillId: drill.id
                             });
                         }
                         console.log('[DrillAI] Evaluation complete', {
@@ -382,17 +431,42 @@
                         feedback: `AI evaluation error: ${e.message}`
                     };
                 } finally {
+                    console.log('[DrillAI] Resetting submit button state', {
+                        drillId: drill.id
+                    });
                     submitBtn.textContent = originalText;
                     submitBtn.disabled = false;
                 }
             } else if (typeof DrillVerifier !== 'undefined' && DrillVerifier.verifyAnswer) {
+                if (drill.type === 'muscle-memory') {
+                    console.warn('[DrillAI] Falling back to DrillVerifier (CodeGeneratorAgent unavailable)', {
+                        drillId: drill.id,
+                        skillId: drill.skillId
+                    });
+                }
                 result = await DrillVerifier.verifyAnswer(drill, answer);
             } else {
                 // Simple fallback if verifier is missing.
+                if (drill.type === 'muscle-memory') {
+                    console.warn('[DrillAI] Falling back to local heuristic verifier', {
+                        drillId: drill.id,
+                        skillId: drill.skillId
+                    });
+                }
                 result = {
                     correct: drill.answer && answer.toLowerCase().includes(drill.answer.toLowerCase()),
                     feedback: drill.answer ? `Expected: ${drill.answer}` : 'Answer recorded'
                 };
+            }
+
+            if (drill.type === 'muscle-memory') {
+                console.log('[DrillAI] Final result ready', {
+                    drillId: drill.id,
+                    correct: result?.correct,
+                    retryable: Boolean(result?.retryable),
+                    feedbackLength: result?.feedback ? result.feedback.length : 0,
+                    hasGeneratedCode: Boolean(result?.generatedCode)
+                });
             }
 
             // Show result panel and hide the drill content.

@@ -13,8 +13,25 @@ const CodeGeneratorAgent = {
      * @returns {Promise<object>} { success, code, language, confidence, error, retryable }
      */
     async generateCode(input, context = {}, retries = 2) {
+        const traceId = context.traceId || `cg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+        const startTime = Date.now();
+        const safeContext = this._summarizeContext(context);
+        const inputLength = typeof input === 'string' ? input.length : 0;
+
+        console.log('[CodeGenerator] generateCode:start', {
+            traceId,
+            retriesRemaining: retries,
+            inputLength,
+            context: safeContext
+        });
+
         // Edge case: empty, null, undefined input
         if (!input || typeof input !== 'string' || !input.trim()) {
+            console.warn('[CodeGenerator] generateCode:invalid_input', {
+                traceId,
+                inputType: typeof input,
+                inputLength
+            });
             return {
                 success: false,
                 code: null,
@@ -33,13 +50,35 @@ const CodeGeneratorAgent = {
             ? cleanInput.slice(0, maxLength) + '\n# ... (truncated)'
             : cleanInput;
 
+        if (cleanInput.length > maxLength) {
+            console.warn('[CodeGenerator] generateCode:input_truncated', {
+                traceId,
+                originalLength: cleanInput.length,
+                truncatedLength: truncatedInput.length,
+                maxLength
+            });
+        }
+
         try {
-            const response = await this._callLLM(truncatedInput, context);
+            console.log('[CodeGenerator] generateCode:call_llm', {
+                traceId,
+                promptInputLength: truncatedInput.length
+            });
+            const response = await this._callLLM(truncatedInput, context, traceId);
+            console.log('[CodeGenerator] generateCode:llm_response_received', {
+                traceId,
+                responseShape: this._summarizeResponseShape(response)
+            });
 
             // Parse response
-            const code = this._extractPythonCode(response);
+            const code = this._extractPythonCode(response, traceId);
 
             if (!code) {
+                console.warn('[CodeGenerator] generateCode:python_extraction_failed', {
+                    traceId,
+                    elapsedMs: Date.now() - startTime,
+                    responsePreview: this._extractResponsePreview(response)
+                });
                 return {
                     success: false,
                     code: null,
@@ -50,33 +89,67 @@ const CodeGeneratorAgent = {
                 };
             }
 
+            const confidence = this._calculateConfidence(response, code);
+
+            console.log('[CodeGenerator] generateCode:success', {
+                traceId,
+                elapsedMs: Date.now() - startTime,
+                codeLength: code.length,
+                confidence
+            });
+
             return {
                 success: true,
                 code: code,
                 language: 'python',
-                confidence: this._calculateConfidence(response),
+                confidence,
                 error: null,
                 retryable: false
             };
 
         } catch (error) {
-            const isRateLimited = error.status === 429 || (error.message && error.message.includes('rate'));
-            const isTimeout = error.message && (error.message.includes('timeout') || error.message.includes('network') || error.message.includes('fetch'));
+            const errorMessage = error?.message || String(error);
+            const normalizedMessage = errorMessage.toLowerCase();
+            const isRateLimited = error?.status === 429 || normalizedMessage.includes('rate');
+            const isTimeout = normalizedMessage.includes('timeout')
+                || normalizedMessage.includes('network')
+                || normalizedMessage.includes('fetch');
+
+            console.error('[CodeGenerator] generateCode:error', {
+                traceId,
+                elapsedMs: Date.now() - startTime,
+                retriesRemaining: retries,
+                status: error?.status || null,
+                message: errorMessage,
+                isRateLimited,
+                isTimeout
+            });
 
             // Internal Retry for transient network errors
             if (retries > 0 && (isTimeout || isRateLimited)) {
-                console.warn(`[CodeGenerator] Retry attempt remaining: ${retries}. Error: ${error.message}`);
+                console.warn('[CodeGenerator] generateCode:retry_scheduled', {
+                    traceId,
+                    delayMs: 1000,
+                    nextRetriesRemaining: retries - 1
+                });
                 // Simple backoff: 1s wait
                 await new Promise(r => setTimeout(r, 1000));
-                return this.generateCode(input, context, retries - 1);
+                return this.generateCode(input, { ...context, traceId }, retries - 1);
             }
+
+            const finalError = isTimeout ? 'Request timeout or network error' : (errorMessage || 'Unknown error');
+            console.warn('[CodeGenerator] generateCode:failed', {
+                traceId,
+                error: finalError,
+                retryable: isRateLimited || isTimeout
+            });
 
             return {
                 success: false,
                 code: null,
                 language: 'python',
                 confidence: 0,
-                error: isTimeout ? 'Request timeout or network error' : (error.message || 'Unknown error'),
+                error: finalError,
                 retryable: isRateLimited || isTimeout
             };
         }
@@ -119,7 +192,7 @@ const CodeGeneratorAgent = {
      * @param {string} input 
      * @param {object} context 
      */
-    async _callLLM(input, context) {
+    async _callLLM(input, context, traceId = null) {
         // Check if LLMGateway is available (browser context)
         // Note: CodeGeneratorAgent might be used in context where LLMGateway is global
         const gateway = (typeof LLMGateway !== 'undefined') ? LLMGateway :
@@ -127,10 +200,33 @@ const CodeGeneratorAgent = {
 
         if (gateway && gateway.generateContent) {
             const prompt = this._buildPrompt(input, context);
-            return await gateway.generateContent(prompt);
+            console.log('[CodeGenerator] _callLLM:gateway_request', {
+                traceId,
+                promptLength: prompt.length,
+                provider: gateway.currentProvider || gateway.provider || 'unknown'
+            });
+            try {
+                const gatewayResponse = await gateway.generateContent(prompt);
+                console.log('[CodeGenerator] _callLLM:gateway_response', {
+                    traceId,
+                    responseShape: this._summarizeResponseShape(gatewayResponse)
+                });
+                return gatewayResponse;
+            } catch (error) {
+                console.error('[CodeGenerator] _callLLM:gateway_error', {
+                    traceId,
+                    status: error?.status || null,
+                    message: error?.message || String(error)
+                });
+                throw error;
+            }
         }
 
         // Fallback for testing or when no LLM available
+        console.warn('[CodeGenerator] _callLLM:fallback_stub', {
+            traceId,
+            reason: 'LLMGateway unavailable'
+        });
         return {
             choices: [{
                 message: {
@@ -167,36 +263,73 @@ Generate the Python code:`;
     /**
      * Extract Python code from LLM response.
      */
-    _extractPythonCode(response) {
-        if (!response) return null;
+    _extractPythonCode(response, traceId = null) {
+        if (!response) {
+            console.warn('[CodeGenerator] _extractPythonCode:empty_response', { traceId });
+            return null;
+        }
 
         // Handle different response formats
         let content = '';
+        let source = 'unknown';
 
         if (typeof response === 'string') {
             content = response;
+            source = 'string';
         } else if (response.choices && response.choices[0]) {
             content = response.choices[0].message?.content || response.choices[0].text || '';
+            source = 'choices[0]';
         } else if (response.text) {
             content = response.text;
+            source = 'text';
+        }
+
+        if (!content) {
+            console.warn('[CodeGenerator] _extractPythonCode:empty_content', {
+                traceId,
+                source,
+                responseShape: this._summarizeResponseShape(response)
+            });
+            return null;
         }
 
         // Extract code from markdown block
         const pythonMatch = content.match(/```python\s*([\s\S]*?)```/);
         if (pythonMatch) {
+            console.log('[CodeGenerator] _extractPythonCode:python_block', {
+                traceId,
+                source,
+                extractedLength: pythonMatch[1].trim().length
+            });
             return pythonMatch[1].trim();
         }
 
         // Try generic code block
         const genericMatch = content.match(/```\s*([\s\S]*?)```/);
         if (genericMatch) {
+            console.warn('[CodeGenerator] _extractPythonCode:generic_block', {
+                traceId,
+                source,
+                extractedLength: genericMatch[1].trim().length
+            });
             return genericMatch[1].trim();
         }
 
         // If no code block, check if content looks like code
         if (content.includes('def ') || content.includes('class ')) {
+            console.warn('[CodeGenerator] _extractPythonCode:heuristic_match', {
+                traceId,
+                source,
+                extractedLength: content.trim().length
+            });
             return content.trim();
         }
+
+        console.warn('[CodeGenerator] _extractPythonCode:no_code_found', {
+            traceId,
+            source,
+            preview: this._extractResponsePreview(content)
+        });
 
         return null;
     },
@@ -204,12 +337,12 @@ Generate the Python code:`;
     /**
      * Calculate confidence score based on response quality.
      */
-    _calculateConfidence(response) {
+    _calculateConfidence(response, extractedCode = null) {
         if (!response) return 0;
 
         let score = 0.5; // Base score
 
-        const code = this._extractPythonCode(response);
+        const code = extractedCode || this._extractPythonCode(response);
         if (code) {
             // Has valid Python syntax markers
             if (code.includes('def ')) score += 0.2;
@@ -218,6 +351,66 @@ Generate the Python code:`;
         }
 
         return Math.min(score, 1.0);
+    },
+
+    /**
+     * Keep context logs compact and stable.
+     */
+    _summarizeContext(context = {}) {
+        return {
+            skillId: context.skillId || null,
+            drillType: context.drillType || null,
+            inputType: context.inputType || null
+        };
+    },
+
+    /**
+     * Summarize response structure without dumping full payloads.
+     */
+    _summarizeResponseShape(response) {
+        if (response === null || response === undefined) {
+            return { type: String(response) };
+        }
+
+        if (typeof response === 'string') {
+            return { type: 'string', length: response.length };
+        }
+
+        if (typeof response !== 'object') {
+            return { type: typeof response };
+        }
+
+        const keys = Object.keys(response);
+        return {
+            type: 'object',
+            keys: keys.slice(0, 8),
+            hasChoices: Array.isArray(response.choices),
+            choiceCount: Array.isArray(response.choices) ? response.choices.length : 0,
+            hasText: typeof response.text === 'string'
+        };
+    },
+
+    /**
+     * Get compact preview for troubleshooting.
+     */
+    _extractResponsePreview(response, maxLength = 160) {
+        let content = '';
+
+        if (typeof response === 'string') {
+            content = response;
+        } else if (response && typeof response === 'object' && Array.isArray(response.choices) && response.choices[0]) {
+            content = response.choices[0].message?.content || response.choices[0].text || '';
+        } else if (response && typeof response === 'object' && typeof response.text === 'string') {
+            content = response.text;
+        } else if (response && typeof response === 'object') {
+            content = JSON.stringify(this._summarizeResponseShape(response));
+        } else {
+            content = String(response || '');
+        }
+
+        const normalized = content.replace(/\s+/g, ' ').trim();
+        if (normalized.length <= maxLength) return normalized;
+        return `${normalized.slice(0, maxLength)}...`;
     },
 
     /**
