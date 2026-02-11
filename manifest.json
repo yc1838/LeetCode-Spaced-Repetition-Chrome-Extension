@@ -4,7 +4,9 @@
     "version": "1.0.1",
     "description": "Automatically capture LeetCode submissions and schedule spaced repetition reviews.",
     "permissions": [
-        "storage"
+        "storage",
+        "alarms",
+        "notifications"
     ],
     "host_permissions": [
         "https://leetcode.com/*",
@@ -12,15 +14,16 @@
         "http://127.0.0.1/*"
     ],
     "options_ui": {
-        "page": "src/options/options.html",
+        "page": "dist/src/options/options.html",
         "open_in_tab": true
     },
     "action": {
-        "default_popup": "src/popup/popup.html",
+        "default_popup": "dist/src/popup/popup.html",
         "default_title": "LeetCode EasyRepeat"
     },
     "background": {
-        "service_worker": "src/background.js"
+        "service_worker": "dist/background.js",
+        "type": "module"
     },
     "content_scripts": [
         {
@@ -36,7 +39,13 @@
                 "src/shared/storage.js",
                 "src/content/leetcode_api.js",
                 "src/algorithms/vector_db.js",
+                "src/content/shadow_logger.js",
                 "src/content/llm_sidecar.js",
+                "src/content/morning_greeting.js",
+                "src/content/skill_graph.js",
+                "src/content/drill_queue.js",
+                "src/content/skill_animations.js",
+                "src/content/agent_content_init.js",
                 "src/content/content.js"
             ],
             "css": [

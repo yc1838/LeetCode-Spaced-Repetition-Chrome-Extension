@@ -218,6 +218,63 @@
                 // data.state could be "PENDING", "STARTED", "SUCCESS"
 
                 if (data.state === "SUCCESS") {
+                    // Fetch question details ONCE and share across all hooks
+                    const apiData = await fetchQuestionDetails(slug);
+                    const finalDifficulty = apiData?.difficulty || difficulty;
+                    const finalTitle = apiData?.title && apiData?.questionId
+                        ? `${apiData.questionId}. ${apiData.title}`
+                        : title;
+                    const finalTopics = apiData?.topics || [];
+
+                    // --- Shadow Logger Hook ---
+                    // Log ALL submissions (pass or fail) for Neural Retention Agent
+                    (async () => {
+                        try {
+                            if (typeof window.ShadowLogger !== 'undefined') {
+                                const logger = window.ShadowLogger.getInstance ?
+                                    window.ShadowLogger.getInstance() :
+                                    new window.ShadowLogger();
+
+                                await logger.init();
+
+                                // Extract code from Monaco Editor
+                                let code = "";
+                                const lines = document.querySelectorAll('.view-lines .view-line');
+                                if (lines && lines.length > 0) {
+                                    code = Array.from(lines).map(l => l.innerText).join('\n');
+                                }
+
+                                // Detect language from UI
+                                let language = 'python3';
+                                const langBtn = document.querySelector('[data-e2e-locator="console-lang-button"]');
+                                if (langBtn) {
+                                    language = langBtn.textContent?.trim().toLowerCase() || 'python3';
+                                }
+
+                                await logger.log({
+                                    problemSlug: slug,
+                                    problemTitle: finalTitle,
+                                    difficulty: finalDifficulty,
+                                    topics: finalTopics,
+                                    language: language,
+                                    code: code,
+                                    result: data.status_msg ||
+                                        (data.status_code === 10 ? 'Accepted' : 'Failed'),
+                                    errorDetails: data.status_code !== 10 ? {
+                                        type: data.status_msg,
+                                        testInput: data.last_testcase || data.input || '',
+                                        expected: data.expected_output || '',
+                                        actual: data.code_output || '',
+                                        runtimeError: data.runtime_error || data.compile_error || ''
+                                    } : undefined,
+                                    submissionId: String(submissionId)
+                                });
+                            }
+                        } catch (e) {
+                            console.warn('[ShadowLogger] Failed to log submission:', e);
+                        }
+                    })();
+
                     // DONE! Check if Accepted
                     if (data.status_code === 10 || data.status_msg === "Accepted") {
                         console.log(`[LeetCode EasyRepeat] Submission ${submissionId} ACCEPTED!`);
@@ -226,22 +283,7 @@
                         const saveSubmission = getDep('saveSubmission');
 
                         if (showRatingModal && saveSubmission) {
-                            // Fetch authoritative data
-                            const apiData = await fetchQuestionDetails(slug);
-
-                            const finalDifficulty = apiData ? apiData.difficulty : difficulty;
-                            let finalTitle = title;
-                            let finalTopics = [];
-
-                            if (apiData) {
-                                if (apiData.title && apiData.questionId) {
-                                    finalTitle = `${apiData.questionId}. ${apiData.title}`;
-                                }
-                                if (apiData.topics) {
-                                    finalTopics = apiData.topics;
-                                }
-                            }
-
+                            // Use already-fetched apiData (no duplicate call!)
                             const rating = await showRatingModal(finalTitle);
                             await saveSubmission(finalTitle, slug, finalDifficulty, 'api_poll', rating, finalTopics);
                             return true;
@@ -258,10 +300,16 @@
 
                             (async () => {
                                 // 0. Check global AI toggle
-                                let aiEnabled = false;
+                                let aiEnabled = true;
+                                let shouldAnalyze = false;
                                 try {
-                                    const aiStorage = await chrome.storage.local.get({ aiAnalysisEnabled: false });
-                                    aiEnabled = !!aiStorage.aiAnalysisEnabled;
+                                    const aiStorage = await chrome.storage.local.get({
+                                        aiAnalysisEnabled: true,
+                                        alwaysAnalyze: false
+                                    });
+                                    // Keep explicit OFF respected, but default to ON when key is missing.
+                                    aiEnabled = aiStorage.aiAnalysisEnabled !== false;
+                                    shouldAnalyze = !!aiStorage.alwaysAnalyze;
                                 } catch (e) { }
 
                                 if (!aiEnabled) return;
@@ -269,14 +317,7 @@
                                 const showAnalysisModal = getDep('showAnalysisModal');
                                 const saveNotes = getDep('saveNotes');
 
-                                // 1. Check Preference
-                                let shouldAnalyze = false;
-                                try {
-                                    const storage = await chrome.storage.local.get(['alwaysAnalyze']);
-                                    shouldAnalyze = !!storage.alwaysAnalyze;
-                                } catch (e) { }
-
-                                // 2. Ask User if not set
+                                // 1. Ask user when "always analyze" is not enabled.
                                 if (!shouldAnalyze && showAnalysisModal) {
                                     shouldAnalyze = await showAnalysisModal(data.status_msg); // 'Wrong Answer', etc.
                                 }

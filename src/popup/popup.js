@@ -18,15 +18,22 @@
 
 /**
  * THEME CONFIGURATION OBJECT:
- * 
+ *
  * This object defines two visual themes: "sakura" (pink) and "matrix" (green).
  * Each theme contains color values that will be applied as CSS custom properties.
- * 
+ *
  * WHY OBJECTS FOR CONFIGURATION?
  * - Easy to add new themes (just add another key)
  * - All theme values in one place (maintainability)
  * - Can be loaded from storage or server in the future
  */
+// THEMES is loaded via popup.entry.js which imports config.js (sets window.THEMES)
+const THEMES = window.THEMES || {};
+
+// Debug logging for module import issues
+console.log('[Popup] Resolved THEMES:', THEMES);
+
+import { renderGlobalHeatmap, renderVectors, renderMiniHeatmap } from './popup_ui.js';
 // THEMES is now loaded from configuration (config.js)
 
 // MODULE-LEVEL STATE:
@@ -57,10 +64,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 0. Load and apply theme from storage
     await setupTheme();
 
-    // 0.5 Load and apply AI analysis toggle from storage
-    await setupAiModeToggle();
-
-    // 0.6 Options/setup button
+    // 0.5 Options/setup button
     setupOptionsButton();
 
     // 1. Fetch data from storage and show the list of problems due for review
@@ -68,9 +72,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 1.5 Live refresh when notes update in storage
     setupStorageListeners();
-
-    // 2. Enable Test Mode logic (simulation date picker)
-    await setupTestMode();
 
     // 3. Enable sidebar tools (Purge, Sync buttons)
     setupManualTools();
@@ -129,30 +130,6 @@ async function setupTheme() {
 }
 
 /**
- * Load AI analysis toggle state from storage and wire the button.
- */
-async function setupAiModeToggle() {
-    const btn = document.getElementById('ai-mode-toggle');
-    if (!btn) return;
-
-    const storage = await chrome.storage.local.get({ aiAnalysisEnabled: false });
-    let enabled = !!storage.aiAnalysisEnabled;
-
-    const render = () => {
-        btn.textContent = enabled ? 'AI_MODE: ON' : 'AI_MODE: OFF';
-        btn.classList.toggle('on', enabled);
-    };
-
-    render();
-
-    btn.onclick = async () => {
-        enabled = !enabled;
-        render();
-        await chrome.storage.local.set({ aiAnalysisEnabled: enabled });
-    };
-}
-
-/**
  * Open the Options / Setup page.
  */
 function setupOptionsButton() {
@@ -163,7 +140,7 @@ function setupOptionsButton() {
         if (chrome?.runtime?.openOptionsPage) {
             chrome.runtime.openOptionsPage();
         } else {
-            const url = chrome.runtime.getURL('src/options/options.html');
+            const url = chrome.runtime.getURL('dist/src/options/options.html');
             window.open(url, '_blank');
         }
     };
@@ -304,11 +281,17 @@ async function updateDashboard() {
     // Sort All Problems: Sort exactly like dueProblems (Ascending Review Date)
     problems.sort((a, b) => new Date(a.nextReviewDate) - new Date(b.nextReviewDate));
 
-    // Update stats
-    const streakEl = document.getElementById('streak-display');
-    if (streakEl) {
-        const count = await calculateStreakFn();
-        streakEl.innerText = `STREAK: ${count}`;
+    // Update streak display in the heatmap header
+    const streakValueEl = document.getElementById('streak-value');
+    if (streakValueEl) {
+        const streakCount = await calculateStreakFn();
+        streakValueEl.innerText = String(streakCount);
+    } else {
+        const streakEl = document.getElementById('streak-display');
+        if (streakEl) {
+            const streakCount = await calculateStreakFn();
+            streakEl.innerText = `STREAK DAYS: ${streakCount}`;
+        }
     }
 
     // Initial Render
@@ -375,6 +358,8 @@ function updateClock() {
 function setupSidebar(dueProblems, allProblems) {
     const tabDash = document.getElementById('tab-dashboard');
     const tabAll = document.getElementById('tab-all');
+    const tabStats = document.getElementById('tab-stats');
+    const tabNeural = document.getElementById('tab-neural');
     const title = document.getElementById('queue-title');
 
     // Remove old active classes
@@ -383,25 +368,33 @@ function setupSidebar(dueProblems, allProblems) {
     tabDash.classList.add('active'); // Default
 
     tabDash.onclick = () => {
-        updateTabUI(tabDash, [tabAll, tabStats]);
-        title.innerText = "ACTIVE_PROBLEM_VECTORS";
+        updateTabUI(tabDash, [tabAll, tabStats, tabNeural]);
+        title.innerText = "PROBLEMS DUE TODAY";
         toggleViews('dashboard');
         renderVectors(dueProblems, 'vector-list', true);
     };
 
-    const tabStats = document.getElementById('tab-stats');
     if (tabStats) {
         tabStats.onclick = () => {
-            updateTabUI(tabStats, [tabDash, tabAll]);
+            updateTabUI(tabStats, [tabDash, tabAll, tabNeural]);
             title.innerText = "NEURAL_WEAKNESS_ANALYSIS";
             toggleViews('stats');
             loadStats();
         };
     }
 
+    if (tabNeural) {
+        tabNeural.onclick = () => {
+            updateTabUI(tabNeural, [tabDash, tabAll, tabStats]);
+            title.innerText = "NEURAL_RETENTION_AGENT";
+            toggleViews('neural');
+            loadNeuralAgent();
+        };
+    }
+
     tabAll.onclick = () => {
-        updateTabUI(tabAll, [tabDash, tabStats]);
-        title.innerText = "ALL_ARCHIVED_VECTORS";
+        updateTabUI(tabAll, [tabDash, tabStats, tabNeural]);
+        title.innerText = "ALL PROBLEMS";
         toggleViews('dashboard');
         renderVectors(allProblems, 'vector-list', false);
     };
@@ -416,15 +409,22 @@ function toggleViews(view) {
     const dash = document.querySelector('.heatmap-container'); // Global heatmap
     const list = document.querySelector('#vector-list').parentElement; // List section
     const stats = document.getElementById('stats-container');
+    const neural = document.getElementById('neural-container');
+
+    // Hide all first
+    if (dash) dash.style.display = 'none';
+    if (list) list.style.display = 'none';
+    if (stats) stats.style.display = 'none';
+    if (neural) neural.style.display = 'none';
 
     if (view === 'stats') {
-        if (dash) dash.style.display = 'none';
-        if (list) list.style.display = 'none';
         if (stats) stats.style.display = 'block';
+    } else if (view === 'neural') {
+        if (neural) neural.style.display = 'block';
     } else {
+        // dashboard view
         if (dash) dash.style.display = 'block';
         if (list) list.style.display = 'block';
-        if (stats) stats.style.display = 'none';
     }
 }
 
@@ -452,6 +452,35 @@ async function loadStats() {
     }
 }
 
+/**
+ * Load and render the Neural Retention Agent view.
+ */
+async function loadNeuralAgent() {
+    const graphContainer = document.getElementById('skill-graph-container');
+
+    // Render Skill Graph (demo data for now)
+    if (typeof window.SkillGraph !== 'undefined') {
+        const demoFamilies = [
+            { id: 'arrays', name: 'Arrays', confidence: 0.8 },
+            { id: 'dp', name: 'Dynamic Programming', confidence: 0.4 },
+            { id: 'graphs', name: 'Graphs', confidence: 0.6 },
+            { id: 'trees', name: 'Trees', confidence: 0.75 },
+            { id: 'strings', name: 'Strings', confidence: 0.55 }
+        ];
+
+        graphContainer.innerHTML = '';
+        const svg = window.SkillGraph.renderGraph({ families: demoFamilies }, { width: 250, height: 200 });
+        graphContainer.appendChild(svg);
+
+        // Apply animations
+        if (typeof window.SkillAnimations !== 'undefined') {
+            window.SkillAnimations.injectStyles();
+        }
+    } else {
+        graphContainer.innerHTML = '<div style="color:var(--accent)">SkillGraph not loaded</div>';
+    }
+}
+
 function renderStatsChart(container, stats) {
     if (!stats || !stats.byFamily || Object.keys(stats.byFamily).length === 0) {
         container.innerHTML = '<div style="opacity:0.5; padding:20px;">No anomalies detected yet. Keep coding.</div>';
@@ -460,11 +489,6 @@ function renderStatsChart(container, stats) {
 
     // 1. Group Tags by Family
     let html = '<div style="display:flex; flex-direction:column; gap:15px;">';
-
-    // Add Fix Button if legacy data detected (determined by 'UNSPECIFIED' presence usually, but let's just add it at bottom or top)
-    html += `<div style="display:flex; justify-content:flex-end;">
-       <button id="btn-fix-stats" style="background:none; border:1px solid rgba(255,255,255,0.2); color:rgba(255,255,255,0.6); font-size:0.6em; padding:2px 5px; cursor:pointer;">⚡ REPAIR DATA</button>
-    </div>`;
 
     html += '<div style="font-size:0.7em; opacity:0.7; letter-spacing:1px; margin-bottom:5px;">WEAKNESS_TOPOLOGY // HIERARCHY</div>';
     // We already have stats.byFamily (counts) and stats.byTag (counts). 
@@ -542,12 +566,6 @@ function renderStatsChart(container, stats) {
     html += '</div>';
 
     container.innerHTML = html;
-
-    // Bind Repair Button
-    const repairBtn = document.getElementById('btn-fix-stats');
-    if (repairBtn) {
-        repairBtn.onclick = () => runMigrationInPopup(repairBtn);
-    }
 }
 
 // renderVectors moved to popup_ui.js
@@ -624,34 +642,6 @@ async function calculateStreakFn() {
 
 // --- Manual Tools Logic ---
 function setupManualTools() {
-    // "Repair Streak" button
-    const btnRepair = document.getElementById('btn-repair');
-    if (btnRepair) {
-        btnRepair.onclick = async () => {
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            const defaultDate = yesterday.toISOString().split('T')[0];
-
-            const input = prompt("Streak broken? Enter a date (YYYY-MM-DD) to mark as 'Active':", defaultDate);
-            if (input) {
-                // Basic Validation
-                if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
-                    showNotification('error', 'INVALID_DATE', 'Format must be YYYY-MM-DD');
-                    return;
-                }
-
-                // Call storage.js function
-                if (typeof logActivity === 'function') {
-                    await logActivity(input);
-                    showNotification('success', 'STREAK_REPAIRED', `Activity logged for ${input}.`);
-                    await updateDashboard(); // Refund UI
-                } else {
-                    showNotification('error', 'ERROR', 'Storage module not loaded.');
-                }
-            }
-        };
-    }
-
     // "Sync" button (Manual Scan)
     document.getElementById('btn-sync').onclick = async () => {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -679,69 +669,21 @@ function setupManualTools() {
             }
         });
     };
+
+    // "All Drills" button
+    const btnAllDrills = document.getElementById('btn-all-drills');
+    if (btnAllDrills) {
+        btnAllDrills.onclick = () => {
+            const overviewUrl = chrome.runtime.getURL('dist/src/drills/drill_overview.html');
+            chrome.tabs.create({ url: overviewUrl });
+        };
+    }
 }
 
 // showNotification moved to popup_ui.js
 
-// --- Test Mode Logic ---
-let isTestMode = false;
-let testDate = null;
-
-async function setupTestMode() {
-    const toggle = document.getElementById('test-mode-toggle');
-    const dateInput = document.getElementById('test-mode-date');
-    const controls = document.getElementById('sim-controls');
-
-    // Load saved state
-    const storage = await chrome.storage.local.get({ testMode: false, testDate: null });
-    isTestMode = storage.testMode;
-    testDate = storage.testDate;
-
-    // Set initial UI state
-    if (toggle) toggle.checked = isTestMode;
-    if (dateInput) dateInput.value = testDate || new Date().toISOString().split('T')[0];
-
-    // Show/Hide controls based on mode
-    if (controls) controls.style.display = isTestMode ? 'block' : 'none';
-
-    // Toggle Change Listener
-    if (toggle) {
-        toggle.onchange = async () => {
-            isTestMode = toggle.checked;
-            if (controls) controls.style.display = isTestMode ? 'block' : 'none'; // UI Update
-
-            // If enabling and no date set, default to today
-            if (isTestMode && dateInput && !dateInput.value) {
-                dateInput.value = new Date().toISOString().split('T')[0];
-                testDate = dateInput.value;
-            }
-
-            await chrome.storage.local.set({ testMode: isTestMode, testDate: dateInput ? dateInput.value : null });
-            await updateDashboard();
-        };
-    }
-
-    // Date Change Listener
-    if (dateInput) {
-        dateInput.onchange = async () => {
-            testDate = dateInput.value;
-            await chrome.storage.local.set({ testDate: testDate });
-            // Only refresh if test mode is actually on
-            if (isTestMode) {
-                await updateDashboard();
-            }
-        };
-    }
-}
-
 function getCurrentDate() {
-    // In Test Mode, use the selected date at 23:59:59
-    if (isTestMode && testDate) {
-        const [year, month, day] = testDate.split('-').map(Number);
-        return new Date(year, month - 1, day, 23, 59, 59);
-    }
-
-    // In Normal Mode, ALSO use today at 23:59:59
+    // Use today at 23:59:59
     // This ensures that any Card due "Today" (even if due at 10pm and it's 9am)
     // shows up in the "Due" list. Standard SRS behavior: "Due" = "Due Today".
     const now = new Date();

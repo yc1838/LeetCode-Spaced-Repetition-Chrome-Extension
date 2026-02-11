@@ -235,6 +235,11 @@ body::before {
     stroke: var(--void);
 }
 
+.nav-icon-setup svg {
+    width: 18px;
+    height: 18px;
+}
+
 /* MAIN CONTENT AREA */
 .viewport {
     padding: 15px;
@@ -260,6 +265,46 @@ body::before {
     display: flex;
     justify-content: space-between;
     color: var(--electric);
+}
+
+.heatmap-header-welcome {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    column-gap: 8px;
+}
+
+#welcome-message {
+    min-width: 0;
+    line-height: 1.35;
+    white-space: normal;
+    word-break: break-word;
+}
+
+#streak-display {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    text-align: right;
+}
+
+#streak-display .streak-label {
+    font-size: 0.55rem;
+    letter-spacing: 0.7px;
+    line-height: 1;
+    opacity: 0.85;
+}
+
+#streak-display .streak-value {
+    min-width: 2ch;
+    text-align: right;
+    font-family: 'Space Mono', monospace;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--terminal);
+    text-shadow: 0 0 10px var(--border-glow);
 }
 
 .heatmap-grid {
@@ -355,6 +400,102 @@ body::before {
     background: var(--cell-4);
     border-color: var(--cell-4);
     box-shadow: 0 0 12px var(--cell-4), 0 0 24px var(--cell-4);
+}
+
+/* Animated Heatmap Cells - Multiple Variations */
+.pulse-1 {
+    animation: colorPulse1 5s ease-in-out infinite;
+}
+
+.pulse-2 {
+    animation: colorPulse2 6s ease-in-out infinite;
+}
+
+.pulse-3 {
+    animation: colorPulse3 7s ease-in-out infinite;
+}
+
+.pulse-4 {
+    animation: colorPulse4 5.5s ease-in-out infinite;
+}
+
+.pulse-5 {
+    animation: colorPulse5 6.5s ease-in-out infinite;
+}
+
+/* Animation 1: Magenta to Pink cycle */
+@keyframes colorPulse1 {
+    0%, 100% {
+        background: var(--cell-1);
+        border-color: var(--cell-1);
+        box-shadow: 0 0 4px var(--cell-1);
+    }
+    50% {
+        background: var(--cell-2);
+        border-color: var(--cell-2);
+        box-shadow: 0 0 6px var(--cell-2);
+    }
+}
+
+/* Animation 2: Pink to Peach cycle */
+@keyframes colorPulse2 {
+    0%, 100% {
+        background: var(--cell-2);
+        border-color: var(--cell-2);
+        box-shadow: 0 0 6px var(--cell-2);
+    }
+    50% {
+        background: var(--cell-3);
+        border-color: var(--cell-3);
+        box-shadow: 0 0 8px var(--cell-3);
+    }
+}
+
+/* Animation 3: Peach to Orange cycle */
+@keyframes colorPulse3 {
+    0%, 100% {
+        background: var(--cell-3);
+        border-color: var(--cell-3);
+        box-shadow: 0 0 8px var(--cell-3);
+    }
+    50% {
+        background: var(--cell-4);
+        border-color: var(--cell-4);
+        box-shadow: 0 0 12px var(--cell-4), 0 0 24px var(--cell-4);
+    }
+}
+
+/* Animation 4: Bright Orange pulsing */
+@keyframes colorPulse4 {
+    0%, 100% {
+        background: var(--cell-4);
+        border-color: var(--cell-4);
+        box-shadow: 0 0 12px var(--cell-4), 0 0 24px var(--cell-4);
+    }
+    50% {
+        background: var(--cell-3);
+        border-color: var(--cell-3);
+        box-shadow: 0 0 8px var(--cell-3);
+    }
+}
+
+/* Animation 5: Full spectrum cycle */
+@keyframes colorPulse5 {
+    0%, 100% {
+        background: var(--cell-1);
+        border-color: var(--cell-1);
+        box-shadow: 0 0 4px var(--cell-1);
+    }
+    33% {
+        background: var(--cell-3);
+        border-color: var(--cell-3);
+        box-shadow: 0 0 8px var(--cell-3);
+    }
+    66% {
+        background: var(--cell-4);
+        border-color: var(--cell-4);
+        box-shadow: 0 0 12px var(--cell-4), 0 0 24px var(--cell-4);
+    }
 }
 
 /* PROBLEM VECTORS (CARDS) */
@@ -501,30 +642,6 @@ body::before {
     display: block;
 }
 
-.rating-row {
-    display: flex;
-    gap: 5px;
-    margin-bottom: 10px;
-}
-
-.rating-btn {
-    flex: 1;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--border-dim);
-    color: #fff;
-    padding: 6px;
-    font-family: var(--font-data);
-    font-size: 0.6rem;
-    cursor: pointer;
-    text-align: center;
-    transition: all 0.2s;
-}
-
-.rating-btn:hover {
-    border-color: var(--terminal);
-    background: var(--terminal);
-    color: var(--void);
-}
 
 @keyframes slideDown {
     from {
@@ -792,21 +909,6 @@ body.theme-typography .status-ready {
     font-weight: 700;
 }
 
-body.theme-typography .rating-btn {
-    color: var(--terminal);
-    background: #ffffff;
-    border-width: 2px;
-    font-weight: 700;
-    box-shadow: 2px 2px 0px rgba(0, 0, 0, 0.1);
-}
-
-body.theme-typography .rating-btn:hover {
-    background: var(--terminal);
-    color: #ffffff;
-    border-color: var(--terminal) !important;
-    /* Override inline colors on hover for Ink look */
-    box-shadow: 3px 3px 0px var(--border-dim);
-}
 
 /* ==========================================================================
    THEME OVERRIDES: BRND.OS (Minimalist Dark)
@@ -920,18 +1022,6 @@ body.theme-brnd .del-btn {
     opacity: 1;
 }
 
-body.theme-brnd .rating-btn {
-    border: 1px solid #2d2d2d;
-    background: #1a1a1a;
-    color: #a0a0a0;
-    font-weight: bold;
-}
-
-body.theme-brnd .rating-btn:hover {
-    background: #f0f0f0;
-    color: #0a0a0a;
-    border-color: #f0f0f0;
-}
 
 body.theme-brnd .tag-row .tag,
 body.theme-brnd .topic-tag {
@@ -971,4 +1061,53 @@ body.theme-brnd .notes-flashcard::before {
     height: auto;
     position: static;
     opacity: 1;
+}
+
+/* Drill Action Buttons */
+.drill-action-btn {
+    background: transparent;
+    border: 1px solid var(--border-dim);
+    color: var(--electric);
+    padding: 3px 8px;
+    font-family: var(--font-main);
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.drill-action-btn:hover {
+    border-color: var(--terminal);
+    color: var(--terminal);
+    box-shadow: 0 0 8px var(--border-glow);
+}
+
+.drill-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.drill-action-btn.loading {
+    position: relative;
+    color: transparent;
+}
+
+.drill-action-btn.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 10px;
+    height: 10px;
+    margin: -5px 0 0 -5px;
+    border: 2px solid var(--border-dim);
+    border-top-color: var(--terminal);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
 }

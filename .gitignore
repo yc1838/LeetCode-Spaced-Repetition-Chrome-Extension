@@ -13,9 +13,13 @@ dist/
 # System Files
 .DS_Store
 .env
+/mcp-server/.env
 
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+.claude/
+HACKATHON_DESCRIPTION.md
+HACKATHON_SUBMISSION.md
