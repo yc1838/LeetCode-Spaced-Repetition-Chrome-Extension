@@ -50,7 +50,7 @@
     /**
      * Create a new drill entity.
      */
-    function createDrill({ type, skillId, content, answer, test_cases, explanation, difficulty = 'medium' }) {
+    function createDrill({ type, skillId, content, answer, test_cases, explanation, difficulty = 'medium', submissionId = null, category = null }) {
         const now = new Date().toISOString();
         return {
             id: generateId(),
@@ -65,7 +65,9 @@
             correct: null,          // true | false | null
             createdAt: now,
             completedAt: null,
-            attempts: 0
+            attempts: 0,
+            submissionId,           // FK → submissionLog.id (null for legacy drills)
+            category                // 'problem' | 'language' | 'algo' | null
         };
     }
 
