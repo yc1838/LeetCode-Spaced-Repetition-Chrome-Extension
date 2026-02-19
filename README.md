@@ -86,11 +86,15 @@ A personalized learning assistant that builds a "Skill DNA" profile of your codi
   - Animated pulsing heatmap cells for active practice days
   - Relocated setup button to navigation sidebar with icon styling
   - Refined popup header and dashboard labels
+- **Skill-Specific Drill Templates**: Drill generator now uses per-skill templates and language-aware code generation for more targeted practice
+- **Drill Overview Page**: Dedicated overview page for browsing and managing all generated drills
+- **Provider-Specific LLM Clients**: Individual client modules for Gemini, OpenAI, Anthropic, and local models with provider-specific optimizations
+- **LLM Output Validation**: Hallucination checker and insight deduplication for more reliable AI-generated content
 - **Improved Tools**:
   - Removed test/simulation mode (deprecated)
   - Added dedicated streak repair tool in options page
   - Enhanced drill generation with detailed status reporting and queue state visibility
-- **Build System**: Migrated to Vite for module bundling with improved entry points and consolidated background scripts
+- **Build System**: Migrated to Vite for module bundling with per-page entry points and consolidated background scripts
 - **VectorDB Migration**: Moved from IndexedDB to Chrome Storage Local for better cross-context access
 - **Browser Testing**: Added comprehensive E2E tests with Puppeteer
 
@@ -261,7 +265,9 @@ npx jest --coverage
 ```
 leetcode-srs-extension/
 ├── manifest.json          # Chrome extension configuration (Manifest V3)
+├── vite.config.js         # Vite build configuration
 ├── src/
+│   ├── background.js      # Main service worker entry
 │   ├── content/           # Content scripts (runs on leetcode.com)
 │   │   ├── content.js     # Orchestrator
 │   │   ├── content_ui.js  # Toasts, rating modal, notes widget
@@ -276,39 +282,69 @@ leetcode-srs-extension/
 │   │   └── agent_content_init.js # Agent initialization
 │   ├── popup/             # Extension popup UI
 │   │   ├── popup.html
+│   │   ├── popup.entry.js # Vite entry point
 │   │   ├── popup.js       # Dashboard + Neural Agent tab
 │   │   ├── popup_ui.js
 │   │   └── popup.css
 │   ├── drills/            # Micro-drill practice system
 │   │   ├── drills.html    # Drill practice page
+│   │   ├── drills.entry.js # Vite entry point
+│   │   ├── drills.css
 │   │   ├── drill_init.js  # Drill page controller
 │   │   ├── drill_page.js  # Drill rendering
-│   │   └── drill_queue.js # Queue UI component
+│   │   ├── drill_input_handler.js # Input handling for drills
+│   │   ├── drill_overview.html    # Drill overview page
+│   │   ├── drill_overview.entry.js # Vite entry point
+│   │   ├── drill_overview.js      # Overview controller
+│   │   └── drill_overview.css
 │   ├── algorithms/        # SRS algorithms
 │   │   ├── fsrs_logic.js  # FSRS v4.5 (primary)
 │   │   ├── srs_logic.js   # SM-2 (legacy fallback)
 │   │   └── vector_db.js   # Client-side VectorDB (migrated from IndexedDB to Chrome Storage)
 │   ├── shared/            # Shared utilities
 │   │   ├── storage.js     # Chrome storage wrapper
-│   │   └── config.js      # Configuration constants
-│   ├── background/        # Service worker + Neural Agent modules
-│   │   ├── background.js  # Main service worker
+│   │   ├── config.js      # Configuration constants
+│   │   └── dexie_db.js    # Dexie.js IndexedDB wrapper
+│   ├── background/        # Neural Agent modules
+│   │   ├── worker.js      # Background worker
+│   │   ├── agent_loader.js # Agent initialization
 │   │   ├── skill_matrix.js # Skill DNA tracking
-│   │   ├── drill_generator.js # AI-powered drill creation
+│   │   ├── drill_generator.js # AI-powered drill creation (with skill-specific templates)
 │   │   ├── drill_store.js # IndexedDB for drills
+│   │   ├── drill_tracker.js # Drill progress tracking
+│   │   ├── drill_types.js # Drill type definitions
+│   │   ├── drill_verifier.js # Drill answer verification
 │   │   ├── digest_orchestrator.js # Nightly analysis
+│   │   ├── digest_scheduler.js # Digest scheduling
 │   │   ├── error_pattern_detector.js # Layer 2 patterns
 │   │   ├── backfill_agent.js # Tag fetcher
-│   │   └── llm_gateway.js # Multi-provider LLM abstraction (Gemini, OpenAI, Anthropic, Local)
+│   │   ├── llm_gateway.js # Multi-provider LLM abstraction
+│   │   ├── gemini_client.js # Google Gemini provider
+│   │   ├── openai_client.js # OpenAI provider
+│   │   ├── anthropic_client.js # Anthropic Claude provider
+│   │   ├── local_client.js # Ollama / LM Studio provider
+│   │   ├── code_generator_agent.js # Code generation for drills
+│   │   ├── hallucination_checker.js # LLM output validation
+│   │   ├── insight_compressor.js # Insight data compression
+│   │   ├── insight_deduplicator.js # Duplicate insight detection
+│   │   ├── insights_store.js # Insights persistence
+│   │   ├── day_log_harvester.js # Daily activity harvesting
+│   │   ├── retention_policy.js # Data retention management
+│   │   ├── sandbox_client.js # E2B sandbox integration
+│   │   └── async_notifier.js # Async notification helper
 │   ├── options/           # Settings page
 │   │   ├── options.html
-│   │   ├── options.js
-│   │   ├── options.css
-│   │   └── i18n/          # Internationalization files
+│   │   ├── options.entry.js # Vite entry point
+│   │   ├── options.js     # Settings logic (includes inline i18n for 11 languages)
+│   │   └── options.css
 │   └── data/              # Static data
 │       └── skill_taxonomy.json
+├── scripts/               # Dev/debug utilities
+│   ├── benchmark_drills.js
+│   ├── debug_extension.js
+│   └── manual_test_extension.sh
 ├── mcp-server/            # Local Auto-Fix server (Python)
-├── tests/                 # Jest tests (40+ files)
+├── tests/                 # Jest tests (60+ files)
 └── assets/                # Icons and images
 ```
 
