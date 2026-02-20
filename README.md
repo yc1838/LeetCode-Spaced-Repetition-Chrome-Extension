@@ -20,6 +20,11 @@ A Chrome Extension that helps you master LeetCode problems using a **Spaced Repe
 - **Dynamic Theme Switching**: Toggle themes with one click; preference is saved across sessions
 - **Themed Toast Notifications**: In-page success toasts match your selected theme
 
+<div align="center">
+  <img src="assets/matrix_theme.png" alt="Matrix Theme UI" width="48%" style="border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);" />
+  <img src="assets/sakura_theme.png" alt="Sakura Theme UI" width="48%" style="border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);" />
+</div>
+
 ### 📊 Visual Dashboard
 
 - **Cognitive Retention Heatmap**: Global activity visualization showing your practice patterns with animated pulsing cells for active days
@@ -484,9 +489,6 @@ graph TD
     PopupJS -- Manual scan / difficulty sync --> Orchestrator
 ```
 
-### AI Mistake Analysis Architecture
-
-![AI Mistake Analysis Architecture](assets/architecture_diagram.png)
 
 ### AI Analysis Workflow Strategy
 
